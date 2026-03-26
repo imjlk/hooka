@@ -28,7 +28,6 @@ await buildImages();
 try {
   await runScenario({
     name: "success-canonical",
-    port: 38080,
     workerImage: workerImageTag,
     serverInstalledCapabilities: cfPagesSpec.installedCapabilities,
     wranglerExitCode: "0",
@@ -37,7 +36,6 @@ try {
   });
   await runScenario({
     name: "failure-legacy-alias",
-    port: 38081,
     workerImage: legacyWorkerImageTag,
     serverInstalledCapabilities: cfPagesSpec.installedCapabilities,
     wranglerExitCode: "17",
@@ -66,7 +64,6 @@ async function buildImages(): Promise<void> {
 
 async function runScenario(input: {
   name: string;
-  port: number;
   workerImage: string;
   serverInstalledCapabilities: string;
   wranglerExitCode: string;
@@ -86,12 +83,13 @@ async function runScenario(input: {
   await Bun.write(join(exportDir, "about.html"), "<html>about</html>");
 
   try {
-    await $`docker run -d --rm --name ${serverName} -p ${input.port}:3000 -e HOOKA_DB_PATH=/data/hooka.sqlite -e HOOKA_WEBHOOK_SECRET=${secret} -e HOOKA_INSTALLED_CAPABILITIES=${input.serverInstalledCapabilities} -e PATH=${defaultPath} -e HOOKA_TEST_WRANGLER_EXIT_CODE=${input.wranglerExitCode} -e HOOKA_TEST_WRANGLER_STDERR=${input.expectedStderr ?? ""} -v ${dataDir}:/data -v ${mockBinDir}:/mock-bin:ro ${serverImageTag}`.quiet();
+    await $`docker run -d --rm --name ${serverName} -P -e HOOKA_DB_PATH=/data/hooka.sqlite -e HOOKA_WEBHOOK_SECRET=${secret} -e HOOKA_INSTALLED_CAPABILITIES=${input.serverInstalledCapabilities} -e PATH=${defaultPath} -e HOOKA_TEST_WRANGLER_EXIT_CODE=${input.wranglerExitCode} -e HOOKA_TEST_WRANGLER_STDERR=${input.expectedStderr ?? ""} -v ${dataDir}:/data -v ${mockBinDir}:/mock-bin:ro ${serverImageTag}`.quiet();
     await $`docker run -d --rm --name ${workerName} -e HOOKA_DB_PATH=/data/hooka.sqlite -e HOOKA_WEBHOOK_SECRET=${secret} -e CLOUDFLARE_API_TOKEN=test-token -e CLOUDFLARE_ACCOUNT_ID=test-account -e PATH=${defaultPath} -e HOOKA_TEST_WRANGLER_EXIT_CODE=${input.wranglerExitCode} -e HOOKA_TEST_WRANGLER_STDERR=${input.expectedStderr ?? ""} -v ${dataDir}:/data -v ${sharedSourceDir}:/shared-source -v ${mockBinDir}:/mock-bin:ro ${input.workerImage}`.quiet();
+    const serverPort = await resolvePublishedPort(serverName);
 
-    await waitForHealth(input.port);
-    const runId = await enqueueGenericWebhook(input.port, secret);
-    const run = await waitForRunStatus(input.port, runId, input.expectedStatus);
+    await waitForHealth(serverPort);
+    const runId = await enqueueGenericWebhook(serverPort, secret);
+    const run = await waitForRunStatus(serverPort, runId, input.expectedStatus);
 
     if (run.status !== input.expectedStatus) {
       throw new Error(
@@ -119,6 +117,27 @@ async function runScenario(input: {
     await $`docker rm -f ${workerName}`.quiet().nothrow();
     await removeDir(tempDir);
   }
+}
+
+async function resolvePublishedPort(containerName: string): Promise<number> {
+  const response = await $`docker port ${containerName} 3000/tcp`.text();
+  const line = response
+    .split("\n")
+    .map((value) => value.trim())
+    .find((value) => value.length > 0 && !value.startsWith(":::"));
+
+  if (!line) {
+    throw new Error(`Could not resolve a published host port for ${containerName}.`);
+  }
+
+  const portText = line.split(":").at(-1);
+  const port = Number(portText);
+
+  if (!Number.isInteger(port) || port <= 0) {
+    throw new Error(`Invalid published port "${line}" for ${containerName}.`);
+  }
+
+  return port;
 }
 
 async function waitForHealth(port: number): Promise<void> {
