@@ -10,6 +10,9 @@ services:
       HOOKA_PORT: "3000"
     volumes:
       - hooka-data:/data
+
+    # If the GitHub repository and GHCR package stay private,
+    # configure GHCR registry credentials in Coolify before pulling this image.
   hooka-worker:
     image: ghcr.io/imjlk/hooka:cf-pages
     environment:

@@ -86,6 +86,11 @@ Recommended container tags:
 - `ghcr.io/imjlk/hooka:wp-ops`
 - `ghcr.io/imjlk/hooka:wp-wrangler`
 
+If the GitHub repository stays private, the GHCR package is private too. In that
+case your deployment platform needs GHCR credentials before it can pull Hooka
+images. If you want anonymous pulls, change the package visibility to public in
+GitHub Packages after the first publish.
+
 Recommended defaults:
 
 ```bash
@@ -192,3 +197,17 @@ Hooka's default model is `signed webhook -> queue -> worker -> wrangler CLI`. Wo
 - `wp-wrangler` is the combo worker that merges `wp-ops` and `cf-pages`.
 
 `hooka doctor` now reports both missing capabilities and missing env required by the currently installed capabilities.
+
+## Private GHCR Pulls
+
+For private packages, log in before pulling:
+
+```bash
+echo "$GHCR_TOKEN" | docker login ghcr.io -u imjlk --password-stdin
+docker pull ghcr.io/imjlk/hooka:webhook-server
+docker pull ghcr.io/imjlk/hooka:cf-pages
+```
+
+The token needs `read:packages`. In Coolify or other deployment platforms,
+configure the registry credentials first, then reference the same image tags
+from the compose example.
