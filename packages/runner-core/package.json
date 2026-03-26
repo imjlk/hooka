@@ -1,0 +1,16 @@
+{
+  "name": "@hooka/runner-core",
+  "private": true,
+  "type": "module",
+  "exports": "./src/index.ts",
+  "scripts": {
+    "build": "bun build ./src/index.ts --outdir ./dist --target bun"
+  },
+  "dependencies": {
+    "@hooka/contracts": "workspace:*",
+    "@hooka/executor-http": "workspace:*",
+    "@hooka/executor-process": "workspace:*",
+    "@hooka/task-sdk": "workspace:*",
+    "zod": "latest"
+  }
+}

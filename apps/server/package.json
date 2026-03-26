@@ -1,0 +1,15 @@
+{
+  "name": "@hooka/server",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "bun build ./src/index.ts --outdir ./dist --target bun"
+  },
+  "dependencies": {
+    "@hooka/contracts": "workspace:*",
+    "@hooka/registry": "workspace:*",
+    "@hooka/run-store": "workspace:*",
+    "@hooka/runner-core": "workspace:*",
+    "zod": "latest"
+  }
+}

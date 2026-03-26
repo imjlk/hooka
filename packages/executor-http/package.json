@@ -1,0 +1,14 @@
+{
+  "name": "@hooka/executor-http",
+  "private": true,
+  "type": "module",
+  "exports": "./src/index.ts",
+  "scripts": {
+    "build": "bun build ./src/index.ts --outdir ./dist --target bun"
+  },
+  "dependencies": {
+    "@hooka/contracts": "workspace:*",
+    "@hooka/task-sdk": "workspace:*",
+    "zod": "latest"
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "name": "@hooka/cli",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "hooka": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "bun build ./src/index.ts --outdir ./dist --target bun",
+    "dev": "bun run ./src/index.ts"
+  },
+  "dependencies": {
+    "@bunli/core": "latest",
+    "@hooka/contracts": "workspace:*",
+    "@hooka/registry": "workspace:*",
+    "@hooka/run-store": "workspace:*",
+    "@hooka/runner-core": "workspace:*",
+    "@hooka/task-sdk": "workspace:*",
+    "bunli": "latest",
+    "zod": "latest"
+  }
+}

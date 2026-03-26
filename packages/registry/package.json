@@ -1,0 +1,22 @@
+{
+  "name": "@hooka/registry",
+  "private": true,
+  "type": "module",
+  "exports": "./src/index.ts",
+  "scripts": {
+    "build": "bun build ./src/index.ts --outdir ./dist --target bun"
+  },
+  "dependencies": {
+    "@hooka/cap-git": "workspace:*",
+    "@hooka/contracts": "workspace:*",
+    "@hooka/cap-php-cli": "workspace:*",
+    "@hooka/cap-rclone": "workspace:*",
+    "@hooka/cap-rsync": "workspace:*",
+    "@hooka/cap-wpcli": "workspace:*",
+    "@hooka/cap-wrangler": "workspace:*",
+    "@hooka/pack-cloudflare": "workspace:*",
+    "@hooka/pack-wordpress": "workspace:*",
+    "@hooka/pack-wordpress-cloudflare": "workspace:*",
+    "@hooka/task-sdk": "workspace:*"
+  }
+}

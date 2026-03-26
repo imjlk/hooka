@@ -1,0 +1,26 @@
+{
+  "name": "hooka",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "bun run build:packages && bun run build:apps",
+    "build:packages": "bun --filter='./packages/*' run build",
+    "build:apps": "bun --filter='./apps/*' run build",
+    "check": "bunx tsc -p tsconfig.json --noEmit",
+    "dev:server": "bun --hot apps/server/src/index.ts",
+    "dev:worker": "bun --hot apps/worker/src/index.ts",
+    "dev:cli": "bun --filter @hooka/cli run dev",
+    "test": "bun test",
+    "task:validate": "bun run apps/cli/src/index.ts task validate",
+    "image:install-features": "bun run apps/cli/src/index.ts image install-features"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/node": "latest",
+    "typescript": "latest"
+  }
+}

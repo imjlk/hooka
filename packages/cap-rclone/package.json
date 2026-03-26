@@ -1,0 +1,12 @@
+{
+  "name": "@hooka/cap-rclone",
+  "private": true,
+  "type": "module",
+  "exports": "./src/index.ts",
+  "scripts": {
+    "build": "bun build ./src/index.ts --outdir ./dist --target bun"
+  },
+  "dependencies": {
+    "@hooka/task-sdk": "workspace:*"
+  }
+}

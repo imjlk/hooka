@@ -1,0 +1,24 @@
+services:
+  hooka-server:
+    image: ghcr.io/imjlk/hooka:wp-wrangler
+    ports:
+      - "3000:3000"
+    environment:
+      HOOKA_DB_PATH: /data/hooka.sqlite
+      HOOKA_WEBHOOK_SECRET: change-me
+      HOOKA_PORT: "3000"
+    volumes:
+      - hooka-data:/data
+  hooka-worker:
+    image: ghcr.io/imjlk/hooka:wp-wrangler
+    command: ["bun", "run", "apps/worker/dist/index.js"]
+    environment:
+      HOOKA_DB_PATH: /data/hooka.sqlite
+      HOOKA_WEBHOOK_SECRET: change-me
+      HOOKA_POLL_INTERVAL_MS: "2000"
+      HOOKA_RUN_LEASE_MS: "900000"
+    volumes:
+      - hooka-data:/data
+
+volumes:
+  hooka-data:
