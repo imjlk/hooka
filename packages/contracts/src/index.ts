@@ -13,6 +13,22 @@ export const enqueueRunRequestSchema = z.object({
   sourceEventId: z.string().min(1).optional(),
 });
 
+export const genericTaskWebhookSchema = z.object({
+  taskId: z.string().min(1),
+  input: z.unknown().default({}),
+  eventId: z.string().min(1),
+  source: z.string().default("webhook"),
+  triggeredAt: z.string().datetime().optional(),
+});
+
+export const sharedVolumeWranglerInputSchema = z.object({
+  kind: z.literal("pages-deploy").default("pages-deploy"),
+  sourcePath: z.string().min(1).default("/shared-source/simply-static"),
+  project: z.string().min(1),
+  branch: z.string().min(1).optional(),
+  commitSha: z.string().min(1).optional(),
+});
+
 export const taskRunStatusSchema = z.enum([
   "queued",
   "running",
@@ -76,7 +92,7 @@ export const runDetailSchema = runSummarySchema.extend({
 
 export const wordpressSimplyStaticWebhookSchema = z.object({
   eventId: z.string().min(1),
-  project: z.enum(["main-site", "staging-site"]),
+  project: z.string().min(1),
   exportDir: z.string().min(1),
   branch: z.string().min(1).optional(),
   commitSha: z.string().min(1).optional(),
@@ -89,10 +105,22 @@ export const installedCapabilitiesManifestSchema = z.object({
   installed: z.array(z.string()).default([]),
 });
 
+export const capabilityEnvRequirementSchema = z.object({
+  capabilityId: z.string(),
+  match: z.enum(["allOf", "anyOf"]),
+  names: z.array(z.string()).min(1),
+  description: z.string(),
+  secret: z.boolean().default(false),
+});
+
 export const imagePlanSchema = z.object({
   presetId: z.string(),
+  tier: z.enum(["lean", "combo"]).optional(),
   imageTag: z.string(),
+  publicWorkerTag: z.string().optional(),
+  legacyImageTags: z.array(z.string()).default([]),
   capabilities: z.array(z.string()),
+  requiredEnv: z.array(capabilityEnvRequirementSchema).default([]),
   taskPacks: z.array(z.string()),
   coveredTasks: z.array(z.string()),
   missingCapabilitiesByTask: z
@@ -119,7 +147,9 @@ export const registrySummarySchema = z.object({
   presets: z.array(
     z.object({
       id: z.string(),
+      tier: z.enum(["lean", "combo"]).optional(),
       imageTag: z.string(),
+      publicWorkerTag: z.string().optional(),
       coveredTasks: z.number().int().nonnegative(),
       capabilities: z.array(z.string()),
     }),
@@ -129,6 +159,10 @@ export const registrySummarySchema = z.object({
 export type TaskRunRequest = z.infer<typeof taskRunRequestSchema>;
 export type EnqueueRunRequest = z.infer<typeof enqueueRunRequestSchema>;
 export type EnqueueRunResponse = z.infer<typeof enqueueRunResponseSchema>;
+export type GenericTaskWebhook = z.infer<typeof genericTaskWebhookSchema>;
+export type SharedVolumeWranglerInput = z.infer<
+  typeof sharedVolumeWranglerInputSchema
+>;
 export type TaskRunResult = z.infer<typeof taskRunResultSchema>;
 export type TaskRunStatus = z.infer<typeof taskRunStatusSchema>;
 export type RunEvent = z.infer<typeof runEventSchema>;

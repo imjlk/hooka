@@ -16,6 +16,5 @@ export const wpcliCapability = defineCapability({
   },
   tasks: [
     "wordpress.wpcli.eval",
-    "wordpress.deploy.simply-static",
   ],
 });

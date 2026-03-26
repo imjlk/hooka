@@ -1,14 +1,17 @@
 import { defineTaskPack } from "@hooka/task-sdk";
-import { deploySimplyStaticTask } from "./tasks/deploySimplyStatic";
+import { sharedVolumeWranglerTask } from "./tasks/deploySimplyStatic";
 
 export {
+  sharedVolumeWranglerInput,
+  sharedVolumeWranglerTask,
   deploySimplyStaticInput,
   deploySimplyStaticTask,
 } from "./tasks/deploySimplyStatic";
 
 export const wordpressCloudflareTaskPack = defineTaskPack({
-  id: "@hooka/pack-wordpress-cloudflare",
-  title: "WordPress + Cloudflare Pack",
-  description: "Bridge tasks that move WordPress artifacts into Cloudflare.",
-  tasks: [deploySimplyStaticTask],
+  id: "@hooka/pack-webhook-wrangler",
+  title: "Webhook Wrangler Pack",
+  description:
+    "Generic wrangler-backed tasks that deploy shared-volume artifacts after a signed webhook.",
+  tasks: [sharedVolumeWranglerTask],
 });

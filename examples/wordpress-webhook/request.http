@@ -1,14 +1,19 @@
 ### Generate the HMAC header first with:
 ### bun run examples/wordpress-webhook/sign-request.ts
-POST http://localhost:3000/api/webhooks/wordpress/simply-static
+POST http://localhost:3000/api/webhooks/task
 content-type: application/json
 x-hooka-timestamp: 1711411200
 x-hooka-signature: sha256=<replace-with-generated-signature>
 
 {
+  "taskId": "deploy.shared-volume.wrangler",
+  "input": {
+    "kind": "pages-deploy",
+    "project": "staging-site",
+    "sourcePath": "/shared-source/simply-static",
+    "branch": "main"
+  },
   "eventId": "evt_001",
-  "project": "staging-site",
-  "exportDir": "/data/exports/simply-static",
-  "branch": "main",
+  "source": "wordpress.webhook",
   "triggeredAt": "2026-03-26T00:00:00.000Z"
 }

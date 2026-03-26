@@ -1,4 +1,13 @@
-import { wordpressSimplyStaticWebhookSchema } from "@hooka/contracts";
+import {
+  enqueueRunRequestSchema,
+  genericTaskWebhookSchema,
+  wordpressSimplyStaticWebhookSchema,
+} from "@hooka/contracts";
+import type {
+  EnqueueRunRequest,
+  GenericTaskWebhook,
+  WordpressSimplyStaticWebhook,
+} from "@hooka/contracts";
 import { createHmac, timingSafeEqual } from "node:crypto";
 
 const allowedClockSkewSeconds = 300;
@@ -68,4 +77,37 @@ export function verifyHookaHmacSignature(input: {
 
 export function parseWordpressSimplyStaticWebhook(rawBody: string) {
   return wordpressSimplyStaticWebhookSchema.parse(JSON.parse(rawBody));
+}
+
+export function parseGenericTaskWebhook(rawBody: string) {
+  return genericTaskWebhookSchema.parse(JSON.parse(rawBody));
+}
+
+export function normalizeGenericTaskWebhook(
+  payload: GenericTaskWebhook,
+): EnqueueRunRequest {
+  return enqueueRunRequestSchema.parse({
+    taskId: payload.taskId,
+    input: payload.input,
+    source: payload.source,
+    sourceEventId: payload.eventId,
+  });
+}
+
+export function normalizeWordpressSimplyStaticWebhook(
+  payload: WordpressSimplyStaticWebhook,
+): GenericTaskWebhook {
+  return genericTaskWebhookSchema.parse({
+    taskId: "deploy.shared-volume.wrangler",
+    input: {
+      kind: "pages-deploy",
+      project: payload.project,
+      sourcePath: payload.exportDir,
+      branch: payload.branch,
+      commitSha: payload.commitSha,
+    },
+    eventId: payload.eventId,
+    source: "wordpress.webhook",
+    triggeredAt: payload.triggeredAt,
+  });
 }

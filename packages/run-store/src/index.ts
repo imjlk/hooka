@@ -12,8 +12,8 @@ import {
   runEventSchema,
   runSummarySchema,
 } from "@hooka/contracts";
+import { ensureDir } from "@hooka/bun-utils";
 import { Database } from "bun:sqlite";
-import { mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
 
 export const defaultHookaDbPath = "/data/hooka.sqlite";
@@ -512,9 +512,7 @@ export async function createRunStore(
   const dbPath = options.dbPath ?? defaultHookaDbPath;
 
   if (dbPath !== ":memory:") {
-    await mkdir(dirname(dbPath), {
-      recursive: true,
-    });
+    await ensureDir(dirname(dbPath));
   }
 
   return new RunStore(dbPath, options);

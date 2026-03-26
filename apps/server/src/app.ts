@@ -1,10 +1,9 @@
 import type {
   EnqueueRunRequest,
-  WordpressSimplyStaticWebhook,
+  GenericTaskWebhook,
 } from "@hooka/contracts";
 import {
   enqueueRunRequestSchema,
-  wordpressSimplyStaticWebhookSchema,
 } from "@hooka/contracts";
 import {
   createRegistrySummary,
@@ -19,6 +18,9 @@ import { loadInstalledCapabilities } from "@hooka/runner-core";
 import { extname, resolve } from "node:path";
 import { ZodError } from "zod";
 import {
+  normalizeGenericTaskWebhook,
+  normalizeWordpressSimplyStaticWebhook,
+  parseGenericTaskWebhook,
   parseWordpressSimplyStaticWebhook,
   verifyHookaHmacSignature,
 } from "./lib/webhooks";
@@ -29,6 +31,8 @@ export interface HookaServerAppOptions {
   uiDistDir: string;
   webhookSecret?: string;
 }
+
+class NotFoundError extends Error {}
 
 export function createHookaFetchHandler(options: HookaServerAppOptions) {
   return async function fetch(request: Request): Promise<Response> {
@@ -75,11 +79,19 @@ export function createHookaFetchHandler(options: HookaServerAppOptions) {
       }
 
       if (
+        url.pathname === "/api/webhooks/task" &&
+        request.method === "POST"
+      ) {
+        const rawBody = await request.text();
+        return handleSignedGenericTaskWebhook(options, request, rawBody);
+      }
+
+      if (
         url.pathname === "/api/webhooks/wordpress/simply-static" &&
         request.method === "POST"
       ) {
         const rawBody = await request.text();
-        return handleSimplyStaticWebhook(options, request, rawBody);
+        return handleWordpressSimplyStaticAlias(options, request, rawBody);
       }
 
       const runMatch = url.pathname.match(/^\/api\/runs\/([^/]+)$/);
@@ -107,7 +119,11 @@ export function createHookaFetchHandler(options: HookaServerAppOptions) {
           ok: false,
           error: error instanceof Error ? error.message : String(error),
         },
-        error instanceof ZodError || error instanceof SyntaxError ? 400 : 500,
+        error instanceof NotFoundError
+          ? 404
+          : error instanceof ZodError || error instanceof SyntaxError
+            ? 400
+            : 500,
       );
     }
   };
@@ -117,36 +133,54 @@ async function handleGenericEnqueue(
   options: HookaServerAppOptions,
   payload: EnqueueRunRequest,
 ): Promise<Response> {
-  const task = getTask(payload.taskId);
-
-  if (!task) {
-    return json(
-      {
-        ok: false,
-        error: `Task not found: ${payload.taskId}`,
-      },
-      404,
-    );
-  }
-
-  const manifest = await loadInstalledCapabilities(options.capabilityManifestPath);
-  const parsedInput = task.input.parse(payload.input ?? {});
-  const queued = options.runStore.enqueueRun({
-    taskId: payload.taskId,
-    input: parsedInput,
-    source: payload.source,
-    sourceEventId: payload.sourceEventId,
-    capabilitySnapshot: manifest.installed,
-  });
-
-  return json(queued.response, 202);
+  const enqueued = await enqueueRun(options, payload);
+  return json(enqueued.queued.response, 202);
 }
 
-async function handleSimplyStaticWebhook(
+async function handleSignedGenericTaskWebhook(
   options: HookaServerAppOptions,
   request: Request,
   rawBody: string,
 ): Promise<Response> {
+  const verified = verifySignedWebhook(options, request, rawBody);
+  if (verified) {
+    return verified;
+  }
+
+  const webhookPayload = parseGenericTaskWebhook(rawBody);
+  return enqueueGenericWebhook(options, webhookPayload);
+}
+
+async function handleWordpressSimplyStaticAlias(
+  options: HookaServerAppOptions,
+  request: Request,
+  rawBody: string,
+): Promise<Response> {
+  const verified = verifySignedWebhook(options, request, rawBody);
+  if (verified) {
+    return verified;
+  }
+
+  const wordpressPayload = parseWordpressSimplyStaticWebhook(rawBody);
+  const webhookPayload = normalizeWordpressSimplyStaticWebhook(wordpressPayload);
+  return enqueueGenericWebhook(options, webhookPayload);
+}
+
+async function enqueueGenericWebhook(
+  options: HookaServerAppOptions,
+  payload: GenericTaskWebhook,
+): Promise<Response> {
+  const enqueuePayload = normalizeGenericTaskWebhook(payload);
+  const enqueued = await enqueueRun(options, enqueuePayload);
+
+  return json(enqueued.queued.response, enqueued.queued.created ? 202 : 200);
+}
+
+function verifySignedWebhook(
+  options: HookaServerAppOptions,
+  request: Request,
+  rawBody: string,
+): Response | null {
   if (!options.webhookSecret) {
     return json(
       {
@@ -174,43 +208,33 @@ async function handleSimplyStaticWebhook(
     );
   }
 
-  const webhookPayload = parseWordpressSimplyStaticWebhook(rawBody);
-  return enqueueSimplyStaticWebhook(options, webhookPayload);
+  return null;
 }
 
-async function enqueueSimplyStaticWebhook(
+async function enqueueRun(
   options: HookaServerAppOptions,
-  payload: WordpressSimplyStaticWebhook,
-): Promise<Response> {
-  const task = getTask("wordpress.deploy.simply-static");
+  payload: EnqueueRunRequest,
+) {
+  const task = getTask(payload.taskId);
 
   if (!task) {
-    return json(
-      {
-        ok: false,
-        error: "Task not found: wordpress.deploy.simply-static",
-      },
-      404,
-    );
+    throw new NotFoundError(`Task not found: ${payload.taskId}`);
   }
 
   const manifest = await loadInstalledCapabilities(options.capabilityManifestPath);
-  const validatedWebhookPayload = wordpressSimplyStaticWebhookSchema.parse(payload);
-  const parsedInput = task.input.parse({
-    project: validatedWebhookPayload.project,
-    exportDir: validatedWebhookPayload.exportDir,
-    branch: validatedWebhookPayload.branch,
-    commitSha: validatedWebhookPayload.commitSha,
-  });
+  const parsedInput = task.input.parse(payload.input ?? {});
   const queued = options.runStore.enqueueRun({
     taskId: task.id,
     input: parsedInput,
-    source: "wordpress.webhook.simply-static",
-    sourceEventId: validatedWebhookPayload.eventId,
+    source: payload.source,
+    sourceEventId: payload.sourceEventId,
     capabilitySnapshot: manifest.installed,
   });
 
-  return json(queued.response, queued.created ? 202 : 200);
+  return {
+    task,
+    queued,
+  };
 }
 
 function json(data: unknown, status = 200): Response {

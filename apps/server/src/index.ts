@@ -4,6 +4,7 @@ import { createHookaFetchHandler } from "./app";
 
 const port = Number(Bun.env.HOOKA_PORT ?? 3000);
 const dbPath = Bun.env.HOOKA_DB_PATH ?? defaultHookaDbPath;
+const runtimeRole = Bun.env.HOOKA_RUNTIME_ROLE ?? "hooka-server";
 const uiDistDir = resolve(process.cwd(), "packages/admin-ui/dist");
 const capabilityManifestPath = resolve(
   process.cwd(),
@@ -24,4 +25,15 @@ const server = Bun.serve({
   }),
 });
 
-console.log(`Hooka server listening on http://localhost:${server.port}`);
+console.log(
+  JSON.stringify(
+    {
+      service: "hooka-server",
+      runtimeRole,
+      port: server.port,
+      dbPath,
+    },
+    null,
+    2,
+  ),
+);

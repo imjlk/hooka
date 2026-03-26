@@ -1,24 +1,28 @@
 services:
   hooka-server:
-    image: ghcr.io/imjlk/hooka:wp-wrangler
+    image: ghcr.io/imjlk/hooka:webhook-server
     ports:
       - "3000:3000"
     environment:
       HOOKA_DB_PATH: /data/hooka.sqlite
       HOOKA_WEBHOOK_SECRET: change-me
+      HOOKA_INSTALLED_CAPABILITIES: wrangler
       HOOKA_PORT: "3000"
     volumes:
       - hooka-data:/data
   hooka-worker:
-    image: ghcr.io/imjlk/hooka:wp-wrangler
-    command: ["bun", "run", "apps/worker/dist/index.js"]
+    image: ghcr.io/imjlk/hooka:cf-pages
     environment:
       HOOKA_DB_PATH: /data/hooka.sqlite
       HOOKA_WEBHOOK_SECRET: change-me
       HOOKA_POLL_INTERVAL_MS: "2000"
       HOOKA_RUN_LEASE_MS: "900000"
+      CLOUDFLARE_API_TOKEN: ${CLOUDFLARE_API_TOKEN}
+      CLOUDFLARE_ACCOUNT_ID: ${CLOUDFLARE_ACCOUNT_ID}
     volumes:
       - hooka-data:/data
+      - shared-source:/shared-source
 
 volumes:
   hooka-data:
+  shared-source:

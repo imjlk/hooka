@@ -8,13 +8,14 @@ test("enqueue run stores queued record and queued event", async () => {
   });
 
   const queued = runStore.enqueueRun({
-    taskId: "wordpress.deploy.simply-static",
+    taskId: "deploy.shared-volume.wrangler",
     input: {
+      kind: "pages-deploy",
       project: "staging-site",
-      exportDir: "/tmp/export",
+      sourcePath: "/shared-source/simply-static",
     },
     source: "test",
-    capabilitySnapshot: ["wrangler", "wpcli"],
+    capabilitySnapshot: ["wrangler"],
   });
 
   expect(queued.response.status).toBe("queued");
@@ -29,20 +30,22 @@ test("duplicate source event id returns the existing run", async () => {
   });
 
   const first = runStore.enqueueRun({
-    taskId: "wordpress.deploy.simply-static",
+    taskId: "deploy.shared-volume.wrangler",
     input: {
+      kind: "pages-deploy",
       project: "main-site",
-      exportDir: "/tmp/export",
+      sourcePath: "/shared-source/simply-static",
     },
     source: "wordpress.webhook.simply-static",
     sourceEventId: "evt_123",
     capabilitySnapshot: [],
   });
   const second = runStore.enqueueRun({
-    taskId: "wordpress.deploy.simply-static",
+    taskId: "deploy.shared-volume.wrangler",
     input: {
+      kind: "pages-deploy",
       project: "main-site",
-      exportDir: "/tmp/export",
+      sourcePath: "/shared-source/simply-static",
     },
     source: "wordpress.webhook.simply-static",
     sourceEventId: "evt_123",
@@ -63,10 +66,11 @@ test("expired running runs are requeued and attempt count increments", async () 
   });
 
   const queued = runStore.enqueueRun({
-    taskId: "wordpress.deploy.simply-static",
+    taskId: "deploy.shared-volume.wrangler",
     input: {
+      kind: "pages-deploy",
       project: "staging-site",
-      exportDir: "/tmp/export",
+      sourcePath: "/shared-source/simply-static",
     },
     source: "test",
     capabilitySnapshot: [],

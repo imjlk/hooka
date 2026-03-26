@@ -7,6 +7,7 @@
   },
   "dependencies": {
     "@hooka/registry": "workspace:*",
+    "@hooka/runtime-contracts": "workspace:*",
     "@hooka/run-store": "workspace:*",
     "@hooka/runner-core": "workspace:*"
   }

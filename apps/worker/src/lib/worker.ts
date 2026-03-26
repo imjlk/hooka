@@ -3,7 +3,6 @@ import type { CommandRunner } from "@hooka/executor-process";
 import { getTask } from "@hooka/registry";
 import type { RunStore } from "@hooka/run-store";
 import { runTask } from "@hooka/runner-core";
-import { hostname } from "node:os";
 
 export const defaultWorkerPollIntervalMs = 2_000;
 export const defaultRunLeaseMs = 900_000;
@@ -65,7 +64,7 @@ export async function startWorkerLoop(options: WorkerLoopOptions): Promise<never
 }
 
 export function getDefaultWorkerId(): string {
-  return Bun.env.HOOKA_WORKER_ID ?? process.env.HOSTNAME ?? hostname();
+  return Bun.env.HOOKA_WORKER_ID ?? Bun.env.HOSTNAME ?? process.env.HOSTNAME ?? "hooka-worker";
 }
 
 function missingTaskResult(taskId: string): TaskRunResult {
@@ -102,5 +101,5 @@ async function executeTaskSafely(
 }
 
 async function sleep(ms: number): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, ms));
+  await Bun.sleep(ms);
 }

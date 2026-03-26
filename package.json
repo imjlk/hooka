@@ -15,7 +15,9 @@
     "dev:worker": "bun --hot apps/worker/src/index.ts",
     "dev:cli": "bun --filter @hooka/cli run dev",
     "test": "bun test",
+    "test:e2e:docker": "bun run scripts/e2e/dockerized-preset-e2e.ts",
     "task:validate": "bun run apps/cli/src/index.ts task validate",
+    "bake:generate": "bun run scripts/generate-docker-bake.ts",
     "image:install-features": "bun run apps/cli/src/index.ts image install-features"
   },
   "devDependencies": {

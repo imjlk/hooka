@@ -1,13 +1,12 @@
 import { expect, test } from "bun:test";
+import { createTempDir, ensureDir } from "@hooka/bun-utils";
 import { createRunStore } from "@hooka/run-store";
-import { mkdir, mkdtemp } from "node:fs/promises";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHmac } from "node:crypto";
 import { createHookaFetchHandler } from "./app";
 
 async function createTestServerApp() {
-  const tempDir = await mkdtemp(join(tmpdir(), "hooka-server-test-"));
+  const tempDir = await createTempDir("hooka-server-test");
   const manifestPath = join(tempDir, "installed-capabilities.json");
   const uiDistDir = join(tempDir, "ui");
   const runStore = await createRunStore({
@@ -22,9 +21,7 @@ async function createTestServerApp() {
       installed: ["wrangler", "wpcli", "php-cli", "rsync", "git"],
     }),
   );
-  await mkdir(uiDistDir, {
-    recursive: true,
-  });
+  await ensureDir(uiDistDir);
   await Bun.write(join(uiDistDir, "index.html"), "<!doctype html><html></html>");
 
   return {
@@ -47,10 +44,11 @@ test("generic enqueue API returns queued run metadata", async () => {
         "content-type": "application/json",
       },
       body: JSON.stringify({
-        taskId: "wordpress.deploy.simply-static",
+        taskId: "deploy.shared-volume.wrangler",
         input: {
+          kind: "pages-deploy",
           project: "staging-site",
-          exportDir: "/tmp/export",
+          sourcePath: "/shared-source/simply-static",
         },
       }),
     }),
@@ -66,9 +64,14 @@ test("generic enqueue API returns queued run metadata", async () => {
 test("signed simply static webhook is idempotent by event id", async () => {
   const app = await createTestServerApp();
   const payload = JSON.stringify({
+    taskId: "deploy.shared-volume.wrangler",
+    input: {
+      kind: "pages-deploy",
+      project: "staging-site",
+      sourcePath: "/shared-source/simply-static",
+    },
     eventId: "evt_1",
-    project: "staging-site",
-    exportDir: "/tmp/export",
+    source: "webhook",
   });
   const timestamp = String(Math.floor(Date.now() / 1000));
   const signature = createHmac("sha256", "secret")
@@ -76,7 +79,7 @@ test("signed simply static webhook is idempotent by event id", async () => {
     .digest("hex");
 
   const first = await app.fetch(
-    new Request("http://hooka.local/api/webhooks/wordpress/simply-static", {
+    new Request("http://hooka.local/api/webhooks/task", {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -87,7 +90,7 @@ test("signed simply static webhook is idempotent by event id", async () => {
     }),
   );
   const second = await app.fetch(
-    new Request("http://hooka.local/api/webhooks/wordpress/simply-static", {
+    new Request("http://hooka.local/api/webhooks/task", {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -108,16 +111,59 @@ test("signed simply static webhook is idempotent by event id", async () => {
   app.runStore.close();
 });
 
+test("wordpress alias normalizes to the generic runtime path", async () => {
+  const app = await createTestServerApp();
+  const payload = JSON.stringify({
+    eventId: "evt_wp_1",
+    project: "main-site",
+    exportDir: "/shared-source/simply-static",
+  });
+  const timestamp = String(Math.floor(Date.now() / 1000));
+  const signature = createHmac("sha256", "secret")
+    .update(`${timestamp}.${payload}`)
+    .digest("hex");
+
+  const response = await app.fetch(
+    new Request("http://hooka.local/api/webhooks/wordpress/simply-static", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-hooka-timestamp": timestamp,
+        "x-hooka-signature": `sha256=${signature}`,
+      },
+      body: payload,
+    }),
+  );
+
+  expect(response.status).toBe(202);
+
+  const runs = app.runStore.listRuns();
+  expect(runs[0]?.taskId).toBe("deploy.shared-volume.wrangler");
+  expect(runs[0]?.source).toBe("wordpress.webhook");
+
+  app.runStore.close();
+});
+
 test("run detail API returns events", async () => {
   const app = await createTestServerApp();
   const queued = app.runStore.enqueueRun({
-    taskId: "wordpress.deploy.simply-static",
+    taskId: "deploy.shared-volume.wrangler",
     input: {
+      kind: "pages-deploy",
       project: "staging-site",
-      exportDir: "/tmp/export",
+      sourcePath: "/shared-source/simply-static",
     },
     source: "test",
     capabilitySnapshot: [],
+  });
+  app.runStore.finishRun(queued.response.runId, {
+    taskId: "deploy.shared-volume.wrangler",
+    ok: false,
+    status: "failed",
+    stdout: "stdout text",
+    stderr: "stderr text",
+    summary: "failed summary",
+    durationMs: 12,
   });
 
   const response = await app.fetch(
@@ -126,7 +172,48 @@ test("run detail API returns events", async () => {
   const body = await response.json();
 
   expect(response.status).toBe(200);
-  expect(body.events).toHaveLength(1);
+  expect(body.events).toHaveLength(2);
+  expect(body.result.stdout).toBe("stdout text");
+  expect(body.result.stderr).toBe("stderr text");
+  expect(body.errorText).toBe("stderr text");
+
+  app.runStore.close();
+});
+
+test("registry APIs expose canonical task and preset ids", async () => {
+  const app = await createTestServerApp();
+
+  const [tasksResponse, presetsResponse, summaryResponse] = await Promise.all([
+    app.fetch(new Request("http://hooka.local/api/tasks")),
+    app.fetch(new Request("http://hooka.local/api/presets")),
+    app.fetch(new Request("http://hooka.local/api/summary")),
+  ]);
+
+  const tasks = (await tasksResponse.json()) as Array<{ id: string }>;
+  const presets = (await presetsResponse.json()) as Array<{ id: string }>;
+  const summary = (await summaryResponse.json()) as {
+    tasks: Array<{ id: string }>;
+    presets: Array<{ id: string }>;
+  };
+
+  expect(tasks.map((task) => task.id)).toContain("deploy.shared-volume.wrangler");
+  expect(tasks.map((task) => task.id)).not.toContain(
+    "wordpress.deploy.simply-static",
+  );
+  expect(presets.map((preset) => preset.id)).toEqual([
+    "core",
+    "cf-pages",
+    "wp-ops",
+    "wp-wrangler",
+  ]);
+  expect(presets.map((preset) => preset.id)).not.toContain("webhook-wrangler");
+  expect(presets.map((preset) => preset.id)).not.toContain("cf-wrangler");
+  expect(summary.tasks.map((task) => task.id)).toContain(
+    "deploy.shared-volume.wrangler",
+  );
+  expect(summary.presets.map((preset) => preset.id)).toContain("cf-pages");
+  expect(summary.presets.map((preset) => preset.id)).toContain("wp-ops");
+  expect(summary.presets.map((preset) => preset.id)).toContain("wp-wrangler");
 
   app.runStore.close();
 });

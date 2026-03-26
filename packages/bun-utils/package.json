@@ -1,0 +1,9 @@
+{
+  "name": "@hooka/bun-utils",
+  "private": true,
+  "type": "module",
+  "exports": "./src/index.ts",
+  "scripts": {
+    "build": "bun build ./src/index.ts --outdir ./dist --target bun"
+  }
+}

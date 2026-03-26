@@ -50,6 +50,7 @@ body {
 
 h1,
 h2,
+h3,
 strong {
   font-family: "Avenir Next Condensed", "Franklin Gothic Medium", sans-serif;
   letter-spacing: -0.02em;
@@ -187,6 +188,27 @@ h2 {
   display: block;
 }
 
+.run-row {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 18px;
+  transition:
+    background 140ms ease,
+    transform 140ms ease;
+}
+
+.run-row:hover,
+.run-row.selected {
+  background: rgba(184, 92, 56, 0.08);
+}
+
+.run-row:hover {
+  transform: translateY(-1px);
+}
+
 .available {
   background: rgba(47, 93, 80, 0.16);
   color: var(--ok);
@@ -200,6 +222,60 @@ h2 {
 .pending {
   background: rgba(184, 92, 56, 0.15);
   color: var(--signal);
+}
+
+.detail-panel {
+  display: grid;
+  gap: 18px;
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.detail-card {
+  padding: 18px;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.5);
+  border: 1px solid var(--line);
+}
+
+.detail-card p {
+  margin: 8px 0 0;
+}
+
+.detail-card pre,
+.timeline-item pre {
+  margin: 12px 0 0;
+  padding: 14px;
+  overflow: auto;
+  border-radius: 16px;
+  background: rgba(27, 37, 28, 0.06);
+  color: var(--ink);
+  font: 0.84rem/1.45 "SFMono-Regular", "Menlo", monospace;
+}
+
+.timeline {
+  display: grid;
+  gap: 12px;
+}
+
+.timeline-item {
+  display: grid;
+  gap: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.timeline-item:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.detail-error {
+  color: var(--warn);
 }
 
 .muted {
@@ -224,6 +300,10 @@ h2 {
   .task-row,
   .list-row {
     flex-direction: column;
+  }
+
+  .detail-grid {
+    grid-template-columns: 1fr;
   }
 
   .meta,

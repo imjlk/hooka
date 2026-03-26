@@ -9,16 +9,17 @@ import { wranglerCapability } from "@hooka/cap-wrangler";
 import { cloudflareTaskPack } from "@hooka/pack-cloudflare";
 import { wordpressTaskPack } from "@hooka/pack-wordpress";
 import { wordpressCloudflareTaskPack } from "@hooka/pack-wordpress-cloudflare";
+import { listActiveWorkerPresets } from "@hooka/preset-catalog";
+import {
+  collectCapabilityEnvRequirements,
+  findMissingCapabilityEnvRequirements,
+} from "@hooka/runtime-contracts";
 import type {
   AnyTask,
   CapabilityDefinition,
   PresetDefinition,
   TaskPackDefinition,
 } from "@hooka/task-sdk";
-import { cfWranglerPreset } from "../../../presets/cf-wrangler.ts";
-import { corePreset } from "../../../presets/core.ts";
-import { wpWranglerPreset } from "../../../presets/wp-wrangler.ts";
-import { wpWranglerRclonePreset } from "../../../presets/wp-wrangler-rclone.ts";
 
 const capabilities = [
   wranglerCapability,
@@ -35,20 +36,15 @@ const taskPacks = [
   wordpressCloudflareTaskPack,
 ] satisfies TaskPackDefinition[];
 
-const presets = [
-  corePreset,
-  cfWranglerPreset,
-  wpWranglerPreset,
-  wpWranglerRclonePreset,
-] satisfies PresetDefinition[];
+const presets = listActiveWorkerPresets() satisfies PresetDefinition[];
 
 const capabilityMap = new Map(
   capabilities.map((capability) => [capability.id, capability]),
 );
 const taskPackMap = new Map(taskPacks.map((pack) => [pack.id, pack]));
 const tasks = taskPacks.flatMap((pack) => pack.tasks);
-const taskMap = new Map(tasks.map((task) => [task.id, task]));
-const presetMap = new Map(presets.map((preset) => [preset.id, preset]));
+const taskMap = createAliasMap(tasks);
+const presetMap = createAliasMap(presets);
 
 export function listCapabilities(): CapabilityDefinition[] {
   return [...capabilities];
@@ -80,17 +76,34 @@ export function getCapability(
   return capabilityMap.get(capabilityId);
 }
 
+export function getCapabilityEnvRequirements(capabilityIds: string[]) {
+  return collectCapabilityEnvRequirements(capabilities, capabilityIds);
+}
+
+export function findMissingCapabilityEnv(
+  capabilityIds: string[],
+  env: Record<string, string | undefined>,
+) {
+  return findMissingCapabilityEnvRequirements(capabilities, capabilityIds, env);
+}
+
 export function getTaskPack(packId: string): TaskPackDefinition | undefined {
   return taskPackMap.get(packId);
 }
 
 export function validateRegistry(): { ok: boolean; errors: string[] } {
   const errors: string[] = [];
-  const duplicateTaskIds = findDuplicates(tasks.map((task) => task.id));
+  const duplicateTaskIds = findDuplicates([
+    ...tasks.map((task) => task.id),
+    ...tasks.flatMap((task) => task.aliases ?? []),
+  ]);
   const duplicateCapabilityIds = findDuplicates(
     capabilities.map((capability) => capability.id),
   );
-  const duplicatePresetIds = findDuplicates(presets.map((preset) => preset.id));
+  const duplicatePresetIds = findDuplicates([
+    ...presets.map((preset) => preset.id),
+    ...presets.flatMap((preset) => preset.aliases ?? []),
+  ]);
 
   for (const taskId of duplicateTaskIds) {
     errors.push(`Duplicate task id detected: ${taskId}`);
@@ -147,8 +160,12 @@ export function getPresetPlan(presetId: string): ImagePlan | undefined {
 
   return {
     presetId: preset.id,
+    tier: preset.tier,
     imageTag: preset.imageTag,
+    publicWorkerTag: preset.publicWorkerTag,
+    legacyImageTags: preset.legacyImageTags ?? [],
     capabilities: preset.capabilities,
+    requiredEnv: getCapabilityEnvRequirements(preset.capabilities),
     taskPacks: preset.taskPacks,
     coveredTasks,
     missingCapabilitiesByTask,
@@ -165,7 +182,7 @@ export function recommendPresetForTasks(taskIds: string[]): PresetDefinition | u
 
       const isIncluded = preset.taskPacks.some((packId) => {
         const pack = getTaskPack(packId);
-        return pack?.tasks.some((candidate) => candidate.id === taskId) ?? false;
+        return pack?.tasks.some((candidate) => candidate.id === task.id) ?? false;
       });
 
       return (
@@ -178,6 +195,22 @@ export function recommendPresetForTasks(taskIds: string[]): PresetDefinition | u
   return candidates.sort((left, right) => {
     return left.capabilities.length - right.capabilities.length;
   })[0];
+}
+
+function createAliasMap<T extends { id: string; aliases?: string[] }>(
+  items: T[],
+): Map<string, T> {
+  const map = new Map<string, T>();
+
+  for (const item of items) {
+    map.set(item.id, item);
+
+    for (const alias of item.aliases ?? []) {
+      map.set(alias, item);
+    }
+  }
+
+  return map;
 }
 
 export function createRegistrySummary(
@@ -201,7 +234,9 @@ export function createRegistrySummary(
     })),
     presets: presets.map((preset) => ({
       id: preset.id,
+      tier: preset.tier,
       imageTag: preset.imageTag,
+      publicWorkerTag: preset.publicWorkerTag,
       coveredTasks: getPresetPlan(preset.id)?.coveredTasks.length ?? 0,
       capabilities: preset.capabilities,
     })),

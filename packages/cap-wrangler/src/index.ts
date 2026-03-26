@@ -5,6 +5,15 @@ export const wranglerCapability = defineCapability({
   title: "Wrangler",
   description: "Cloudflare CLI support for Pages deployment and API tooling.",
   binaries: ["wrangler"],
+  requiredEnv: [
+    {
+      match: "allOf",
+      names: ["CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID"],
+      description:
+        "Cloudflare credentials used by wrangler for non-interactive deploys.",
+      secret: true,
+    },
+  ],
   healthcheck: {
     command: "wrangler",
     args: ["--version"],
@@ -15,6 +24,6 @@ export const wranglerCapability = defineCapability({
   },
   tasks: [
     "cloudflare.pages.deploy",
-    "wordpress.deploy.simply-static",
+    "deploy.shared-volume.wrangler",
   ],
 });

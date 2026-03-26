@@ -1,6 +1,5 @@
 import type { TaskRunResult } from "@hooka/contracts";
 import type { HookaTask, TaskInputSchema } from "@hooka/task-sdk";
-import { performance } from "node:perf_hooks";
 import { z } from "zod";
 
 export async function runHttpTask<TSchema extends TaskInputSchema>(

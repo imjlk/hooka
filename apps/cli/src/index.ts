@@ -10,7 +10,9 @@ import {
   defaultHookaDbPath,
 } from "@hooka/run-store";
 import {
+  findMissingCapabilityEnv,
   getCapability,
+  getCapabilityEnvRequirements,
   getPresetPlan,
   listCapabilities,
   listPresets,
@@ -33,8 +35,12 @@ const manifestPathDefault = resolve(
 );
 const dbPathDefault = Bun.env.HOOKA_DB_PATH ?? defaultHookaDbPath;
 
-const taskRunCommands = listTasks().map((task) => createTaskRunCommand(task));
-const taskEnqueueCommands = listTasks().map((task) => createTaskEnqueueCommand(task));
+const taskRunCommands = listTasks().flatMap((task) =>
+  createTaskRunCommands(task),
+);
+const taskEnqueueCommands = listTasks().flatMap((task) =>
+  createTaskEnqueueCommands(task),
+);
 
 const cli = await createCLI({
   name: "hooka",
@@ -128,6 +134,12 @@ cli.command(
               ...(capability.healthcheck.args ?? []),
             ].join(" "),
             feature: capability.docker?.feature ?? "",
+            requiredEnv: (capability.requiredEnv ?? [])
+              .map(
+                (requirement) =>
+                  `${requirement.match}(${requirement.names.join(", ")})`,
+              )
+              .join(", "),
           }));
 
           if (flags.json) {
@@ -154,7 +166,9 @@ cli.command(
           console.table(
             listPresets().map((preset) => ({
               id: preset.id,
+              tier: preset.tier ?? "",
               imageTag: preset.imageTag,
+              publicWorkerTag: preset.publicWorkerTag ?? preset.imageTag,
               capabilities: preset.capabilities.join(", "),
               taskPacks: preset.taskPacks.join(", "),
             })),
@@ -359,6 +373,10 @@ cli.command(
     },
     handler: async ({ flags }) => {
       const manifest = await loadInstalledCapabilities(flags.manifest);
+      const missingEnv = findMissingCapabilityEnv(
+        manifest.installed,
+        Bun.env as Record<string, string | undefined>,
+      );
       const missingByTask = listTasks()
         .map((task) => ({
           id: task.id,
@@ -372,6 +390,8 @@ cli.command(
         JSON.stringify(
           {
             installed: manifest.installed,
+            requiredEnv: getCapabilityEnvRequirements(manifest.installed),
+            missingEnv,
             missingByTask,
             suggestedPreset: recommendPresetForTasks(
               listTasks().map((task) => task.id),
@@ -388,73 +408,83 @@ cli.command(
 await cli.init();
 await cli.run();
 
-function createTaskRunCommand(task: AnyTask) {
-  return defineCommand({
-    name: task.id,
-    description: task.description ?? task.title,
-    options: taskToBunliOptions(task, {
-      includeDryRun: true,
+function createTaskRunCommands(task: AnyTask) {
+  return [task.id, ...(task.aliases ?? [])].map((commandName) =>
+    defineCommand({
+      name: commandName,
+      description:
+        commandName === task.id
+          ? task.description ?? task.title
+          : `${task.description ?? task.title} (compat alias for ${task.id})`,
+      options: taskToBunliOptions(task, {
+        includeDryRun: true,
+      }),
+      handler: async ({ flags }) => {
+        const manifest = await loadInstalledCapabilities(manifestPathDefault);
+        const input = await buildTaskInputFromFlags(
+          task,
+          flags as Record<string, unknown>,
+        );
+        const result = await runTask(task, input, {
+          dryRun: Boolean((flags as Record<string, unknown>)["dry-run"]),
+          installedCapabilities: manifest.installed,
+          manifestPath: manifestPathDefault,
+        });
+
+        console.log(JSON.stringify(result, null, 2));
+
+        if (!result.ok) {
+          process.exitCode = 1;
+        }
+      },
     }),
-    handler: async ({ flags }) => {
-      const manifest = await loadInstalledCapabilities(manifestPathDefault);
-      const input = await buildTaskInputFromFlags(
-        task,
-        flags as Record<string, unknown>,
-      );
-      const result = await runTask(task, input, {
-        dryRun: Boolean((flags as Record<string, unknown>)["dry-run"]),
-        installedCapabilities: manifest.installed,
-        manifestPath: manifestPathDefault,
-      });
-
-      console.log(JSON.stringify(result, null, 2));
-
-      if (!result.ok) {
-        process.exitCode = 1;
-      }
-    },
-  });
+  );
 }
 
-function createTaskEnqueueCommand(task: AnyTask) {
-  return defineCommand({
-    name: task.id,
-    description: `Queue ${task.description ?? task.title}`,
-    options: {
-      ...taskToBunliOptions(task, {
-        includeDryRun: false,
-      }),
-      db: option(z.string().default(dbPathDefault), {
-        description: "Path to the Hooka SQLite database.",
-      }),
-      manifest: option(z.string().default(manifestPathDefault), {
-        description: "Path to the installed-capabilities manifest.",
-      }),
-    },
-    handler: async ({ flags }) => {
-      const manifest = await loadInstalledCapabilities(flags.manifest);
-      const input = await buildTaskInputFromFlags(
-        task,
-        flags as Record<string, unknown>,
-      );
-      const parsedInput = task.input.parse(input);
-      const payload = enqueueRunRequestSchema.parse({
-        taskId: task.id,
-        input: parsedInput,
-        source: "cli",
-      });
-      const runStore = await createRunStore({
-        dbPath: flags.db,
-      });
-      const queued = runStore.enqueueRun({
-        ...payload,
-        capabilitySnapshot: manifest.installed,
-      });
-      runStore.close();
+function createTaskEnqueueCommands(task: AnyTask) {
+  return [task.id, ...(task.aliases ?? [])].map((commandName) =>
+    defineCommand({
+      name: commandName,
+      description:
+        commandName === task.id
+          ? `Queue ${task.description ?? task.title}`
+          : `Queue ${task.description ?? task.title} (compat alias for ${task.id})`,
+      options: {
+        ...taskToBunliOptions(task, {
+          includeDryRun: false,
+        }),
+        db: option(z.string().default(dbPathDefault), {
+          description: "Path to the Hooka SQLite database.",
+        }),
+        manifest: option(z.string().default(manifestPathDefault), {
+          description: "Path to the installed-capabilities manifest.",
+        }),
+      },
+      handler: async ({ flags }) => {
+        const manifest = await loadInstalledCapabilities(flags.manifest);
+        const input = await buildTaskInputFromFlags(
+          task,
+          flags as Record<string, unknown>,
+        );
+        const parsedInput = task.input.parse(input);
+        const payload = enqueueRunRequestSchema.parse({
+          taskId: task.id,
+          input: parsedInput,
+          source: "cli",
+        });
+        const runStore = await createRunStore({
+          dbPath: flags.db,
+        });
+        const queued = runStore.enqueueRun({
+          ...payload,
+          capabilitySnapshot: manifest.installed,
+        });
+        runStore.close();
 
-      console.log(JSON.stringify(queued.response, null, 2));
-    },
-  });
+        console.log(JSON.stringify(queued.response, null, 2));
+      },
+    }),
+  );
 }
 
 function parseFeatureList(value: string): string[] {

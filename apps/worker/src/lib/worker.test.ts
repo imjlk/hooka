@@ -9,13 +9,14 @@ test("worker executes a queued run and stores the result", async () => {
   });
 
   const queued = runStore.enqueueRun({
-    taskId: "wordpress.deploy.simply-static",
+    taskId: "deploy.shared-volume.wrangler",
     input: {
+      kind: "pages-deploy",
       project: "staging-site",
-      exportDir: "/tmp/export",
+      sourcePath: "/shared-source/simply-static",
     },
     source: "test",
-    capabilitySnapshot: ["wrangler", "wpcli"],
+    capabilitySnapshot: ["wrangler"],
   });
   const commandRunner: CommandRunner = async () => {
     return {
@@ -28,7 +29,7 @@ test("worker executes a queued run and stores the result", async () => {
   expect(
     await processNextRun({
       commandRunner,
-      installedCapabilities: ["wrangler", "wpcli"],
+      installedCapabilities: ["wrangler"],
       manifestPath: "/tmp/manifest.json",
       runStore,
       workerId: "worker-a",
@@ -49,10 +50,11 @@ test("worker records failed runs when capabilities are missing", async () => {
   });
 
   const queued = runStore.enqueueRun({
-    taskId: "wordpress.deploy.simply-static",
+    taskId: "deploy.shared-volume.wrangler",
     input: {
+      kind: "pages-deploy",
       project: "main-site",
-      exportDir: "/tmp/export",
+      sourcePath: "/shared-source/simply-static",
     },
     source: "test",
     capabilitySnapshot: [],

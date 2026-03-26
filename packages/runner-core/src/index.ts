@@ -7,7 +7,6 @@ import { runHttpTask } from "@hooka/executor-http";
 import type { CommandRunner } from "@hooka/executor-process";
 import { runProcessTask } from "@hooka/executor-process";
 import type { HookaTask, TaskInputSchema } from "@hooka/task-sdk";
-import { performance } from "node:perf_hooks";
 import { join } from "node:path";
 import { z } from "zod";
 
@@ -31,6 +30,12 @@ export function getMissingCapabilities(
 export async function loadInstalledCapabilities(
   manifestPath = join(process.cwd(), "docker/manifests/installed-capabilities.json"),
 ): Promise<InstalledCapabilitiesManifest> {
+  const override = parseInstalledCapabilitiesOverride();
+
+  if (override) {
+    return override;
+  }
+
   const file = Bun.file(manifestPath);
 
   if (!(await file.exists())) {
@@ -42,6 +47,27 @@ export async function loadInstalledCapabilities(
 
   const raw = await file.json();
   return installedCapabilitiesManifestSchema.parse(raw);
+}
+
+function parseInstalledCapabilitiesOverride():
+  | InstalledCapabilitiesManifest
+  | null {
+  const raw = Bun.env.HOOKA_INSTALLED_CAPABILITIES?.trim();
+
+  if (!raw) {
+    return null;
+  }
+
+  const installed = raw
+    .split(",")
+    .map((capability) => capability.trim())
+    .filter(Boolean);
+
+  return installedCapabilitiesManifestSchema.parse({
+    image: Bun.env.HOOKA_RUNTIME_ROLE ?? "hooka:env-override",
+    generatedAt: new Date().toISOString(),
+    installed,
+  });
 }
 
 export async function runTask<TSchema extends TaskInputSchema>(

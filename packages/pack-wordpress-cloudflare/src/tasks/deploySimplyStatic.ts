@@ -1,32 +1,31 @@
+import { sharedVolumeWranglerInputSchema } from "@hooka/contracts";
 import { defineTask } from "@hooka/task-sdk";
-import { z } from "zod";
 
-export const deploySimplyStaticInput = z.object({
-  project: z.enum(["main-site", "staging-site"]),
-  exportDir: z.string().default("/data/exports/simply-static"),
-  branch: z.string().optional(),
-  commitSha: z.string().optional(),
-});
+export const sharedVolumeWranglerInput = sharedVolumeWranglerInputSchema;
+export const deploySimplyStaticInput = sharedVolumeWranglerInput;
 
-export const deploySimplyStaticTask = defineTask({
-  id: "wordpress.deploy.simply-static",
-  title: "Deploy Simply Static export to Cloudflare Pages",
+export const sharedVolumeWranglerTask = defineTask({
+  id: "deploy.shared-volume.wrangler",
+  aliases: ["wordpress.deploy.simply-static"],
+  title: "Deploy a shared-volume bundle with Wrangler",
   description:
-    "Ship the exported static bundle from WordPress straight to Cloudflare Pages.",
-  input: deploySimplyStaticInput,
-  requires: ["wrangler", "wpcli"],
+    "Run wrangler against a directory that the worker can read from a shared source volume.",
+  input: sharedVolumeWranglerInput,
+  requires: ["wrangler"],
   executor: {
     kind: "process",
     command: "wrangler",
     args: ({ input }) => [
       "pages",
       "deploy",
-      input.exportDir,
+      input.sourcePath,
       "--project-name",
       input.project,
       ...(input.branch ? ["--branch", input.branch] : []),
       ...(input.commitSha ? ["--commit-dirty=true"] : []),
     ],
   },
-  tags: ["wordpress", "cloudflare", "deploy"],
+  tags: ["wrangler", "deploy", "shared-volume"],
 });
+
+export const deploySimplyStaticTask = sharedVolumeWranglerTask;

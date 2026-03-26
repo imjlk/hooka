@@ -8,38 +8,60 @@ target "base" {
   platforms = ["linux/amd64", "linux/arm64"]
 }
 
+target "webhook-server" {
+  inherits = ["base"]
+  target = "webhook-server"
+  tags = ["${REGISTRY}:webhook-server"]
+}
+
 target "core" {
   inherits = ["base"]
+  target = "worker-preset"
   args = {
     HOOKA_FEATURES = "core"
+    HOOKA_IMAGE_LABEL = "hooka:core"
+    HOOKA_RUNTIME_ROLE = "worker:core"
+    HOOKA_INSTALLED_CAPABILITIES = ""
   }
   tags = ["${REGISTRY}:core"]
 }
 
-target "cf-wrangler" {
+target "cf-pages" {
   inherits = ["base"]
+  target = "worker-preset"
   args = {
-    HOOKA_FEATURES = "wrangler,git"
+    HOOKA_FEATURES = "wrangler"
+    HOOKA_IMAGE_LABEL = "hooka:cf-pages"
+    HOOKA_RUNTIME_ROLE = "worker:cf-pages"
+    HOOKA_INSTALLED_CAPABILITIES = "wrangler"
   }
-  tags = ["${REGISTRY}:cf-wrangler"]
+  tags = ["${REGISTRY}:cf-pages", "${REGISTRY}:cf-wrangler", "${REGISTRY}:wrangler-worker"]
+}
+
+target "wp-ops" {
+  inherits = ["base"]
+  target = "worker-preset"
+  args = {
+    HOOKA_FEATURES = "wpcli,php-cli"
+    HOOKA_IMAGE_LABEL = "hooka:wp-ops"
+    HOOKA_RUNTIME_ROLE = "worker:wp-ops"
+    HOOKA_INSTALLED_CAPABILITIES = "wpcli,php-cli"
+  }
+  tags = ["${REGISTRY}:wp-ops"]
 }
 
 target "wp-wrangler" {
   inherits = ["base"]
+  target = "worker-preset"
   args = {
-    HOOKA_FEATURES = "wrangler,wpcli,php-cli,rsync,git"
+    HOOKA_FEATURES = "wrangler,wpcli,php-cli"
+    HOOKA_IMAGE_LABEL = "hooka:wp-wrangler"
+    HOOKA_RUNTIME_ROLE = "worker:wp-wrangler"
+    HOOKA_INSTALLED_CAPABILITIES = "wrangler,wpcli,php-cli"
   }
-  tags = ["${REGISTRY}:wp-wrangler"]
-}
-
-target "wp-wrangler-rclone" {
-  inherits = ["base"]
-  args = {
-    HOOKA_FEATURES = "wrangler,wpcli,php-cli,rsync,git,rclone"
-  }
-  tags = ["${REGISTRY}:wp-wrangler-rclone"]
+  tags = ["${REGISTRY}:wp-wrangler", "${REGISTRY}:webhook-wrangler"]
 }
 
 group "release" {
-  targets = ["core", "cf-wrangler", "wp-wrangler", "wp-wrangler-rclone"]
+  targets = ["webhook-server", "core", "cf-pages", "wp-ops", "wp-wrangler"]
 }

@@ -9,8 +9,9 @@ test("scalar task schemas turn into bunli options", () => {
   const options = taskToBunliOptions(deploySimplyStaticTask);
 
   expect(Object.keys(options)).toEqual([
+    "kind",
+    "source-path",
     "project",
-    "export-dir",
     "branch",
     "commit-sha",
     "payload-json",
@@ -31,14 +32,14 @@ test("payload json merges with scalar flags", async () => {
   const input = await buildTaskInputFromFlags(deploySimplyStaticTask, {
     "payload-json": JSON.stringify({
       project: "main-site",
-      exportDir: "/tmp/from-json",
+      sourcePath: "/shared-source/from-json",
     }),
-    "export-dir": "/tmp/override",
+    "source-path": "/shared-source/override",
     "dry-run": true,
   });
 
   expect(input).toEqual({
     project: "main-site",
-    exportDir: "/tmp/override",
+    sourcePath: "/shared-source/override",
   });
 });

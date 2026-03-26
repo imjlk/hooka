@@ -15,8 +15,10 @@
     "@hooka/cap-wpcli": "workspace:*",
     "@hooka/cap-wrangler": "workspace:*",
     "@hooka/pack-cloudflare": "workspace:*",
+    "@hooka/preset-catalog": "workspace:*",
     "@hooka/pack-wordpress": "workspace:*",
     "@hooka/pack-wordpress-cloudflare": "workspace:*",
+    "@hooka/runtime-contracts": "workspace:*",
     "@hooka/task-sdk": "workspace:*"
   }
 }

@@ -29,6 +29,7 @@
     "apps/server": {
       "name": "@hooka/server",
       "dependencies": {
+        "@hooka/bun-utils": "workspace:*",
         "@hooka/contracts": "workspace:*",
         "@hooka/registry": "workspace:*",
         "@hooka/run-store": "workspace:*",
@@ -42,10 +43,14 @@
         "@hooka/registry": "workspace:*",
         "@hooka/run-store": "workspace:*",
         "@hooka/runner-core": "workspace:*",
+        "@hooka/runtime-contracts": "workspace:*",
       },
     },
     "packages/admin-ui": {
       "name": "@hooka/admin-ui",
+    },
+    "packages/bun-utils": {
+      "name": "@hooka/bun-utils",
     },
     "packages/cap-git": {
       "name": "@hooka/cap-git",
@@ -122,8 +127,15 @@
     "packages/pack-wordpress-cloudflare": {
       "name": "@hooka/pack-wordpress-cloudflare",
       "dependencies": {
+        "@hooka/contracts": "workspace:*",
         "@hooka/task-sdk": "workspace:*",
         "zod": "latest",
+      },
+    },
+    "packages/preset-catalog": {
+      "name": "@hooka/preset-catalog",
+      "dependencies": {
+        "@hooka/task-sdk": "workspace:*",
       },
     },
     "packages/registry": {
@@ -139,12 +151,15 @@
         "@hooka/pack-cloudflare": "workspace:*",
         "@hooka/pack-wordpress": "workspace:*",
         "@hooka/pack-wordpress-cloudflare": "workspace:*",
+        "@hooka/preset-catalog": "workspace:*",
+        "@hooka/runtime-contracts": "workspace:*",
         "@hooka/task-sdk": "workspace:*",
       },
     },
     "packages/run-store": {
       "name": "@hooka/run-store",
       "dependencies": {
+        "@hooka/bun-utils": "workspace:*",
         "@hooka/contracts": "workspace:*",
       },
     },
@@ -156,6 +171,12 @@
         "@hooka/executor-process": "workspace:*",
         "@hooka/task-sdk": "workspace:*",
         "zod": "latest",
+      },
+    },
+    "packages/runtime-contracts": {
+      "name": "@hooka/runtime-contracts",
+      "dependencies": {
+        "@hooka/task-sdk": "workspace:*",
       },
     },
     "packages/task-sdk": {
@@ -202,6 +223,8 @@
 
     "@hooka/admin-ui": ["@hooka/admin-ui@workspace:packages/admin-ui"],
 
+    "@hooka/bun-utils": ["@hooka/bun-utils@workspace:packages/bun-utils"],
+
     "@hooka/cap-git": ["@hooka/cap-git@workspace:packages/cap-git"],
 
     "@hooka/cap-php-cli": ["@hooka/cap-php-cli@workspace:packages/cap-php-cli"],
@@ -228,11 +251,15 @@
 
     "@hooka/pack-wordpress-cloudflare": ["@hooka/pack-wordpress-cloudflare@workspace:packages/pack-wordpress-cloudflare"],
 
+    "@hooka/preset-catalog": ["@hooka/preset-catalog@workspace:packages/preset-catalog"],
+
     "@hooka/registry": ["@hooka/registry@workspace:packages/registry"],
 
     "@hooka/run-store": ["@hooka/run-store@workspace:packages/run-store"],
 
     "@hooka/runner-core": ["@hooka/runner-core@workspace:packages/runner-core"],
+
+    "@hooka/runtime-contracts": ["@hooka/runtime-contracts@workspace:packages/runtime-contracts"],
 
     "@hooka/server": ["@hooka/server@workspace:apps/server"],
 

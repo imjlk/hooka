@@ -1,0 +1,86 @@
+import { expect, test } from "bun:test";
+
+const bunBinary = process.execPath;
+const cwd = process.cwd();
+
+test("image plan exposes the active cf-pages preset contract", async () => {
+  const result = await runCli([
+    "image",
+    "plan",
+    "--preset",
+    "cf-pages",
+  ]);
+
+  expect(result.exitCode).toBe(0);
+  const plan = JSON.parse(result.stdout) as {
+    presetId: string;
+    tier?: string;
+    publicWorkerTag?: string;
+    capabilities: string[];
+    requiredEnv: Array<{ capabilityId: string; match: string }>;
+  };
+
+  expect(plan.presetId).toBe("cf-pages");
+  expect(plan.tier).toBe("lean");
+  expect(plan.publicWorkerTag).toBe("cf-pages");
+  expect(plan.capabilities).toEqual(["wrangler"]);
+  expect(plan.requiredEnv).toEqual([
+    expect.objectContaining({
+      capabilityId: "wrangler",
+      match: "allOf",
+    }),
+  ]);
+});
+
+test("doctor reports missing env for installed wrangler capability", async () => {
+  const result = await runCli(["doctor"], {
+    HOOKA_INSTALLED_CAPABILITIES: "wrangler",
+    CLOUDFLARE_API_TOKEN: "",
+    CLOUDFLARE_ACCOUNT_ID: "",
+  });
+
+  expect(result.exitCode).toBe(0);
+
+  const report = JSON.parse(result.stdout) as {
+    installed: string[];
+    missingEnv: Array<{ capabilityId: string; match: string; missingNames: string[] }>;
+  };
+
+  expect(report.installed).toEqual(["wrangler"]);
+  expect(report.missingEnv).toEqual([
+    expect.objectContaining({
+      capabilityId: "wrangler",
+      match: "allOf",
+      missingNames: ["CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID"],
+    }),
+  ]);
+});
+
+async function runCli(
+  args: string[],
+  envOverrides: Record<string, string | undefined> = {},
+): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+  const processResult = Bun.spawn(
+    [bunBinary, "run", "apps/cli/src/index.ts", ...args],
+    {
+      cwd,
+      stdout: "pipe",
+      stderr: "pipe",
+      env: {
+        ...Bun.env,
+        ...envOverrides,
+      },
+    },
+  );
+  const [exitCode, stdout, stderr] = await Promise.all([
+    processResult.exited,
+    new Response(processResult.stdout).text(),
+    new Response(processResult.stderr).text(),
+  ]);
+
+  return {
+    exitCode,
+    stdout,
+    stderr,
+  };
+}

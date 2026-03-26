@@ -3,7 +3,7 @@ import { stat } from "node:fs/promises";
 import { z } from "zod";
 
 export const exportVerifyInput = z.object({
-  exportDir: z.string().default("/data/exports/simply-static"),
+  exportDir: z.string().default("/shared-source/simply-static"),
   pattern: z.string().default("**/*.html"),
 });
 
