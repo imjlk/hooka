@@ -1,5 +1,6 @@
 import type { ImagePlan, RegistrySummary } from "@hooka/contracts";
 import { registrySummarySchema } from "@hooka/contracts";
+import { cloudflareApiCapability } from "@hooka/cap-cloudflare-api";
 import { gitCapability } from "@hooka/cap-git";
 import { phpCliCapability } from "@hooka/cap-php-cli";
 import { rcloneCapability } from "@hooka/cap-rclone";
@@ -7,6 +8,7 @@ import { rsyncCapability } from "@hooka/cap-rsync";
 import { wpcliCapability } from "@hooka/cap-wpcli";
 import { wranglerCapability } from "@hooka/cap-wrangler";
 import { cloudflareTaskPack } from "@hooka/pack-cloudflare";
+import { cloudflareCacheTaskPack } from "@hooka/pack-cloudflare-cache";
 import { wordpressTaskPack } from "@hooka/pack-wordpress";
 import { wordpressCloudflareTaskPack } from "@hooka/pack-wordpress-cloudflare";
 import { listActiveWorkerPresets } from "@hooka/preset-catalog";
@@ -22,6 +24,7 @@ import type {
 } from "@hooka/task-sdk";
 
 const capabilities = [
+  cloudflareApiCapability,
   wranglerCapability,
   wpcliCapability,
   phpCliCapability,
@@ -32,6 +35,7 @@ const capabilities = [
 
 const taskPacks = [
   cloudflareTaskPack,
+  cloudflareCacheTaskPack,
   wordpressTaskPack,
   wordpressCloudflareTaskPack,
 ] satisfies TaskPackDefinition[];

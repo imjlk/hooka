@@ -56,6 +56,20 @@ bun run test:e2e:docker
 bun run dev:server
 ```
 
+## Delivery Status
+
+Hooka's Docker delivery base is already in place:
+
+- `docker/Dockerfile` separates the shared `webhook-server` image from worker-only preset images.
+- `packages/preset-catalog/src/index.ts` is the source of truth for active worker tags, legacy aliases, and build arguments.
+- `scripts/generate-docker-bake.ts` regenerates `docker/docker-bake.hcl` from that catalog, so release targets are not hand-maintained.
+- `bun run test:e2e:docker` proves the Docker path end to end with `webhook-server + cf-pages`.
+
+GitHub Actions now cover both verification and GHCR publishing:
+
+- `.github/workflows/ci.yml` runs bake regeneration, typecheck, tests, build, and Docker E2E on pull requests and `main`.
+- `.github/workflows/publish-images.yml` publishes `webhook-server` plus active worker presets to GHCR on `main` and via manual dispatch.
+
 ## Runtime model
 
 - `apps/server` receives signed webhooks and enqueues runs into SQLite.
@@ -68,6 +82,7 @@ Recommended container tags:
 - `ghcr.io/imjlk/hooka:webhook-server`
 - `ghcr.io/imjlk/hooka:core`
 - `ghcr.io/imjlk/hooka:cf-pages`
+- `ghcr.io/imjlk/hooka:cf-cache`
 - `ghcr.io/imjlk/hooka:wp-ops`
 - `ghcr.io/imjlk/hooka:wp-wrangler`
 
@@ -101,6 +116,7 @@ Active registry-backed worker presets:
 
 - `core` — minimal worker runtime with no extra task toolchains
 - `cf-pages` — shared-volume and direct-upload Cloudflare Pages deploys
+- `cf-cache` — safe URL-based Cloudflare cache purge worker
 - `wp-ops` — `wp-cli` evaluation and export verification
 - `wp-wrangler` — `wp-ops` plus `cf-pages`
 
@@ -112,7 +128,7 @@ Migration aliases:
 
 Planned presets are documented but not published in registry APIs or GHCR release targets yet:
 
-- Lean: `http`, `coolify-deploy`, `cf-cache`, `wp-content-export`, `wp-backup-db`, `rclone-sync`
+- Lean: `http`, `coolify-deploy`, `wp-content-export`, `wp-backup-db`, `rclone-sync`
 - Combo: `wp-cache-safe`, `wp-backup-rclone`, `wp-migrate`, `site-bun-build-cf-pages`, `cf-r2-publisher`, `cf-images`, `smoke-http`, `site-bun-build-coolify`, `wp-multisite`, `git-mirror`, `notify`
 
 ## APIs
@@ -171,6 +187,7 @@ Hooka's default model is `signed webhook -> queue -> worker -> wrangler CLI`. Wo
 
 - `webhook-server` serves the webhook ingress, admin UI, and run APIs. It only needs `/data`, `HOOKA_WEBHOOK_SECRET`, and optionally `HOOKA_INSTALLED_CAPABILITIES` so the UI mirrors the paired worker role.
 - `cf-pages` is the lean worker for `deploy.shared-volume.wrangler` and `cloudflare.pages.deploy`. It needs `/data`, `/shared-source`, `CLOUDFLARE_API_TOKEN`, and `CLOUDFLARE_ACCOUNT_ID`.
+- `cf-cache` is the lean worker for `cloudflare.cache.purge.urls`. It needs `CLOUDFLARE_API_TOKEN`, and the task receives `zoneId` plus a URL list payload.
 - `wp-ops` is the lean worker for `wordpress.wpcli.eval` and `wordpress.export.verify`.
 - `wp-wrangler` is the combo worker that merges `wp-ops` and `cf-pages`.
 

@@ -1,0 +1,14 @@
+{
+  "name": "@hooka/pack-cloudflare-cache",
+  "private": true,
+  "type": "module",
+  "exports": "./src/index.ts",
+  "scripts": {
+    "build": "bun build ./src/index.ts --outdir ./dist --target bun"
+  },
+  "dependencies": {
+    "@hooka/runner-core": "workspace:*",
+    "@hooka/task-sdk": "workspace:*",
+    "zod": "latest"
+  }
+}

@@ -18,13 +18,16 @@ test("registry validates without duplicate definitions", () => {
   });
 });
 
-test("cf-pages and wp-wrangler presets cover the active worker taxonomy", () => {
+test("cf-pages, cf-cache, and wp-wrangler presets cover the active worker taxonomy", () => {
   const cfPagesPlan = getPresetPlan("cf-pages");
+  const cfCachePlan = getPresetPlan("cf-cache");
   const wpWranglerPlan = getPresetPlan("wp-wrangler");
 
   expect(cfPagesPlan?.coveredTasks).toContain("deploy.shared-volume.wrangler");
   expect(cfPagesPlan?.coveredTasks).toContain("cloudflare.pages.deploy");
   expect(cfPagesPlan?.missingCapabilitiesByTask).toEqual({});
+  expect(cfCachePlan?.coveredTasks).toContain("cloudflare.cache.purge.urls");
+  expect(cfCachePlan?.capabilities).toEqual(["cloudflare-api"]);
   expect(
     recommendPresetForTasks(["deploy.shared-volume.wrangler"])?.id,
   ).toBe("cf-pages");
@@ -42,6 +45,7 @@ test("registry resolves task and preset aliases to canonical definitions", () =>
   expect(listPresets().map((preset) => preset.id)).toEqual([
     "core",
     "cf-pages",
+    "cf-cache",
     "wp-ops",
     "wp-wrangler",
   ]);

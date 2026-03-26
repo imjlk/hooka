@@ -38,6 +38,18 @@ target "cf-pages" {
   tags = ["${REGISTRY}:cf-pages", "${REGISTRY}:cf-wrangler", "${REGISTRY}:wrangler-worker"]
 }
 
+target "cf-cache" {
+  inherits = ["base"]
+  target = "worker-preset"
+  args = {
+    HOOKA_FEATURES = "cloudflare-api"
+    HOOKA_IMAGE_LABEL = "hooka:cf-cache"
+    HOOKA_RUNTIME_ROLE = "worker:cf-cache"
+    HOOKA_INSTALLED_CAPABILITIES = "cloudflare-api"
+  }
+  tags = ["${REGISTRY}:cf-cache"]
+}
+
 target "wp-ops" {
   inherits = ["base"]
   target = "worker-preset"
@@ -63,5 +75,5 @@ target "wp-wrangler" {
 }
 
 group "release" {
-  targets = ["webhook-server", "core", "cf-pages", "wp-ops", "wp-wrangler"]
+  targets = ["webhook-server", "core", "cf-pages", "cf-cache", "wp-ops", "wp-wrangler"]
 }

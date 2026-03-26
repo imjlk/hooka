@@ -51,6 +51,18 @@ export const cfPagesPreset = definePreset({
   taskPacks: ["@hooka/pack-cloudflare", "@hooka/pack-webhook-wrangler"],
 });
 
+export const cfCachePreset = definePreset({
+  id: "cf-cache",
+  title: "Cloudflare Cache",
+  description:
+    "Lean worker image for safe Cloudflare cache purges through the public API.",
+  tier: "lean",
+  imageTag: "cf-cache",
+  publicWorkerTag: "cf-cache",
+  capabilities: ["cloudflare-api"],
+  taskPacks: ["@hooka/pack-cloudflare-cache"],
+});
+
 export const wpOpsPreset = definePreset({
   id: "wp-ops",
   title: "WordPress Ops",
@@ -83,6 +95,7 @@ export const wpWranglerPreset = definePreset({
 export const activeWorkerPresets = [
   corePreset,
   cfPagesPreset,
+  cfCachePreset,
   wpOpsPreset,
   wpWranglerPreset,
 ] satisfies PresetDefinition[];
@@ -101,13 +114,6 @@ export const plannedWorkerPresets = [
     description: "Lean worker for Coolify deploy webhooks and API triggers.",
     tier: "lean",
     publicWorkerTag: "coolify-deploy",
-  },
-  {
-    id: "cf-cache",
-    title: "Cloudflare Cache",
-    description: "Lean worker for safe Cloudflare cache purge tasks.",
-    tier: "lean",
-    publicWorkerTag: "cf-cache",
   },
   {
     id: "wp-content-export",

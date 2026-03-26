@@ -257,11 +257,11 @@ cli.command(
 
             const capability = getCapability(feature);
 
-            if (!capability || !capability.docker) {
-              throw new Error(`Unknown installable capability: ${feature}`);
+            if (!capability) {
+              throw new Error(`Unknown capability: ${feature}`);
             }
 
-            if (!flags["dry-run"]) {
+            if (!flags["dry-run"] && capability.docker) {
               const installScript = resolve(process.cwd(), capability.docker.installScript);
               await shell`sh ${installScript}`;
             }

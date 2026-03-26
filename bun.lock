@@ -52,6 +52,12 @@
     "packages/bun-utils": {
       "name": "@hooka/bun-utils",
     },
+    "packages/cap-cloudflare-api": {
+      "name": "@hooka/cap-cloudflare-api",
+      "dependencies": {
+        "@hooka/task-sdk": "workspace:*",
+      },
+    },
     "packages/cap-git": {
       "name": "@hooka/cap-git",
       "dependencies": {
@@ -117,6 +123,14 @@
         "zod": "latest",
       },
     },
+    "packages/pack-cloudflare-cache": {
+      "name": "@hooka/pack-cloudflare-cache",
+      "dependencies": {
+        "@hooka/runner-core": "workspace:*",
+        "@hooka/task-sdk": "workspace:*",
+        "zod": "latest",
+      },
+    },
     "packages/pack-wordpress": {
       "name": "@hooka/pack-wordpress",
       "dependencies": {
@@ -141,6 +155,7 @@
     "packages/registry": {
       "name": "@hooka/registry",
       "dependencies": {
+        "@hooka/cap-cloudflare-api": "workspace:*",
         "@hooka/cap-git": "workspace:*",
         "@hooka/cap-php-cli": "workspace:*",
         "@hooka/cap-rclone": "workspace:*",
@@ -149,6 +164,7 @@
         "@hooka/cap-wrangler": "workspace:*",
         "@hooka/contracts": "workspace:*",
         "@hooka/pack-cloudflare": "workspace:*",
+        "@hooka/pack-cloudflare-cache": "workspace:*",
         "@hooka/pack-wordpress": "workspace:*",
         "@hooka/pack-wordpress-cloudflare": "workspace:*",
         "@hooka/preset-catalog": "workspace:*",
@@ -225,6 +241,8 @@
 
     "@hooka/bun-utils": ["@hooka/bun-utils@workspace:packages/bun-utils"],
 
+    "@hooka/cap-cloudflare-api": ["@hooka/cap-cloudflare-api@workspace:packages/cap-cloudflare-api"],
+
     "@hooka/cap-git": ["@hooka/cap-git@workspace:packages/cap-git"],
 
     "@hooka/cap-php-cli": ["@hooka/cap-php-cli@workspace:packages/cap-php-cli"],
@@ -246,6 +264,8 @@
     "@hooka/executor-process": ["@hooka/executor-process@workspace:packages/executor-process"],
 
     "@hooka/pack-cloudflare": ["@hooka/pack-cloudflare@workspace:packages/pack-cloudflare"],
+
+    "@hooka/pack-cloudflare-cache": ["@hooka/pack-cloudflare-cache@workspace:packages/pack-cloudflare-cache"],
 
     "@hooka/pack-wordpress": ["@hooka/pack-wordpress@workspace:packages/pack-wordpress"],
 

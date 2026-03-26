@@ -203,6 +203,7 @@ test("registry APIs expose canonical task and preset ids", async () => {
   expect(presets.map((preset) => preset.id)).toEqual([
     "core",
     "cf-pages",
+    "cf-cache",
     "wp-ops",
     "wp-wrangler",
   ]);
@@ -212,6 +213,7 @@ test("registry APIs expose canonical task and preset ids", async () => {
     "deploy.shared-volume.wrangler",
   );
   expect(summary.presets.map((preset) => preset.id)).toContain("cf-pages");
+  expect(summary.presets.map((preset) => preset.id)).toContain("cf-cache");
   expect(summary.presets.map((preset) => preset.id)).toContain("wp-ops");
   expect(summary.presets.map((preset) => preset.id)).toContain("wp-wrangler");
 

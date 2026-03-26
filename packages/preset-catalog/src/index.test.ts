@@ -10,6 +10,7 @@ test("active worker presets only include registry-backed entries", () => {
   expect(activeWorkerPresets.map((preset) => preset.id)).toEqual([
     "core",
     "cf-pages",
+    "cf-cache",
     "wp-ops",
     "wp-wrangler",
   ]);

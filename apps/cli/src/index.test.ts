@@ -32,6 +32,35 @@ test("image plan exposes the active cf-pages preset contract", async () => {
   ]);
 });
 
+test("image plan exposes the active cf-cache preset contract", async () => {
+  const result = await runCli([
+    "image",
+    "plan",
+    "--preset",
+    "cf-cache",
+  ]);
+
+  expect(result.exitCode).toBe(0);
+  const plan = JSON.parse(result.stdout) as {
+    presetId: string;
+    tier?: string;
+    publicWorkerTag?: string;
+    capabilities: string[];
+    requiredEnv: Array<{ capabilityId: string; match: string }>;
+  };
+
+  expect(plan.presetId).toBe("cf-cache");
+  expect(plan.tier).toBe("lean");
+  expect(plan.publicWorkerTag).toBe("cf-cache");
+  expect(plan.capabilities).toEqual(["cloudflare-api"]);
+  expect(plan.requiredEnv).toEqual([
+    expect.objectContaining({
+      capabilityId: "cloudflare-api",
+      match: "allOf",
+    }),
+  ]);
+});
+
 test("doctor reports missing env for installed wrangler capability", async () => {
   const result = await runCli(["doctor"], {
     HOOKA_INSTALLED_CAPABILITIES: "wrangler",
@@ -54,6 +83,24 @@ test("doctor reports missing env for installed wrangler capability", async () =>
       missingNames: ["CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID"],
     }),
   ]);
+});
+
+test("install-features records env-only capabilities without a docker installer", async () => {
+  const result = await runCli([
+    "image",
+    "install-features",
+    "--features",
+    "cloudflare-api",
+    "--dry-run",
+  ]);
+
+  expect(result.exitCode).toBe(0);
+
+  const manifest = JSON.parse(result.stdout) as {
+    installed: string[];
+  };
+
+  expect(manifest.installed).toEqual(["cloudflare-api"]);
 });
 
 async function runCli(
