@@ -31,7 +31,7 @@ packages/
   admin-ui/  Static dashboard bundle
   cap-*/     Capability contracts
   pack-*/    Task packs
-docker/      Dockerfile, Bake file, feature installers, manifests
+docker/      Dockerfile, Bake file, feature installers, manifest examples
 ```
 
 ## Getting started
@@ -53,6 +53,7 @@ bun run apps/cli/src/index.ts run list
 bun run bake:generate
 bun run test:e2e:docker
 bun run dev:server
+bun run dev:ui
 ```
 
 ## Delivery Status
@@ -67,12 +68,16 @@ Hooka's Docker delivery base is already in place:
 GitHub Actions now cover both verification and GHCR publishing:
 
 - `.github/workflows/ci.yml` runs bake regeneration, typecheck, tests, build, and Docker E2E on pull requests and `main`.
+- The CI workflow also smoke-tests the Bun HMR admin UI and fails if the validation suite mutates tracked files.
 - `.github/workflows/publish-images.yml` publishes `webhook-server` plus active worker presets to GHCR on `main` and via manual dispatch.
 
 ## Runtime model
 
 - `apps/server` receives signed webhooks and enqueues runs into SQLite.
 - `apps/worker` polls queued runs, reads the shared source volume, executes wrangler-backed tasks, and writes results/events back.
+- Compatibility webhook adapters are discovered from registry metadata, so producer-specific alias routes stay outside the server core.
+- The admin UI is split into small vanilla view modules and served by the server in production, or by Bun HMR in local development.
+- Both server and worker register graceful shutdown handlers so Docker stop does not keep claiming new work during exit.
 - `server` and `worker` share the same `HOOKA_DB_PATH`.
 - Producers such as WordPress share an artifact/source volume with the `worker`, not the server.
 
@@ -94,6 +99,7 @@ Recommended defaults:
 
 ```bash
 HOOKA_DB_PATH=/data/hooka.sqlite
+HOOKA_MANIFEST_PATH=/app/.hooka/installed-capabilities.json
 HOOKA_WEBHOOK_SECRET=change-me
 HOOKA_PORT=3000
 HOOKA_POLL_INTERVAL_MS=2000
@@ -113,6 +119,14 @@ HOOKA_INSTALLED_CAPABILITIES=wrangler
 ```
 
 Set that on the webhook server when you want the admin UI and queued run snapshots to reflect the paired worker role instead of the server image itself.
+
+Manifest resolution precedence:
+
+1. `HOOKA_INSTALLED_CAPABILITIES` overrides file loading entirely.
+2. Otherwise `HOOKA_MANIFEST_PATH` is used when set.
+3. Otherwise Hooka reads a generated repo-local manifest at `.hooka/installed-capabilities.json`.
+
+The tracked file under [`docker/manifests/installed-capabilities.example.json`](/Users/imjlk/repos/imjlk/hooka/docker/manifests/installed-capabilities.example.json) is now example-only and should not be used as a writable runtime target.
 
 ## Preset Catalog
 
@@ -162,6 +176,7 @@ Generic webhook body:
 
 ```bash
 HOOKA_DB_PATH=/tmp/hooka.sqlite \
+HOOKA_MANIFEST_PATH=$PWD/.hooka/installed-capabilities.json \
 HOOKA_WEBHOOK_SECRET=local-secret \
 HOOKA_INSTALLED_CAPABILITIES=wrangler \
 bun run dev:server
@@ -169,6 +184,7 @@ bun run dev:server
 
 ```bash
 HOOKA_DB_PATH=/tmp/hooka.sqlite \
+HOOKA_MANIFEST_PATH=$PWD/.hooka/installed-capabilities.json \
 HOOKA_INSTALLED_CAPABILITIES=wrangler \
 CLOUDFLARE_API_TOKEN=local-token \
 CLOUDFLARE_ACCOUNT_ID=local-account \
@@ -176,11 +192,24 @@ bun run dev:worker
 ```
 
 ```bash
-mkdir -p /tmp/hooka-shared/simply-static
-HOOKA_DB_PATH=/tmp/hooka.sqlite \
-bun run apps/cli/src/index.ts task enqueue deploy.shared-volume.wrangler \
-  --project staging-site \
-  --source-path /tmp/hooka-shared/simply-static
+HOOKA_UI_PORT=4310 \
+HOOKA_UI_API_ORIGIN=http://127.0.0.1:3000 \
+bun run dev:ui
+```
+
+```bash
+mkdir -p /tmp/hooka-shared/simply-static "$PWD/.hooka"
+bun run apps/cli/src/index.ts image install-features \
+  --features wrangler \
+  --manifest "$PWD/.hooka/installed-capabilities.json" \
+  --image hooka:local
+```
+
+```bash
+HOOKA_WEBHOOK_SECRET=local-secret \
+bun run apps/cli/src/index.ts webhook test \
+  --task-id deploy.shared-volume.wrangler \
+  --payload-json '{"kind":"pages-deploy","project":"staging-site","sourcePath":"/tmp/hooka-shared/simply-static"}'
 ```
 
 ## Producer examples
@@ -196,6 +225,14 @@ Hooka's default model is `signed webhook -> queue -> worker -> wrangler CLI`. Wo
 - `wp-wrangler` is the combo worker that merges `wp-ops` and `cf-pages`.
 
 `hooka doctor` now reports both missing capabilities and missing env required by the currently installed capabilities.
+
+## Dev UI
+
+- `bun run dev:ui` starts a Bun HMR server for the admin UI.
+- Default UI port: `4310`
+- Default proxied API origin: `http://127.0.0.1:3000`
+- The dev server only serves the UI source entrypoint and proxies `/api/*` to the configured backend.
+- `bun run test:dev-ui:smoke` verifies that `GET /` serves the shell and `/api/health` proxies correctly.
 
 ## Private GHCR Pulls
 

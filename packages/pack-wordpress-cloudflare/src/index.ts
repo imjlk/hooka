@@ -1,4 +1,5 @@
 import { defineTaskPack } from "@hooka/task-sdk";
+export type { CompatibilityWebhookAdapter } from "@hooka/task-sdk";
 import { sharedVolumeWranglerTask } from "./tasks/deploySimplyStatic";
 
 export {
@@ -11,6 +12,11 @@ export {
   sharedVolumeWranglerInputSchema,
   wordpressSimplyStaticWebhookSchema,
 } from "./schema";
+export {
+  normalizeWordpressSimplyStaticWebhook,
+  parseWordpressSimplyStaticWebhook,
+  wordpressSimplyStaticWebhookAdapter,
+} from "./wordpressWebhookAdapter";
 export type {
   SharedVolumeWranglerInput,
   WordpressSimplyStaticWebhook,

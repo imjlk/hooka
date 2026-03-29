@@ -16,6 +16,14 @@ export const exportVerifyTask = defineTask({
   executor: {
     kind: "internal",
     run: async ({ input, dryRun }) => {
+      if (dryRun) {
+        return {
+          exportDir: input.exportDir,
+          htmlFiles: 0,
+          dryRun: true,
+        };
+      }
+
       let directoryStat;
       try {
         directoryStat = await stat(input.exportDir);
@@ -25,14 +33,6 @@ export const exportVerifyTask = defineTask({
 
       if (!directoryStat?.isDirectory()) {
         throw new Error(`Export directory not found: ${input.exportDir}`);
-      }
-
-      if (dryRun) {
-        return {
-          exportDir: input.exportDir,
-          htmlFiles: 0,
-          dryRun: true,
-        };
       }
 
       let htmlFiles = 0;

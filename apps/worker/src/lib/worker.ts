@@ -3,6 +3,7 @@ import type { CommandRunner } from "@hooka/executor-process";
 import { getTask } from "@hooka/registry";
 import type { RunStore } from "@hooka/run-store";
 import { runTask } from "@hooka/runner-core";
+import type { WorkerShutdownSignal } from "./shutdown";
 
 export const defaultWorkerPollIntervalMs = 2_000;
 export const defaultRunLeaseMs = 900_000;
@@ -17,6 +18,8 @@ export interface ProcessNextRunOptions {
 }
 
 export interface WorkerLoopOptions extends ProcessNextRunOptions {
+  shutdownSignal?: WorkerShutdownSignal;
+  sleep?: (ms: number) => Promise<void>;
   pollIntervalMs?: number;
 }
 
@@ -42,23 +45,26 @@ export async function processNextRun(
   return true;
 }
 
-export async function startWorkerLoop(options: WorkerLoopOptions): Promise<never> {
+export async function startWorkerLoop(options: WorkerLoopOptions): Promise<void> {
   const pollIntervalMs =
     options.pollIntervalMs ?? defaultWorkerPollIntervalMs;
+  const sleepFn = options.sleep ?? sleep;
 
-  while (true) {
+  while (!options.shutdownSignal?.isShutdownRequested()) {
     try {
       const processed = await processNextRun(options);
 
-      if (!processed) {
-        await sleep(pollIntervalMs);
+      if (!processed && !options.shutdownSignal?.isShutdownRequested()) {
+        await sleepFn(pollIntervalMs);
       }
     } catch (error) {
       console.error(
         `[${new Date().toISOString()}] hooka-worker loop error`,
         error,
       );
-      await sleep(pollIntervalMs);
+      if (!options.shutdownSignal?.isShutdownRequested()) {
+        await sleepFn(pollIntervalMs);
+      }
     }
   }
 }

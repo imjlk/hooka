@@ -7,6 +7,7 @@
     "build": "bun build ./src/index.ts --outdir ./dist --target bun"
   },
   "dependencies": {
-    "zod": "latest"
+    "@hooka/contracts": "workspace:*",
+    "zod": "^4.3.6"
   }
 }

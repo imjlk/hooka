@@ -5,9 +5,9 @@
     "": {
       "name": "hooka",
       "devDependencies": {
-        "@types/bun": "latest",
-        "@types/node": "latest",
-        "typescript": "latest",
+        "@types/bun": "^1.3.11",
+        "@types/node": "^25.5.0",
+        "typescript": "^6.0.2",
       },
     },
     "apps/cli": {
@@ -16,15 +16,15 @@
         "hooka": "./src/index.ts",
       },
       "dependencies": {
-        "@bunli/core": "latest",
+        "@bunli/core": "^0.9.0",
         "@hooka/bun-utils": "workspace:*",
         "@hooka/contracts": "workspace:*",
         "@hooka/registry": "workspace:*",
         "@hooka/run-store": "workspace:*",
         "@hooka/runner-core": "workspace:*",
         "@hooka/task-sdk": "workspace:*",
-        "bunli": "latest",
-        "zod": "latest",
+        "bunli": "^0.9.0",
+        "zod": "^4.3.6",
       },
     },
     "apps/server": {
@@ -32,11 +32,10 @@
       "dependencies": {
         "@hooka/bun-utils": "workspace:*",
         "@hooka/contracts": "workspace:*",
-        "@hooka/pack-wordpress-cloudflare": "workspace:*",
         "@hooka/registry": "workspace:*",
         "@hooka/run-store": "workspace:*",
         "@hooka/runner-core": "workspace:*",
-        "zod": "latest",
+        "zod": "^4.3.6",
       },
     },
     "apps/worker": {
@@ -99,7 +98,7 @@
     "packages/contracts": {
       "name": "@hooka/contracts",
       "dependencies": {
-        "zod": "latest",
+        "zod": "^4.3.6",
       },
     },
     "packages/executor-http": {
@@ -107,7 +106,7 @@
       "dependencies": {
         "@hooka/contracts": "workspace:*",
         "@hooka/task-sdk": "workspace:*",
-        "zod": "latest",
+        "zod": "^4.3.6",
       },
     },
     "packages/executor-process": {
@@ -115,14 +114,14 @@
       "dependencies": {
         "@hooka/contracts": "workspace:*",
         "@hooka/task-sdk": "workspace:*",
-        "zod": "latest",
+        "zod": "^4.3.6",
       },
     },
     "packages/pack-cloudflare": {
       "name": "@hooka/pack-cloudflare",
       "dependencies": {
         "@hooka/task-sdk": "workspace:*",
-        "zod": "latest",
+        "zod": "^4.3.6",
       },
     },
     "packages/pack-cloudflare-cache": {
@@ -130,21 +129,22 @@
       "dependencies": {
         "@hooka/runner-core": "workspace:*",
         "@hooka/task-sdk": "workspace:*",
-        "zod": "latest",
+        "zod": "^4.3.6",
       },
     },
     "packages/pack-wordpress": {
       "name": "@hooka/pack-wordpress",
       "dependencies": {
         "@hooka/task-sdk": "workspace:*",
-        "zod": "latest",
+        "zod": "^4.3.6",
       },
     },
     "packages/pack-wordpress-cloudflare": {
       "name": "@hooka/pack-wordpress-cloudflare",
       "dependencies": {
+        "@hooka/contracts": "workspace:*",
         "@hooka/task-sdk": "workspace:*",
-        "zod": "latest",
+        "zod": "^4.3.6",
       },
     },
     "packages/preset-catalog": {
@@ -156,18 +156,7 @@
     "packages/registry": {
       "name": "@hooka/registry",
       "dependencies": {
-        "@hooka/cap-cloudflare-api": "workspace:*",
-        "@hooka/cap-git": "workspace:*",
-        "@hooka/cap-php-cli": "workspace:*",
-        "@hooka/cap-rclone": "workspace:*",
-        "@hooka/cap-rsync": "workspace:*",
-        "@hooka/cap-wpcli": "workspace:*",
-        "@hooka/cap-wrangler": "workspace:*",
         "@hooka/contracts": "workspace:*",
-        "@hooka/pack-cloudflare": "workspace:*",
-        "@hooka/pack-cloudflare-cache": "workspace:*",
-        "@hooka/pack-wordpress": "workspace:*",
-        "@hooka/pack-wordpress-cloudflare": "workspace:*",
         "@hooka/preset-catalog": "workspace:*",
         "@hooka/runtime-contracts": "workspace:*",
         "@hooka/task-sdk": "workspace:*",
@@ -187,7 +176,7 @@
         "@hooka/executor-http": "workspace:*",
         "@hooka/executor-process": "workspace:*",
         "@hooka/task-sdk": "workspace:*",
-        "zod": "latest",
+        "zod": "^4.3.6",
       },
     },
     "packages/runtime-contracts": {
@@ -199,7 +188,8 @@
     "packages/task-sdk": {
       "name": "@hooka/task-sdk",
       "dependencies": {
-        "zod": "latest",
+        "@hooka/contracts": "workspace:*",
+        "zod": "^4.3.6",
       },
     },
   },

@@ -1,15 +1,14 @@
 import { createRunStore, defaultHookaDbPath } from "@hooka/run-store";
+import { getDefaultManifestPath } from "@hooka/runner-core";
 import { resolve } from "node:path";
 import { createHookaFetchHandler } from "./app";
+import { registerServerShutdownHandlers } from "./shutdown";
 
 const port = Number(Bun.env.HOOKA_PORT ?? 3000);
 const dbPath = Bun.env.HOOKA_DB_PATH ?? defaultHookaDbPath;
 const runtimeRole = Bun.env.HOOKA_RUNTIME_ROLE ?? "hooka-server";
 const uiDistDir = resolve(process.cwd(), "packages/admin-ui/dist");
-const capabilityManifestPath = resolve(
-  process.cwd(),
-  "docker/manifests/installed-capabilities.json",
-);
+const capabilityManifestPath = getDefaultManifestPath();
 const runStore = await createRunStore({
   dbPath,
 });
@@ -25,6 +24,11 @@ const server = Bun.serve({
   }),
 });
 
+registerServerShutdownHandlers({
+  server,
+  runStore,
+});
+
 console.log(
   JSON.stringify(
     {
@@ -32,6 +36,7 @@ console.log(
       runtimeRole,
       port: server.port,
       dbPath,
+      capabilityManifestPath,
     },
     null,
     2,

@@ -8,10 +8,9 @@
   "dependencies": {
     "@hooka/bun-utils": "workspace:*",
     "@hooka/contracts": "workspace:*",
-    "@hooka/pack-wordpress-cloudflare": "workspace:*",
     "@hooka/registry": "workspace:*",
     "@hooka/run-store": "workspace:*",
     "@hooka/runner-core": "workspace:*",
-    "zod": "latest"
+    "zod": "^4.3.6"
   }
 }

@@ -89,3 +89,70 @@ test("expired running runs are requeued and attempt count increments", async () 
 
   runStore.close();
 });
+
+test("queryRuns filters by status, taskId, and source", async () => {
+  const runStore = await createRunStore({
+    dbPath: ":memory:",
+  });
+
+  const queuedOne = runStore.enqueueRun({
+    taskId: "deploy.shared-volume.wrangler",
+    input: {
+      kind: "pages-deploy",
+      project: "staging-site",
+      sourcePath: "/shared-source/simply-static",
+    },
+    source: "wordpress.webhook",
+    capabilitySnapshot: [],
+  });
+  const queuedTwo = runStore.enqueueRun({
+    taskId: "cloudflare.cache.purge.urls",
+    input: {
+      zoneId: "zone-1",
+      urls: "https://example.com/",
+    },
+    source: "cli",
+    capabilitySnapshot: [],
+  });
+
+  runStore.finishRun(queuedOne.response.runId, {
+    taskId: "deploy.shared-volume.wrangler",
+    ok: true,
+    status: "succeeded",
+    summary: "done",
+    durationMs: 1,
+  });
+
+  const succeeded = runStore.queryRuns({
+    status: "succeeded",
+  });
+  const byTask = runStore.queryRuns({
+    taskId: "cloudflare.cache.purge.urls",
+  });
+  const bySource = runStore.queryRuns({
+    source: "wordpress.webhook",
+  });
+
+  expect(succeeded).toHaveLength(1);
+  expect(succeeded[0]?.id).toBe(queuedOne.response.runId);
+  expect(byTask).toHaveLength(1);
+  expect(byTask[0]?.id).toBe(queuedTwo.response.runId);
+  expect(bySource).toHaveLength(1);
+  expect(bySource[0]?.id).toBe(queuedOne.response.runId);
+
+  runStore.close();
+});
+
+test("queryRuns rejects invalid status filters", async () => {
+  const runStore = await createRunStore({
+    dbPath: ":memory:",
+  });
+
+  expect(() =>
+    runStore.queryRuns({
+      status: "bogus" as never,
+    }),
+  ).toThrow();
+
+  runStore.close();
+});

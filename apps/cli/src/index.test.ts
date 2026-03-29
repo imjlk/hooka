@@ -1,4 +1,6 @@
 import { expect, test } from "bun:test";
+import { createTempDir, ensureParentDir } from "@hooka/bun-utils";
+import { join } from "node:path";
 
 const bunBinary = process.execPath;
 const cwd = process.cwd();
@@ -101,6 +103,42 @@ test("install-features records env-only capabilities without a docker installer"
   };
 
   expect(manifest.installed).toEqual(["cloudflare-api"]);
+});
+
+test("doctor honors HOOKA_MANIFEST_PATH for the default manifest lookup", async () => {
+  const tempDir = await createTempDir("hooka-cli-manifest");
+  const manifestPath = join(tempDir, "custom", "installed-capabilities.json");
+
+  await ensureParentDir(manifestPath);
+  await Bun.write(
+    manifestPath,
+    JSON.stringify({
+      image: "hooka:test",
+      generatedAt: "2026-03-29T00:00:00.000Z",
+      installed: ["cloudflare-api"],
+    }),
+  );
+
+  const result = await runCli(["doctor"], {
+    HOOKA_MANIFEST_PATH: manifestPath,
+    HOOKA_INSTALLED_CAPABILITIES: undefined,
+    CLOUDFLARE_API_TOKEN: "",
+    CLOUDFLARE_ACCOUNT_ID: "",
+  });
+
+  expect(result.exitCode).toBe(0);
+
+  const report = JSON.parse(result.stdout) as {
+    installed: string[];
+    missingEnv: Array<{ capabilityId: string }>;
+  };
+
+  expect(report.installed).toEqual(["cloudflare-api"]);
+  expect(report.missingEnv).toEqual([
+    expect.objectContaining({
+      capabilityId: "cloudflare-api",
+    }),
+  ]);
 });
 
 async function runCli(

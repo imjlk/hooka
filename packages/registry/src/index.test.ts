@@ -7,8 +7,10 @@ import {
   getTask,
   listPresets,
   listTasks,
+  listWebhookAdapters,
   recommendPresetForTasks,
   validateRegistry,
+  validateRegistryState,
 } from "./index";
 
 test("registry validates without duplicate definitions", () => {
@@ -49,6 +51,9 @@ test("registry resolves task and preset aliases to canonical definitions", () =>
     "wp-ops",
     "wp-wrangler",
   ]);
+  expect(listWebhookAdapters().map((adapter) => adapter.id)).toEqual([
+    "wordpress.simply-static",
+  ]);
 });
 
 test("planned presets stay out of active registry output", () => {
@@ -71,4 +76,43 @@ test("registry reports missing env for installed wrangler capability", () => {
       missingNames: ["CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID"],
     }),
   ]);
+});
+
+test("registry validation rejects duplicate webhook adapter ids and routes", () => {
+  const result = validateRegistryState({
+    capabilities: [],
+    taskPacks: [],
+    presets: [],
+    tasks: [],
+    webhookAdapters: [
+      {
+        id: "adapter-a",
+        routePath: "/api/webhooks/compat",
+        normalize: () => ({
+          taskId: "deploy.shared-volume.wrangler",
+          input: {},
+          eventId: "evt_1",
+          source: "test",
+        }),
+      },
+      {
+        id: "adapter-a",
+        routePath: "/api/webhooks/compat",
+        normalize: () => ({
+          taskId: "deploy.shared-volume.wrangler",
+          input: {},
+          eventId: "evt_2",
+          source: "test",
+        }),
+      },
+    ],
+  });
+
+  expect(result.ok).toBe(false);
+  expect(result.errors).toEqual(
+    expect.arrayContaining([
+      "Duplicate webhook adapter id detected: adapter-a",
+      "Duplicate webhook adapter route detected: /api/webhooks/compat",
+    ]),
+  );
 });

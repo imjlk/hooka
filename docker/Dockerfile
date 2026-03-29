@@ -1,15 +1,47 @@
-FROM oven/bun:1.3.10-alpine AS build
+FROM oven/bun:1.3.10-alpine AS install
 
 WORKDIR /app
 
-COPY . .
+COPY package.json bun.lock bunfig.toml tsconfig.json ./
+
+COPY apps/cli/package.json apps/cli/package.json
+COPY apps/server/package.json apps/server/package.json
+COPY apps/worker/package.json apps/worker/package.json
+
+COPY packages/admin-ui/package.json packages/admin-ui/package.json
+COPY packages/bun-utils/package.json packages/bun-utils/package.json
+COPY packages/cap-cloudflare-api/package.json packages/cap-cloudflare-api/package.json
+COPY packages/cap-git/package.json packages/cap-git/package.json
+COPY packages/cap-php-cli/package.json packages/cap-php-cli/package.json
+COPY packages/cap-rclone/package.json packages/cap-rclone/package.json
+COPY packages/cap-rsync/package.json packages/cap-rsync/package.json
+COPY packages/cap-wpcli/package.json packages/cap-wpcli/package.json
+COPY packages/cap-wrangler/package.json packages/cap-wrangler/package.json
+COPY packages/contracts/package.json packages/contracts/package.json
+COPY packages/executor-http/package.json packages/executor-http/package.json
+COPY packages/executor-process/package.json packages/executor-process/package.json
+COPY packages/pack-cloudflare-cache/package.json packages/pack-cloudflare-cache/package.json
+COPY packages/pack-cloudflare/package.json packages/pack-cloudflare/package.json
+COPY packages/pack-wordpress-cloudflare/package.json packages/pack-wordpress-cloudflare/package.json
+COPY packages/pack-wordpress/package.json packages/pack-wordpress/package.json
+COPY packages/preset-catalog/package.json packages/preset-catalog/package.json
+COPY packages/registry/package.json packages/registry/package.json
+COPY packages/run-store/package.json packages/run-store/package.json
+COPY packages/runner-core/package.json packages/runner-core/package.json
+COPY packages/runtime-contracts/package.json packages/runtime-contracts/package.json
+COPY packages/task-sdk/package.json packages/task-sdk/package.json
 
 RUN bun install --frozen-lockfile
+
+FROM install AS build
+
+COPY . .
 RUN bun run build
 
 FROM build AS runtime-base
 
 ENV HOOKA_DB_PATH=/data/hooka.sqlite
+ENV HOOKA_MANIFEST_PATH=/app/.hooka/installed-capabilities.json
 ENV HOOKA_PORT=3000
 ENV HOOKA_POLL_INTERVAL_MS=2000
 ENV HOOKA_RUN_LEASE_MS=900000
@@ -18,7 +50,7 @@ EXPOSE 3000
 
 FROM runtime-base AS webhook-server
 
-RUN bun run image:install-features --features="core" --manifest=docker/manifests/installed-capabilities.json --image=hooka:webhook-server
+RUN bun run image:install-features --features="core" --manifest=/app/.hooka/installed-capabilities.json --image=hooka:webhook-server
 RUN mkdir -p /data
 
 ENV HOOKA_RUNTIME_ROLE=webhook-server
@@ -34,7 +66,7 @@ ARG HOOKA_IMAGE_LABEL=hooka:worker
 ARG HOOKA_RUNTIME_ROLE=hooka-worker
 ARG HOOKA_INSTALLED_CAPABILITIES=
 
-RUN bun run image:install-features --features="${HOOKA_FEATURES}" --manifest=docker/manifests/installed-capabilities.json --image="${HOOKA_IMAGE_LABEL}"
+RUN bun run image:install-features --features="${HOOKA_FEATURES}" --manifest=/app/.hooka/installed-capabilities.json --image="${HOOKA_IMAGE_LABEL}"
 RUN mkdir -p /data /shared-source
 
 ENV HOOKA_RUNTIME_ROLE=${HOOKA_RUNTIME_ROLE}

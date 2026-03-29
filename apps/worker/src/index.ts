@@ -1,21 +1,21 @@
 import { listCapabilities, listPresets, listTasks } from "@hooka/registry";
 import { findMissingCapabilityEnvRequirements } from "@hooka/runtime-contracts";
 import { createRunStore, defaultHookaDbPath } from "@hooka/run-store";
-import { loadInstalledCapabilities } from "@hooka/runner-core";
-import { resolve } from "node:path";
+import {
+  getDefaultManifestPath,
+  loadInstalledCapabilities,
+} from "@hooka/runner-core";
 import {
   defaultRunLeaseMs,
   defaultWorkerPollIntervalMs,
   getDefaultWorkerId,
   startWorkerLoop,
 } from "./lib/worker";
+import { registerWorkerShutdownHandlers } from "./lib/shutdown";
 
 const dbPath = Bun.env.HOOKA_DB_PATH ?? defaultHookaDbPath;
 const runtimeRole = Bun.env.HOOKA_RUNTIME_ROLE ?? "hooka-worker";
-const manifestPath = resolve(
-  process.cwd(),
-  "docker/manifests/installed-capabilities.json",
-);
+const manifestPath = getDefaultManifestPath();
 const workerId = getDefaultWorkerId();
 const pollIntervalMs = Number(
   Bun.env.HOOKA_POLL_INTERVAL_MS ?? defaultWorkerPollIntervalMs,
@@ -24,6 +24,7 @@ const leaseMs = Number(Bun.env.HOOKA_RUN_LEASE_MS ?? defaultRunLeaseMs);
 const runStore = await createRunStore({
   dbPath,
 });
+const shutdownSignal = registerWorkerShutdownHandlers();
 const manifest = await loadInstalledCapabilities(manifestPath);
 
 const missingEnv = findMissingCapabilityEnvRequirements(
@@ -51,6 +52,7 @@ console.log(
       workerId,
       pollIntervalMs,
       leaseMs,
+      manifestPath,
       installedCapabilities: manifest.installed,
       presets: listPresets().map((preset) => preset.id),
       tasks: listTasks().map((task) => task.id),
@@ -60,11 +62,16 @@ console.log(
   ),
 );
 
-await startWorkerLoop({
-  installedCapabilities: manifest.installed,
-  manifestPath,
-  runStore,
-  workerId,
-  leaseMs,
-  pollIntervalMs,
-});
+try {
+  await startWorkerLoop({
+    installedCapabilities: manifest.installed,
+    manifestPath,
+    runStore,
+    workerId,
+    leaseMs,
+    pollIntervalMs,
+    shutdownSignal,
+  });
+} finally {
+  runStore.close();
+}

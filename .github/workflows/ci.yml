@@ -40,6 +40,16 @@ jobs:
       - name: Build workspace
         run: bun run build
 
+      - name: Smoke test Bun dev UI
+        run: bun run test:dev-ui:smoke
+
+      - name: Ensure validation leaves tracked files unchanged
+        run: |
+          git diff --name-only --exit-code || {
+            git status --short
+            exit 1
+          }
+
   docker-e2e:
     runs-on: ubuntu-latest
     needs: validate
@@ -58,3 +68,10 @@ jobs:
 
       - name: Run Docker preset E2E
         run: bun run test:e2e:docker
+
+      - name: Ensure Docker E2E leaves tracked files unchanged
+        run: |
+          git diff --name-only --exit-code || {
+            git status --short
+            exit 1
+          }

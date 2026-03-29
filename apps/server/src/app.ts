@@ -4,6 +4,7 @@ import type {
 } from "@hooka/contracts";
 import {
   enqueueRunRequestSchema,
+  runListQuerySchema,
 } from "@hooka/contracts";
 import {
   createRegistrySummary,
@@ -12,16 +13,16 @@ import {
   listCapabilities,
   listPresets,
   listTasks,
+  listWebhookAdapters,
 } from "@hooka/registry";
+import type { CompatibilityWebhookAdapter } from "@hooka/task-sdk";
 import type { RunStore } from "@hooka/run-store";
 import { loadInstalledCapabilities } from "@hooka/runner-core";
 import { extname, resolve } from "node:path";
 import { ZodError } from "zod";
 import {
   normalizeGenericTaskWebhook,
-  normalizeWordpressSimplyStaticWebhook,
   parseGenericTaskWebhook,
-  parseWordpressSimplyStaticWebhook,
   verifyHookaHmacSignature,
 } from "./lib/webhooks";
 
@@ -34,69 +35,25 @@ export interface HookaServerAppOptions {
 
 class NotFoundError extends Error {}
 
+type RouteHandler = (
+  request: Request,
+  url: URL,
+) => Promise<Response> | Response;
+
 export function createHookaFetchHandler(options: HookaServerAppOptions) {
+  const exactRoutes = createExactRoutes(options);
+
   return async function fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
 
     try {
-      if (url.pathname === "/api/health") {
-        return json({
-          ok: true,
-          service: "hooka-server",
-        });
+      const exactHandler = exactRoutes.get(routeKey(request.method, url.pathname));
+      if (exactHandler) {
+        return await exactHandler(request, url);
       }
 
-      if (url.pathname === "/api/tasks") {
-        return json(listTasks());
-      }
-
-      if (url.pathname === "/api/capabilities") {
-        return json(listCapabilities());
-      }
-
-      if (url.pathname === "/api/presets") {
-        return json(
-          listPresets().map((preset) => ({
-            ...preset,
-            plan: getPresetPlan(preset.id),
-          })),
-        );
-      }
-
-      if (url.pathname === "/api/summary") {
-        const manifest = await loadInstalledCapabilities(options.capabilityManifestPath);
-        return json(createRegistrySummary(manifest.installed));
-      }
-
-      if (url.pathname === "/api/runs" && request.method === "GET") {
-        const limit = getPositiveInt(url.searchParams.get("limit"), 20);
-        return json(options.runStore.listRuns(limit));
-      }
-
-      if (url.pathname === "/api/runs" && request.method === "POST") {
-        const payload = enqueueRunRequestSchema.parse(await request.json());
-        return handleGenericEnqueue(options, payload);
-      }
-
-      if (
-        url.pathname === "/api/webhooks/task" &&
-        request.method === "POST"
-      ) {
-        const rawBody = await request.text();
-        return handleSignedGenericTaskWebhook(options, request, rawBody);
-      }
-
-      if (
-        url.pathname === "/api/webhooks/wordpress/simply-static" &&
-        request.method === "POST"
-      ) {
-        const rawBody = await request.text();
-        return handleWordpressSimplyStaticAlias(options, request, rawBody);
-      }
-
-      const runMatch = url.pathname.match(/^\/api\/runs\/([^/]+)$/);
-      if (runMatch && request.method === "GET") {
-        const runId = runMatch[1] ?? "";
+      const runId = matchRunIdRoute(request.method, url.pathname);
+      if (runId) {
         const run = options.runStore.getRun(runId);
 
         if (!run) {
@@ -129,6 +86,84 @@ export function createHookaFetchHandler(options: HookaServerAppOptions) {
   };
 }
 
+function createExactRoutes(
+  options: HookaServerAppOptions,
+): Map<string, RouteHandler> {
+  const routes = new Map<string, RouteHandler>([
+    [
+      routeKey("GET", "/api/health"),
+      () =>
+        json({
+          ok: true,
+          service: "hooka-server",
+        }),
+    ],
+    [routeKey("GET", "/api/tasks"), () => json(listTasks())],
+    [routeKey("GET", "/api/capabilities"), () => json(listCapabilities())],
+    [
+      routeKey("GET", "/api/presets"),
+      () =>
+        json(
+          listPresets().map((preset) => ({
+            ...preset,
+            plan: getPresetPlan(preset.id),
+          })),
+        ),
+    ],
+    [
+      routeKey("GET", "/api/summary"),
+      async () => {
+        const manifest = await loadInstalledCapabilities(
+          options.capabilityManifestPath,
+        );
+        return json(createRegistrySummary(manifest.installed));
+      },
+    ],
+    [
+      routeKey("GET", "/api/runs"),
+      (_request, url) => {
+        const filters = runListQuerySchema.parse({
+          limit: getPositiveInt(url.searchParams.get("limit"), 20),
+          status: url.searchParams.get("status") ?? undefined,
+          taskId: url.searchParams.get("taskId") ?? undefined,
+          source: url.searchParams.get("source") ?? undefined,
+        });
+        return json(
+          options.runStore.queryRuns({
+            limit: filters.limit,
+            status: filters.status,
+            taskId: filters.taskId,
+            source: filters.source,
+          }),
+        );
+      },
+    ],
+    [
+      routeKey("POST", "/api/runs"),
+      async (request) => {
+        const payload = enqueueRunRequestSchema.parse(await request.json());
+        return handleGenericEnqueue(options, payload);
+      },
+    ],
+    [
+      routeKey("POST", "/api/webhooks/task"),
+      async (request) => {
+        const rawBody = await request.text();
+        return handleSignedGenericTaskWebhook(options, request, rawBody);
+      },
+    ],
+  ]);
+
+  for (const adapter of listWebhookAdapters()) {
+    routes.set(routeKey("POST", adapter.routePath), async (request) => {
+      const rawBody = await request.text();
+      return handleCompatibilityWebhook(options, request, rawBody, adapter);
+    });
+  }
+
+  return routes;
+}
+
 async function handleGenericEnqueue(
   options: HookaServerAppOptions,
   payload: EnqueueRunRequest,
@@ -151,18 +186,18 @@ async function handleSignedGenericTaskWebhook(
   return enqueueGenericWebhook(options, webhookPayload);
 }
 
-async function handleWordpressSimplyStaticAlias(
+async function handleCompatibilityWebhook(
   options: HookaServerAppOptions,
   request: Request,
   rawBody: string,
+  adapter: CompatibilityWebhookAdapter,
 ): Promise<Response> {
   const verified = verifySignedWebhook(options, request, rawBody);
   if (verified) {
     return verified;
   }
 
-  const wordpressPayload = parseWordpressSimplyStaticWebhook(rawBody);
-  const webhookPayload = normalizeWordpressSimplyStaticWebhook(wordpressPayload);
+  const webhookPayload = adapter.normalize(rawBody);
   return enqueueGenericWebhook(options, webhookPayload);
 }
 
@@ -240,10 +275,23 @@ async function enqueueRun(
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data, null, 2), {
     status,
-    headers: {
+    headers: withSecurityHeaders({
       "content-type": "application/json; charset=utf-8",
-    },
+    }),
   });
+}
+
+function routeKey(method: string, pathname: string): string {
+  return `${method.toUpperCase()} ${pathname}`;
+}
+
+function matchRunIdRoute(method: string, pathname: string): string | null {
+  if (method.toUpperCase() !== "GET") {
+    return null;
+  }
+
+  const match = pathname.match(/^\/api\/runs\/([^/]+)$/);
+  return match?.[1] ?? null;
 }
 
 async function serveUi(pathname: string, uiDistDir: string): Promise<Response> {
@@ -253,23 +301,27 @@ async function serveUi(pathname: string, uiDistDir: string): Promise<Response> {
   if (assetPath.startsWith(uiDistDir)) {
     const assetFile = Bun.file(assetPath);
     if (isAssetRequest && (await assetFile.exists())) {
-      return new Response(assetFile);
+      return new Response(assetFile, {
+        headers: withSecurityHeaders(),
+      });
     }
   }
 
   const indexFile = Bun.file(resolve(uiDistDir, "index.html"));
 
   if (await indexFile.exists()) {
-    return new Response(indexFile);
+    return new Response(indexFile, {
+      headers: withSecurityHeaders(),
+    });
   }
 
   return new Response(
     "Admin UI bundle not found. Run `bun --filter @hooka/admin-ui run build`.",
     {
       status: 503,
-      headers: {
+      headers: withSecurityHeaders({
         "content-type": "text/plain; charset=utf-8",
-      },
+      }),
     },
   );
 }
@@ -281,4 +333,14 @@ function getPositiveInt(value: string | null, fallback: number): number {
 
   const parsed = Number(value);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function withSecurityHeaders(
+  input: HeadersInit = {},
+): Headers {
+  const headers = new Headers(input);
+  headers.set("x-content-type-options", "nosniff");
+  headers.set("x-frame-options", "DENY");
+  headers.set("referrer-policy", "no-referrer");
+  return headers;
 }

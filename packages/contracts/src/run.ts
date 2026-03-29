@@ -1,6 +1,13 @@
 import { z } from "zod";
 import { taskRunResultSchema, taskRunStatusSchema } from "./task";
 
+export const runListQuerySchema = z.object({
+  limit: z.coerce.number().int().positive().default(20),
+  status: taskRunStatusSchema.optional(),
+  taskId: z.string().min(1).optional(),
+  source: z.string().min(1).optional(),
+});
+
 export const runEventSchema = z.object({
   id: z.string(),
   runId: z.string(),
@@ -37,3 +44,4 @@ export const runDetailSchema = runSummarySchema.extend({
 export type RunEvent = z.infer<typeof runEventSchema>;
 export type RunSummary = z.infer<typeof runSummarySchema>;
 export type RunDetail = z.infer<typeof runDetailSchema>;
+export type RunListQuery = z.infer<typeof runListQuerySchema>;

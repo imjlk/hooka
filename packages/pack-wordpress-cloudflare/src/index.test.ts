@@ -1,6 +1,9 @@
 import { expect, test } from "bun:test";
 import { runTask } from "@hooka/runner-core";
-import { sharedVolumeWranglerTask } from "./index";
+import {
+  sharedVolumeWranglerTask,
+  wordpressSimplyStaticWebhookAdapter,
+} from "./index";
 
 test("shared-volume wrangler task forwards useful Pages deploy flags", async () => {
   const result = await runTask(
@@ -43,4 +46,34 @@ test("shared-volume wrangler task forwards useful Pages deploy flags", async () 
     "--no-bundle",
     "--upload-source-maps",
   ]);
+});
+
+test("wordpress compatibility adapter normalizes webhook payloads", () => {
+  const payload = wordpressSimplyStaticWebhookAdapter.normalize(
+    JSON.stringify({
+      eventId: "evt_1",
+      project: "customer-site",
+      exportDir: "/shared-source/simply-static",
+      branch: "main",
+    }),
+  );
+
+  expect(payload).toEqual({
+    taskId: "deploy.shared-volume.wrangler",
+    input: {
+      kind: "pages-deploy",
+      project: "customer-site",
+      sourcePath: "/shared-source/simply-static",
+      branch: "main",
+      commitSha: undefined,
+      commitMessage: undefined,
+      commitDirty: undefined,
+      skipCaching: undefined,
+      noBundle: undefined,
+      uploadSourceMaps: undefined,
+    },
+    eventId: "evt_1",
+    source: "wordpress.webhook",
+    triggeredAt: undefined,
+  });
 });

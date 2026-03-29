@@ -7,19 +7,8 @@
     "build": "bun build ./src/index.ts --outdir ./dist --target bun"
   },
   "dependencies": {
-    "@hooka/cap-cloudflare-api": "workspace:*",
-    "@hooka/cap-git": "workspace:*",
     "@hooka/contracts": "workspace:*",
-    "@hooka/cap-php-cli": "workspace:*",
-    "@hooka/cap-rclone": "workspace:*",
-    "@hooka/cap-rsync": "workspace:*",
-    "@hooka/cap-wpcli": "workspace:*",
-    "@hooka/cap-wrangler": "workspace:*",
-    "@hooka/pack-cloudflare": "workspace:*",
-    "@hooka/pack-cloudflare-cache": "workspace:*",
     "@hooka/preset-catalog": "workspace:*",
-    "@hooka/pack-wordpress": "workspace:*",
-    "@hooka/pack-wordpress-cloudflare": "workspace:*",
     "@hooka/runtime-contracts": "workspace:*",
     "@hooka/task-sdk": "workspace:*"
   }

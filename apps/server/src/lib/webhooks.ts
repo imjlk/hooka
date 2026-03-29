@@ -6,10 +6,6 @@ import type {
   EnqueueRunRequest,
   GenericTaskWebhook,
 } from "@hooka/contracts";
-import {
-  wordpressSimplyStaticWebhookSchema,
-  type WordpressSimplyStaticWebhook,
-} from "@hooka/pack-wordpress-cloudflare";
 import { createHmac, timingSafeEqual } from "node:crypto";
 
 const allowedClockSkewSeconds = 300;
@@ -77,10 +73,6 @@ export function verifyHookaHmacSignature(input: {
   };
 }
 
-export function parseWordpressSimplyStaticWebhook(rawBody: string) {
-  return wordpressSimplyStaticWebhookSchema.parse(JSON.parse(rawBody));
-}
-
 export function parseGenericTaskWebhook(rawBody: string) {
   return genericTaskWebhookSchema.parse(JSON.parse(rawBody));
 }
@@ -93,28 +85,5 @@ export function normalizeGenericTaskWebhook(
     input: payload.input,
     source: payload.source,
     sourceEventId: payload.eventId,
-  });
-}
-
-export function normalizeWordpressSimplyStaticWebhook(
-  payload: WordpressSimplyStaticWebhook,
-): GenericTaskWebhook {
-  return genericTaskWebhookSchema.parse({
-    taskId: "deploy.shared-volume.wrangler",
-    input: {
-      kind: "pages-deploy",
-      project: payload.project,
-      sourcePath: payload.exportDir,
-      branch: payload.branch,
-      commitSha: payload.commitSha,
-      commitMessage: payload.commitMessage,
-      commitDirty: payload.commitDirty,
-      skipCaching: payload.skipCaching,
-      noBundle: payload.noBundle,
-      uploadSourceMaps: payload.uploadSourceMaps,
-    },
-    eventId: payload.eventId,
-    source: "wordpress.webhook",
-    triggeredAt: payload.triggeredAt,
   });
 }

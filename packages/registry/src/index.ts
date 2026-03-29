@@ -1,16 +1,5 @@
 import type { ImagePlan, RegistrySummary } from "@hooka/contracts";
 import { registrySummarySchema } from "@hooka/contracts";
-import { cloudflareApiCapability } from "@hooka/cap-cloudflare-api";
-import { gitCapability } from "@hooka/cap-git";
-import { phpCliCapability } from "@hooka/cap-php-cli";
-import { rcloneCapability } from "@hooka/cap-rclone";
-import { rsyncCapability } from "@hooka/cap-rsync";
-import { wpcliCapability } from "@hooka/cap-wpcli";
-import { wranglerCapability } from "@hooka/cap-wrangler";
-import { cloudflareTaskPack } from "@hooka/pack-cloudflare";
-import { cloudflareCacheTaskPack } from "@hooka/pack-cloudflare-cache";
-import { wordpressTaskPack } from "@hooka/pack-wordpress";
-import { wordpressCloudflareTaskPack } from "@hooka/pack-wordpress-cloudflare";
 import { listActiveWorkerPresets } from "@hooka/preset-catalog";
 import {
   collectCapabilityEnvRequirements,
@@ -18,27 +7,18 @@ import {
 } from "@hooka/runtime-contracts";
 import type {
   AnyTask,
+  CompatibilityWebhookAdapter,
   CapabilityDefinition,
   PresetDefinition,
   TaskPackDefinition,
 } from "@hooka/task-sdk";
+import { discoverRegistryArtifacts } from "./discovery";
 
-const capabilities = [
-  cloudflareApiCapability,
-  wranglerCapability,
-  wpcliCapability,
-  phpCliCapability,
-  rsyncCapability,
-  gitCapability,
-  rcloneCapability,
-] satisfies CapabilityDefinition[];
-
-const taskPacks = [
-  cloudflareTaskPack,
-  cloudflareCacheTaskPack,
-  wordpressTaskPack,
-  wordpressCloudflareTaskPack,
-] satisfies TaskPackDefinition[];
+const discovery = await discoverRegistryArtifacts();
+const webhookAdapters =
+  discovery.webhookAdapters satisfies CompatibilityWebhookAdapter[];
+const capabilities = discovery.capabilities satisfies CapabilityDefinition[];
+const taskPacks = discovery.taskPacks satisfies TaskPackDefinition[];
 
 const presets = listActiveWorkerPresets() satisfies PresetDefinition[];
 
@@ -52,6 +32,10 @@ const presetMap = createAliasMap(presets);
 
 export function listCapabilities(): CapabilityDefinition[] {
   return [...capabilities];
+}
+
+export function listWebhookAdapters(): CompatibilityWebhookAdapter[] {
+  return [...webhookAdapters];
 }
 
 export function listTaskPacks(): TaskPackDefinition[] {
@@ -96,17 +80,44 @@ export function getTaskPack(packId: string): TaskPackDefinition | undefined {
 }
 
 export function validateRegistry(): { ok: boolean; errors: string[] } {
+  const result = validateRegistryState({
+    capabilities,
+    taskPacks,
+    presets,
+    tasks,
+    webhookAdapters,
+  });
+
+  return {
+    ok: result.ok,
+    errors: [...discovery.errors, ...result.errors],
+  };
+}
+
+export function validateRegistryState(input: {
+  capabilities: CapabilityDefinition[];
+  taskPacks: TaskPackDefinition[];
+  presets: PresetDefinition[];
+  tasks: AnyTask[];
+  webhookAdapters: CompatibilityWebhookAdapter[];
+}): { ok: boolean; errors: string[] } {
   const errors: string[] = [];
   const duplicateTaskIds = findDuplicates([
-    ...tasks.map((task) => task.id),
-    ...tasks.flatMap((task) => task.aliases ?? []),
+    ...input.tasks.map((task) => task.id),
+    ...input.tasks.flatMap((task) => task.aliases ?? []),
   ]);
   const duplicateCapabilityIds = findDuplicates(
-    capabilities.map((capability) => capability.id),
+    input.capabilities.map((capability) => capability.id),
+  );
+  const duplicateWebhookAdapterIds = findDuplicates(
+    input.webhookAdapters.map((adapter) => adapter.id),
+  );
+  const duplicateWebhookRoutePaths = findDuplicates(
+    input.webhookAdapters.map((adapter) => adapter.routePath),
   );
   const duplicatePresetIds = findDuplicates([
-    ...presets.map((preset) => preset.id),
-    ...presets.flatMap((preset) => preset.aliases ?? []),
+    ...input.presets.map((preset) => preset.id),
+    ...input.presets.flatMap((preset) => preset.aliases ?? []),
   ]);
 
   for (const taskId of duplicateTaskIds) {
@@ -117,11 +128,21 @@ export function validateRegistry(): { ok: boolean; errors: string[] } {
     errors.push(`Duplicate capability id detected: ${capabilityId}`);
   }
 
+  for (const adapterId of duplicateWebhookAdapterIds) {
+    errors.push(`Duplicate webhook adapter id detected: ${adapterId}`);
+  }
+
+  for (const routePath of duplicateWebhookRoutePaths) {
+    errors.push(`Duplicate webhook adapter route detected: ${routePath}`);
+  }
+
   for (const presetId of duplicatePresetIds) {
     errors.push(`Duplicate preset id detected: ${presetId}`);
   }
 
-  for (const preset of presets) {
+  const taskPackMap = new Map(input.taskPacks.map((pack) => [pack.id, pack]));
+
+  for (const preset of input.presets) {
     for (const packId of preset.taskPacks) {
       if (!taskPackMap.has(packId)) {
         errors.push(`Preset ${preset.id} references missing task pack ${packId}`);

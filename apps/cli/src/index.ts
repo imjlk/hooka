@@ -4,6 +4,7 @@ import { createDoctorCommand } from "./commands/doctor";
 import { createImageCommandGroup } from "./commands/image";
 import { createRunCommandGroup } from "./commands/run";
 import { createTaskCommandGroup } from "./commands/task";
+import { createWebhookCommandGroup } from "./commands/webhook";
 import { cliDefaults } from "./lib/shared";
 
 const cli = await createCLI({
@@ -21,6 +22,7 @@ cli.command(createCapabilityCommandGroup());
 cli.command(createImageCommandGroup(cliDefaults));
 cli.command(createRunCommandGroup(cliDefaults));
 cli.command(createDoctorCommand(cliDefaults));
+cli.command(createWebhookCommandGroup());
 
 await cli.init();
 await cli.run();
