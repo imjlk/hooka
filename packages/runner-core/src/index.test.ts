@@ -1,5 +1,7 @@
 import { expect, test } from "bun:test";
-import { loadInstalledCapabilities } from "./index";
+import { defineTask } from "@hooka/task-sdk";
+import { z } from "zod";
+import { loadInstalledCapabilities, runTask } from "./index";
 
 test("loadInstalledCapabilities honors HOOKA_INSTALLED_CAPABILITIES override", async () => {
   const previousCapabilities = Bun.env.HOOKA_INSTALLED_CAPABILITIES;
@@ -26,4 +28,36 @@ test("loadInstalledCapabilities honors HOOKA_INSTALLED_CAPABILITIES override", a
       Bun.env.HOOKA_RUNTIME_ROLE = previousRole;
     }
   }
+});
+
+test("internal executor failures return failed task results", async () => {
+  const task = defineTask({
+    id: "internal.fails",
+    title: "Internal failure",
+    input: z.object({
+      value: z.string(),
+    }),
+    requires: [],
+    executor: {
+      kind: "internal",
+      run: async () => {
+        throw new Error("boom");
+      },
+    },
+  });
+
+  const result = await runTask(
+    task,
+    {
+      value: "hello",
+    },
+    {
+      installedCapabilities: [],
+    },
+  );
+
+  expect(result.ok).toBe(false);
+  expect(result.status).toBe("failed");
+  expect(result.summary).toBe("boom");
+  expect(result.stderr).toBe("boom");
 });

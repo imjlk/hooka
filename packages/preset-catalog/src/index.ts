@@ -48,7 +48,7 @@ export const cfPagesPreset = definePreset({
   publicWorkerTag: "cf-pages",
   legacyImageTags: ["cf-wrangler", "wrangler-worker"],
   capabilities: ["wrangler"],
-  taskPacks: ["@hooka/pack-cloudflare", "@hooka/pack-webhook-wrangler"],
+  taskPacks: ["@hooka/pack-cloudflare", "@hooka/pack-wordpress-cloudflare"],
 });
 
 export const cfCachePreset = definePreset({
@@ -88,7 +88,7 @@ export const wpWranglerPreset = definePreset({
   taskPacks: [
     "@hooka/pack-wordpress",
     "@hooka/pack-cloudflare",
-    "@hooka/pack-webhook-wrangler",
+    "@hooka/pack-wordpress-cloudflare",
   ],
 });
 

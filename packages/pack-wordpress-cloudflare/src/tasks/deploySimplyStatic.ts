@@ -1,5 +1,5 @@
-import { sharedVolumeWranglerInputSchema } from "@hooka/contracts";
 import { defineTask } from "@hooka/task-sdk";
+import { sharedVolumeWranglerInputSchema } from "../schema";
 
 export const sharedVolumeWranglerInput = sharedVolumeWranglerInputSchema;
 export const deploySimplyStaticInput = sharedVolumeWranglerInput;
@@ -22,7 +22,16 @@ export const sharedVolumeWranglerTask = defineTask({
       "--project-name",
       input.project,
       ...(input.branch ? ["--branch", input.branch] : []),
-      ...(input.commitSha ? ["--commit-dirty=true"] : []),
+      ...(input.commitSha ? ["--commit-hash", input.commitSha] : []),
+      ...(input.commitMessage
+        ? ["--commit-message", input.commitMessage]
+        : []),
+      ...(input.commitDirty === undefined
+        ? []
+        : [`--commit-dirty=${input.commitDirty}`]),
+      ...(input.skipCaching ? ["--skip-caching"] : []),
+      ...(input.noBundle ? ["--no-bundle"] : []),
+      ...(input.uploadSourceMaps ? ["--upload-source-maps"] : []),
     ],
   },
   tags: ["wrangler", "deploy", "shared-volume"],

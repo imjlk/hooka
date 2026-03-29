@@ -110,47 +110,68 @@ export async function runTask<TSchema extends TaskInputSchema>(
         env,
       },
     );
-    return capabilityWarning
-      ? {
-          ...result,
-          summary: [result.summary, capabilityWarning].filter(Boolean).join(" "),
-        }
-      : result;
+    return appendCapabilityWarning(result, capabilityWarning);
   }
 
   if (task.executor.kind === "http") {
-    const result = await runHttpTask(task, input as z.output<TSchema>, dryRun);
-    return capabilityWarning
-      ? {
-          ...result,
-          summary: [result.summary, capabilityWarning].filter(Boolean).join(" "),
-        }
-      : result;
+    const result = await runHttpTask(task, input as z.output<TSchema>, dryRun, {
+      env,
+    });
+    return appendCapabilityWarning(result, capabilityWarning);
   }
 
   const startedAt = performance.now();
-  const data = await task.executor.run({
-    input: input as z.output<TSchema>,
-    dryRun,
-    env,
-  });
+  try {
+    const data = await task.executor.run({
+      input: input as z.output<TSchema>,
+      dryRun,
+      env,
+    });
+
+    return appendCapabilityWarning(
+      {
+        taskId: task.id,
+        ok: true,
+        status: dryRun ? "skipped" : "succeeded",
+        summary:
+          task.executor.summarize?.({
+            input: input as z.output<TSchema>,
+            dryRun,
+            env,
+            data,
+          }) ?? `${task.id} finished.`,
+        durationMs: performance.now() - startedAt,
+        data,
+      },
+      capabilityWarning,
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+
+    return appendCapabilityWarning(
+      {
+        taskId: task.id,
+        ok: false,
+        status: "failed",
+        stderr: message,
+        summary: message,
+        durationMs: performance.now() - startedAt,
+      },
+      capabilityWarning,
+    );
+  }
+}
+
+function appendCapabilityWarning(
+  result: TaskRunResult,
+  capabilityWarning?: string,
+): TaskRunResult {
+  if (!capabilityWarning) {
+    return result;
+  }
 
   return {
-    taskId: task.id,
-    ok: true,
-    status: dryRun ? "skipped" : "succeeded",
-    summary: [
-      task.executor.summarize?.({
-        input: input as z.output<TSchema>,
-        dryRun,
-        env,
-        data,
-      }) ?? `${task.id} finished.`,
-      capabilityWarning,
-    ]
-      .filter(Boolean)
-      .join(" "),
-    durationMs: performance.now() - startedAt,
-    data,
+    ...result,
+    summary: [result.summary, capabilityWarning].filter(Boolean).join(" "),
   };
 }

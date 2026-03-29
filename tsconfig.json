@@ -36,7 +36,6 @@
     "apps/**/*.ts",
     "apps/**/*.tsx",
     "packages/**/*.ts",
-    "packages/**/*.tsx",
-    "presets/**/*.ts"
+    "packages/**/*.tsx"
   ]
 }

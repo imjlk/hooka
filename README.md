@@ -31,7 +31,6 @@ packages/
   admin-ui/  Static dashboard bundle
   cap-*/     Capability contracts
   pack-*/    Task packs
-presets/     Public image presets
 docker/      Dockerfile, Bake file, feature installers, manifests
 ```
 

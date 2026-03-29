@@ -1,13 +1,15 @@
 import {
   enqueueRunRequestSchema,
   genericTaskWebhookSchema,
-  wordpressSimplyStaticWebhookSchema,
 } from "@hooka/contracts";
 import type {
   EnqueueRunRequest,
   GenericTaskWebhook,
-  WordpressSimplyStaticWebhook,
 } from "@hooka/contracts";
+import {
+  wordpressSimplyStaticWebhookSchema,
+  type WordpressSimplyStaticWebhook,
+} from "@hooka/pack-wordpress-cloudflare";
 import { createHmac, timingSafeEqual } from "node:crypto";
 
 const allowedClockSkewSeconds = 300;
@@ -105,6 +107,11 @@ export function normalizeWordpressSimplyStaticWebhook(
       sourcePath: payload.exportDir,
       branch: payload.branch,
       commitSha: payload.commitSha,
+      commitMessage: payload.commitMessage,
+      commitDirty: payload.commitDirty,
+      skipCaching: payload.skipCaching,
+      noBundle: payload.noBundle,
+      uploadSourceMaps: payload.uploadSourceMaps,
     },
     eventId: payload.eventId,
     source: "wordpress.webhook",

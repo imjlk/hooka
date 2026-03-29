@@ -2,16 +2,21 @@ import type { TaskRunResult } from "@hooka/contracts";
 import type { HookaTask, TaskInputSchema } from "@hooka/task-sdk";
 import { z } from "zod";
 
+export interface RunHttpTaskOptions {
+  env?: Record<string, string | undefined>;
+}
+
 export async function runHttpTask<TSchema extends TaskInputSchema>(
   task: HookaTask<TSchema>,
   input: z.output<TSchema>,
   dryRun = false,
+  options: RunHttpTaskOptions = {},
 ): Promise<TaskRunResult> {
   const startedAt = performance.now();
   const context = {
     input,
     dryRun,
-    env: Bun.env as Record<string, string | undefined>,
+    env: options.env ?? (Bun.env as Record<string, string | undefined>),
   };
   const executor = task.executor;
 
