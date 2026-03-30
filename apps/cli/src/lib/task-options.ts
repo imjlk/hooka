@@ -130,7 +130,7 @@ function unwrapSchema(schema: z.ZodTypeAny): {
 } {
   let current: z.ZodTypeAny = schema;
   let optional = false;
-  let defaultValue: unknown = undefined;
+  let defaultValue: unknown;
 
   while (true) {
     if (current instanceof z.ZodOptional || current instanceof z.ZodNullable) {
@@ -141,12 +141,14 @@ function unwrapSchema(schema: z.ZodTypeAny): {
 
     if (current instanceof z.ZodDefault) {
       optional = true;
-      const defaultGetter = (current as z.ZodDefault<z.ZodTypeAny> & {
-        _def: {
-          defaultValue: unknown;
-          innerType: z.ZodTypeAny;
-        };
-      })._def;
+      const defaultGetter = (
+        current as z.ZodDefault<z.ZodTypeAny> & {
+          _def: {
+            defaultValue: unknown;
+            innerType: z.ZodTypeAny;
+          };
+        }
+      )._def;
       defaultValue =
         typeof defaultGetter.defaultValue === "function"
           ? (defaultGetter.defaultValue as () => unknown)()

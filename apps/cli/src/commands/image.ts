@@ -8,10 +8,7 @@ import {
 import { resolve } from "node:path";
 import { z } from "zod";
 import type { CliDefaults } from "../lib/shared";
-import {
-  ensureParentDirectory,
-  parseFeatureList,
-} from "../lib/shared";
+import { ensureParentDirectory, parseFeatureList } from "../lib/shared";
 
 export function createImageCommandGroup(defaults: CliDefaults) {
   return defineGroup({
@@ -139,7 +136,10 @@ export function createImageCommandGroup(defaults: CliDefaults) {
 
           if (!flags["dry-run"]) {
             await ensureParentDirectory(flags.manifest);
-            await Bun.write(flags.manifest, `${JSON.stringify(manifest, null, 2)}\n`);
+            await Bun.write(
+              flags.manifest,
+              `${JSON.stringify(manifest, null, 2)}\n`,
+            );
           }
 
           console.log(JSON.stringify(manifest, null, 2));

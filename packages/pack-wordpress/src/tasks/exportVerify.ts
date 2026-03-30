@@ -24,11 +24,11 @@ export const exportVerifyTask = defineTask({
         };
       }
 
-      let directoryStat;
+      let directoryStat: Awaited<ReturnType<typeof stat>> | null = null;
       try {
         directoryStat = await stat(input.exportDir);
       } catch {
-        directoryStat = null;
+        // Keep the null sentinel so we can produce a clearer not-found error below.
       }
 
       if (!directoryStat?.isDirectory()) {

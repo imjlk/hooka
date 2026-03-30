@@ -15,9 +15,7 @@ import {
   toRunEvent,
   toRunSummary,
 } from "./mappers";
-import {
-  normalizeRunSummaryFilters,
-} from "./rows";
+import { normalizeRunSummaryFilters } from "./rows";
 import type {
   ClaimedRun,
   EnqueueRunInput,
@@ -100,15 +98,10 @@ export class RunStore {
           queuedAt,
         );
 
-      this.insertEvent(
-        runId,
-        "queued",
-        `Run queued for ${input.taskId}.`,
-        {
-          source: input.source,
-          sourceEventId: input.sourceEventId ?? null,
-        },
-      );
+      this.insertEvent(runId, "queued", `Run queued for ${input.taskId}.`, {
+        source: input.source,
+        sourceEventId: input.sourceEventId ?? null,
+      });
 
       const createdRun = this.requireRun(runId);
       return {
@@ -238,7 +231,9 @@ export class RunStore {
     }
 
     const startedAt = this.timestamp();
-    const leaseExpiresAt = new Date(this.now().getTime() + leaseMs).toISOString();
+    const leaseExpiresAt = new Date(
+      this.now().getTime() + leaseMs,
+    ).toISOString();
     const changes = this.db
       .query(
         `update runs
@@ -278,7 +273,9 @@ export class RunStore {
     return this.withTransaction(() => {
       const finishedAt = this.timestamp();
       const errorText =
-        result.status === "failed" ? (result.stderr ?? result.summary ?? null) : null;
+        result.status === "failed"
+          ? (result.stderr ?? result.summary ?? null)
+          : null;
 
       this.db
         .query(

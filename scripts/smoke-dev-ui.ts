@@ -39,7 +39,9 @@ const stderrDrain = new Response(child.stderr).text();
 
 try {
   await waitFor(async () => {
-    const response = await fetch(`http://127.0.0.1:${uiPort}/`).catch(() => null);
+    const response = await fetch(`http://127.0.0.1:${uiPort}/`).catch(
+      () => null,
+    );
     if (!response?.ok) {
       return false;
     }
@@ -49,9 +51,9 @@ try {
   }, 20_000);
 
   await waitFor(async () => {
-    const response = await fetch(
-      `http://127.0.0.1:${uiPort}/api/health`,
-    ).catch(() => null);
+    const response = await fetch(`http://127.0.0.1:${uiPort}/api/health`).catch(
+      () => null,
+    );
 
     if (!response?.ok) {
       return false;

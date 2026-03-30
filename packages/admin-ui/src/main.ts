@@ -15,10 +15,7 @@ import {
   renderSummaryCards,
   renderTaskAvailability,
 } from "./views/summary";
-import {
-  renderPresetDetail,
-  renderPresetList,
-} from "./views/presets";
+import { renderPresetDetail, renderPresetList } from "./views/presets";
 import {
   renderRunDetail,
   renderRunDetailPlaceholder,
@@ -63,8 +60,8 @@ document.addEventListener("click", (event) => {
 
   const runTrigger = target.closest<HTMLElement>("[data-run-id]");
 
-  if (runTrigger?.dataset.runId) {
-    state.activeRunId = runTrigger.dataset.runId;
+  if (runTrigger?.dataset["runId"]) {
+    state.activeRunId = runTrigger.dataset["runId"];
     syncSelectedRows("[data-run-id]", state.activeRunId);
     void loadRunDetail(state.activeRunId);
     return;
@@ -72,8 +69,8 @@ document.addEventListener("click", (event) => {
 
   const presetTrigger = target.closest<HTMLElement>("[data-preset-id]");
 
-  if (presetTrigger?.dataset.presetId) {
-    state.activePresetId = presetTrigger.dataset.presetId;
+  if (presetTrigger?.dataset["presetId"]) {
+    state.activePresetId = presetTrigger.dataset["presetId"];
     syncSelectedRows("[data-preset-id]", state.activePresetId);
     renderPresetPanels();
     return;
@@ -127,7 +124,9 @@ async function hydrate(): Promise<void> {
     }
 
     if (!capabilitiesResponse.ok) {
-      throw new Error(`Capabilities API returned ${capabilitiesResponse.status}`);
+      throw new Error(
+        `Capabilities API returned ${capabilitiesResponse.status}`,
+      );
     }
 
     state.summary = (await summaryResponse.json()) as Summary;
@@ -142,7 +141,8 @@ async function hydrate(): Promise<void> {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
 
-    getElement("summary-cards").innerHTML = `<p class="muted">Failed to load summary: ${escapeHtml(message)}</p>`;
+    getElement("summary-cards").innerHTML =
+      `<p class="muted">Failed to load summary: ${escapeHtml(message)}</p>`;
     getElement("installed-capabilities").innerHTML =
       `<p class="muted">API unavailable.</p>`;
     getElement("capability-env").innerHTML =
@@ -155,8 +155,9 @@ async function hydrate(): Promise<void> {
       `<p class="muted">Task data unavailable.</p>`;
     getElement("run-list").innerHTML =
       `<p class="muted">Run data unavailable.</p>`;
-    getElement("run-detail").innerHTML =
-      renderRunDetailPlaceholder("Run detail unavailable.");
+    getElement("run-detail").innerHTML = renderRunDetailPlaceholder(
+      "Run detail unavailable.",
+    );
   }
 }
 

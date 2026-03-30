@@ -22,8 +22,5 @@ export const wranglerCapability = defineCapability({
     feature: "wrangler",
     installScript: "docker/features/wrangler.sh",
   },
-  tasks: [
-    "cloudflare.pages.deploy",
-    "deploy.shared-volume.wrangler",
-  ],
+  tasks: ["cloudflare.pages.deploy", "deploy.shared-volume.wrangler"],
 });

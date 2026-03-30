@@ -30,11 +30,13 @@ test("cf-pages, cf-cache, and wp-wrangler presets cover the active worker taxono
   expect(cfPagesPlan?.missingCapabilitiesByTask).toEqual({});
   expect(cfCachePlan?.coveredTasks).toContain("cloudflare.cache.purge.urls");
   expect(cfCachePlan?.capabilities).toEqual(["cloudflare-api"]);
-  expect(
-    recommendPresetForTasks(["deploy.shared-volume.wrangler"])?.id,
-  ).toBe("cf-pages");
+  expect(recommendPresetForTasks(["deploy.shared-volume.wrangler"])?.id).toBe(
+    "cf-pages",
+  );
   expect(wpWranglerPlan?.coveredTasks).toContain("wordpress.wpcli.eval");
-  expect(wpWranglerPlan?.coveredTasks).toContain("deploy.shared-volume.wrangler");
+  expect(wpWranglerPlan?.coveredTasks).toContain(
+    "deploy.shared-volume.wrangler",
+  );
 });
 
 test("registry resolves task and preset aliases to canonical definitions", () => {
@@ -43,7 +45,9 @@ test("registry resolves task and preset aliases to canonical definitions", () =>
   );
   expect(getPreset("cf-wrangler")?.id).toBe("cf-pages");
   expect(getPreset("webhook-wrangler")?.id).toBe("wp-wrangler");
-  expect(listTasks().map((task) => task.id)).not.toContain("wordpress.deploy.simply-static");
+  expect(listTasks().map((task) => task.id)).not.toContain(
+    "wordpress.deploy.simply-static",
+  );
   expect(listPresets().map((preset) => preset.id)).toEqual([
     "core",
     "cf-pages",

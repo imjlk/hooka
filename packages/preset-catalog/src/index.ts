@@ -139,7 +139,8 @@ export const plannedWorkerPresets = [
   {
     id: "wp-cache-safe",
     title: "WordPress Cache Safe",
-    description: "Combo worker for WordPress cache operations and safe CDN purge.",
+    description:
+      "Combo worker for WordPress cache operations and safe CDN purge.",
     tier: "combo",
     publicWorkerTag: "wp-cache-safe",
   },
@@ -153,7 +154,8 @@ export const plannedWorkerPresets = [
   {
     id: "wp-migrate",
     title: "WordPress Migrate",
-    description: "Combo worker for WordPress migration and search-replace flows.",
+    description:
+      "Combo worker for WordPress migration and search-replace flows.",
     tier: "combo",
     publicWorkerTag: "wp-migrate",
   },
@@ -181,7 +183,8 @@ export const plannedWorkerPresets = [
   {
     id: "smoke-http",
     title: "Smoke HTTP",
-    description: "Combo worker for post-deploy health checks and follow-up webhooks.",
+    description:
+      "Combo worker for post-deploy health checks and follow-up webhooks.",
     tier: "combo",
     publicWorkerTag: "smoke-http",
   },
@@ -236,11 +239,18 @@ export function getWorkerPresetCatalogEntry(
 }
 
 export function getWorkerPresetTags(preset: PresetDefinition): string[] {
-  return [...new Set([preset.publicWorkerTag ?? preset.imageTag, ...(preset.legacyImageTags ?? [])])];
+  return [
+    ...new Set([
+      preset.publicWorkerTag ?? preset.imageTag,
+      ...(preset.legacyImageTags ?? []),
+    ]),
+  ];
 }
 
 export function getWorkerPresetFeatures(preset: PresetDefinition): string {
-  return preset.capabilities.length > 0 ? preset.capabilities.join(",") : "core";
+  return preset.capabilities.length > 0
+    ? preset.capabilities.join(",")
+    : "core";
 }
 
 export function getWorkerPresetInstalledCapabilities(
@@ -270,7 +280,7 @@ export function getWorkerPresetBuildSpec(
 }
 
 export function renderDockerBakeHcl(registry = "ghcr.io/imjlk/hooka"): string {
-  const registryRef = "${REGISTRY}";
+  const registryRef = "$" + "{REGISTRY}";
   const workerTargets = activeWorkerPresets.map((preset) => {
     const tags = getWorkerPresetTags(preset)
       .map((tag) => `"${registryRef}:${tag}"`)

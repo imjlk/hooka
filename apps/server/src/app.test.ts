@@ -22,7 +22,10 @@ async function createTestServerApp() {
     }),
   );
   await ensureDir(uiDistDir);
-  await Bun.write(join(uiDistDir, "index.html"), "<!doctype html><html></html>");
+  await Bun.write(
+    join(uiDistDir, "index.html"),
+    "<!doctype html><html></html>",
+  );
 
   return {
     fetch: createHookaFetchHandler({
@@ -109,7 +112,9 @@ test("signed simply static webhook is idempotent by event id", async () => {
   expect(first.headers.get("x-content-type-options")).toBe("nosniff");
   expect(second.headers.get("x-frame-options")).toBe("DENY");
 
-  const runsResponse = await app.fetch(new Request("http://hooka.local/api/runs"));
+  const runsResponse = await app.fetch(
+    new Request("http://hooka.local/api/runs"),
+  );
   const runs = await runsResponse.json();
   expect(runs).toHaveLength(1);
 
@@ -203,7 +208,9 @@ test("registry APIs expose canonical task and preset ids", async () => {
     presets: Array<{ id: string }>;
   };
 
-  expect(tasks.map((task) => task.id)).toContain("deploy.shared-volume.wrangler");
+  expect(tasks.map((task) => task.id)).toContain(
+    "deploy.shared-volume.wrangler",
+  );
   expect(tasks.map((task) => task.id)).not.toContain(
     "wordpress.deploy.simply-static",
   );
@@ -263,7 +270,9 @@ test("run list API supports status, taskId, and source filters", async () => {
         "http://hooka.local/api/runs?taskId=cloudflare.cache.purge.urls",
       ),
     ),
-    app.fetch(new Request("http://hooka.local/api/runs?source=wordpress.webhook")),
+    app.fetch(
+      new Request("http://hooka.local/api/runs?source=wordpress.webhook"),
+    ),
   ]);
 
   const [statusRuns, taskRuns, sourceRuns] = await Promise.all([

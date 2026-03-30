@@ -2,10 +2,7 @@ import {
   enqueueRunRequestSchema,
   genericTaskWebhookSchema,
 } from "@hooka/contracts";
-import type {
-  EnqueueRunRequest,
-  GenericTaskWebhook,
-} from "@hooka/contracts";
+import type { EnqueueRunRequest, GenericTaskWebhook } from "@hooka/contracts";
 import { createHmac, timingSafeEqual } from "node:crypto";
 
 const allowedClockSkewSeconds = 300;

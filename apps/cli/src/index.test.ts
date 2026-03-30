@@ -6,12 +6,7 @@ const bunBinary = process.execPath;
 const cwd = process.cwd();
 
 test("image plan exposes the active cf-pages preset contract", async () => {
-  const result = await runCli([
-    "image",
-    "plan",
-    "--preset",
-    "cf-pages",
-  ]);
+  const result = await runCli(["image", "plan", "--preset", "cf-pages"]);
 
   expect(result.exitCode).toBe(0);
   const plan = JSON.parse(result.stdout) as {
@@ -35,12 +30,7 @@ test("image plan exposes the active cf-pages preset contract", async () => {
 });
 
 test("image plan exposes the active cf-cache preset contract", async () => {
-  const result = await runCli([
-    "image",
-    "plan",
-    "--preset",
-    "cf-cache",
-  ]);
+  const result = await runCli(["image", "plan", "--preset", "cf-cache"]);
 
   expect(result.exitCode).toBe(0);
   const plan = JSON.parse(result.stdout) as {
@@ -74,7 +64,11 @@ test("doctor reports missing env for installed wrangler capability", async () =>
 
   const report = JSON.parse(result.stdout) as {
     installed: string[];
-    missingEnv: Array<{ capabilityId: string; match: string; missingNames: string[] }>;
+    missingEnv: Array<{
+      capabilityId: string;
+      match: string;
+      missingNames: string[];
+    }>;
   };
 
   expect(report.installed).toEqual(["wrangler"]);

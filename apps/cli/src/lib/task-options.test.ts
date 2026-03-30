@@ -1,9 +1,6 @@
 import { expect, test } from "bun:test";
 import { deploySimplyStaticTask } from "@hooka/pack-wordpress-cloudflare";
-import {
-  buildTaskInputFromFlags,
-  taskToBunliOptions,
-} from "./task-options";
+import { buildTaskInputFromFlags, taskToBunliOptions } from "./task-options";
 
 test("scalar task schemas turn into bunli options", () => {
   const options = taskToBunliOptions(deploySimplyStaticTask);

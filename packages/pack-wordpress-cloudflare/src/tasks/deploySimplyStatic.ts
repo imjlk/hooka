@@ -23,9 +23,7 @@ export const sharedVolumeWranglerTask = defineTask({
       input.project,
       ...(input.branch ? ["--branch", input.branch] : []),
       ...(input.commitSha ? ["--commit-hash", input.commitSha] : []),
-      ...(input.commitMessage
-        ? ["--commit-message", input.commitMessage]
-        : []),
+      ...(input.commitMessage ? ["--commit-message", input.commitMessage] : []),
       ...(input.commitDirty === undefined
         ? []
         : [`--commit-dirty=${input.commitDirty}`]),

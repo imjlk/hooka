@@ -26,7 +26,7 @@ export const purgeCacheUrlsTask = defineTask({
     url: ({ input }) =>
       `https://api.cloudflare.com/client/v4/zones/${input.zoneId}/purge_cache`,
     headers: ({ env }) => ({
-      Authorization: `Bearer ${env.CLOUDFLARE_API_TOKEN ?? ""}`,
+      Authorization: `Bearer ${env["CLOUDFLARE_API_TOKEN"] ?? ""}`,
     }),
     body: ({ input }) => ({
       files: parseUrls(input.urls),

@@ -1,4 +1,4 @@
-import { ensureParentDir } from "@hooka/bun-utils";
+import { ensureParentDir, getEnvOrDefault } from "@hooka/bun-utils";
 import { defaultHookaDbPath } from "@hooka/run-store";
 import { getDefaultManifestPath } from "@hooka/runner-core";
 
@@ -9,7 +9,7 @@ export interface CliDefaults {
 
 export const cliDefaults: CliDefaults = {
   manifestPath: getDefaultManifestPath(),
-  dbPath: Bun.env.HOOKA_DB_PATH ?? defaultHookaDbPath,
+  dbPath: getEnvOrDefault("HOOKA_DB_PATH", defaultHookaDbPath),
 };
 
 export function parseFeatureList(value: string): string[] {

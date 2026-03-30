@@ -14,7 +14,8 @@ const serverImageTag = `${imagePrefix}-server`;
 const workerImageTag = `${imagePrefix}-cf-pages`;
 const legacyWorkerImageTag = `${imagePrefix}-wrangler-worker`;
 const mockBinDir = resolve(repoRoot, "docker/e2e/mock-bin");
-const defaultPath = "/mock-bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin";
+const defaultPath =
+  "/mock-bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin";
 const $ = Bun.$.cwd(repoRoot);
 const cfPagesSpec = getWorkerPresetBuildSpec("cf-pages");
 
@@ -108,7 +109,9 @@ async function runScenario(input: {
     const wranglerLog = await readTextFile(join(dataDir, "mock-wrangler.log"));
 
     if (!wranglerLog.includes("pages deploy /shared-source/export")) {
-      throw new Error(`${input.name}: mock wrangler was not called with pages deploy.`);
+      throw new Error(
+        `${input.name}: mock wrangler was not called with pages deploy.`,
+      );
     }
   } finally {
     await $`docker logs ${serverName}`.quiet().nothrow();
@@ -127,7 +130,9 @@ async function resolvePublishedPort(containerName: string): Promise<number> {
     .find((value) => value.length > 0 && !value.startsWith(":::"));
 
   if (!line) {
-    throw new Error(`Could not resolve a published host port for ${containerName}.`);
+    throw new Error(
+      `Could not resolve a published host port for ${containerName}.`,
+    );
   }
 
   const portText = line.split(":").at(-1);
@@ -177,7 +182,9 @@ async function enqueueGenericWebhook(
   });
 
   if (!response.ok) {
-    throw new Error(`Failed to enqueue webhook: ${response.status} ${await response.text()}`);
+    throw new Error(
+      `Failed to enqueue webhook: ${response.status} ${await response.text()}`,
+    );
   }
 
   const body = (await response.json()) as { runId: string };

@@ -3,7 +3,8 @@ import { defineCapability } from "@hooka/task-sdk";
 export const cloudflareApiCapability = defineCapability({
   id: "cloudflare-api",
   title: "Cloudflare API",
-  description: "Direct Cloudflare API access for cache purge and future control-plane tasks.",
+  description:
+    "Direct Cloudflare API access for cache purge and future control-plane tasks.",
   binaries: ["bun"],
   requiredEnv: [
     {

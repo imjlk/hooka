@@ -20,7 +20,9 @@ export function renderSummaryCards(summary: Summary): string {
 export function renderInstalledCapabilities(summary: Summary): string {
   return summary.installedCapabilities.length > 0
     ? summary.installedCapabilities
-        .map((capability) => `<span class="chip">${escapeHtml(capability)}</span>`)
+        .map(
+          (capability) => `<span class="chip">${escapeHtml(capability)}</span>`,
+        )
         .join("")
     : `<p class="muted">No capability manifest loaded yet.</p>`;
 }
@@ -47,7 +49,9 @@ export function renderCapabilityEnv(
               </div>
               <div class="stack">
                 ${row.names
-                  .map((name) => `<span class="chip">${escapeHtml(name)}</span>`)
+                  .map(
+                    (name) => `<span class="chip">${escapeHtml(name)}</span>`,
+                  )
                   .join("")}
               </div>
             </div>
@@ -72,7 +76,10 @@ export function renderTaskAvailability(summary: Summary): string {
           <div class="task-meta">
             <div class="chips">
               ${task.requires
-                .map((requirement) => `<span class="chip">${escapeHtml(requirement)}</span>`)
+                .map(
+                  (requirement) =>
+                    `<span class="chip">${escapeHtml(requirement)}</span>`,
+                )
                 .join("")}
             </div>
             <span class="status ${statusClass}">${statusLabel}</span>

@@ -5,15 +5,16 @@ import {
   type WordpressSimplyStaticWebhook,
 } from "./schema";
 
-export const wordpressSimplyStaticWebhookAdapter: CompatibilityWebhookAdapter = {
-  id: "wordpress.simply-static",
-  routePath: "/api/webhooks/wordpress/simply-static",
-  normalize(rawBody: string): GenericTaskWebhook {
-    return normalizeWordpressSimplyStaticWebhook(
-      parseWordpressSimplyStaticWebhook(rawBody),
-    );
-  },
-};
+export const wordpressSimplyStaticWebhookAdapter: CompatibilityWebhookAdapter =
+  {
+    id: "wordpress.simply-static",
+    routePath: "/api/webhooks/wordpress/simply-static",
+    normalize(rawBody: string): GenericTaskWebhook {
+      return normalizeWordpressSimplyStaticWebhook(
+        parseWordpressSimplyStaticWebhook(rawBody),
+      );
+    },
+  };
 
 export function parseWordpressSimplyStaticWebhook(
   rawBody: string,

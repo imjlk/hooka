@@ -31,6 +31,12 @@ jobs:
       - name: Ensure generated Docker bake file is committed
         run: git diff --exit-code -- docker/docker-bake.hcl
 
+      - name: Lint
+        run: bun run lint
+
+      - name: Format check
+        run: bun run format:check
+
       - name: Typecheck
         run: bun run check
 

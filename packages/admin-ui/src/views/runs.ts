@@ -6,11 +6,7 @@ import {
   type RunSummary,
   type Summary,
 } from "../helpers";
-import {
-  escapeHtml,
-  formatTimestamp,
-  runStatusClass,
-} from "../dom";
+import { escapeHtml, formatTimestamp, runStatusClass } from "../dom";
 
 export function renderRunList(
   runs: RunSummary[],
@@ -76,7 +72,10 @@ export function renderRunDetail(run: RunDetail): string {
           ${
             run.capabilitySnapshot.length > 0
               ? run.capabilitySnapshot
-                  .map((capability) => `<span class="chip">${escapeHtml(capability)}</span>`)
+                  .map(
+                    (capability) =>
+                      `<span class="chip">${escapeHtml(capability)}</span>`,
+                  )
                   .join("")
               : `<p class="muted">No capability snapshot recorded.</p>`
           }

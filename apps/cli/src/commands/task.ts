@@ -85,7 +85,7 @@ function createTaskRunCommands(task: AnyTask, defaults: CliDefaults) {
       name: commandName,
       description:
         commandName === task.id
-          ? task.description ?? task.title
+          ? (task.description ?? task.title)
           : `${task.description ?? task.title} (compat alias for ${task.id})`,
       options: taskToBunliOptions(task, {
         includeDryRun: true,

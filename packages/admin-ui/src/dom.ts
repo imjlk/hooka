@@ -8,9 +8,13 @@ export function getElement(id: string): HTMLElement {
   return element;
 }
 
-export function syncSelectedRows(selector: string, activeId: string | null): void {
+export function syncSelectedRows(
+  selector: string,
+  activeId: string | null,
+): void {
   for (const button of document.querySelectorAll<HTMLElement>(selector)) {
-    const selectedId = button.dataset.runId ?? button.dataset.presetId ?? null;
+    const selectedId =
+      button.dataset["runId"] ?? button.dataset["presetId"] ?? null;
     button.classList.toggle("selected", selectedId === activeId);
   }
 }

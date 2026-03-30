@@ -25,8 +25,9 @@ interface PackageJsonWithHookaRegistry {
   };
 }
 
-type PackageRegistryManifest =
-  NonNullable<PackageJsonWithHookaRegistry["hooka"]>["registry"];
+type PackageRegistryManifest = NonNullable<
+  PackageJsonWithHookaRegistry["hooka"]
+>["registry"];
 
 export interface RegistryDiscoveryResult {
   webhookAdapters: CompatibilityWebhookAdapter[];
@@ -48,8 +49,9 @@ export async function discoverRegistryArtifacts(
 
   for (const relativeManifestPath of (await manifestPaths).sort()) {
     const manifestPath = resolve(resolvedRootDir, relativeManifestPath);
-    const packageJson =
-      (await Bun.file(manifestPath).json()) as PackageJsonWithHookaRegistry;
+    const packageJson = (await Bun.file(
+      manifestPath,
+    ).json()) as PackageJsonWithHookaRegistry;
     const registryManifest = packageJson.hooka?.registry;
 
     if (!registryManifest) {
@@ -209,14 +211,17 @@ function isCapabilityDefinition(value: unknown): value is CapabilityDefinition {
     return false;
   }
 
+  const healthcheck = value["healthcheck"];
+  const binaries = value["binaries"];
+
   return (
-    typeof value.id === "string" &&
-    typeof value.title === "string" &&
-    typeof value.description === "string" &&
-    Array.isArray(value.binaries) &&
-    value.binaries.every((entry) => typeof entry === "string") &&
-    isRecord(value.healthcheck) &&
-    typeof value.healthcheck.command === "string"
+    typeof value["id"] === "string" &&
+    typeof value["title"] === "string" &&
+    typeof value["description"] === "string" &&
+    Array.isArray(binaries) &&
+    binaries.every((entry) => typeof entry === "string") &&
+    isRecord(healthcheck) &&
+    typeof healthcheck["command"] === "string"
   );
 }
 
@@ -225,12 +230,14 @@ function isTaskPackDefinition(value: unknown): value is TaskPackDefinition {
     return false;
   }
 
+  const tasks = value["tasks"];
+
   return (
-    typeof value.id === "string" &&
-    typeof value.title === "string" &&
-    typeof value.description === "string" &&
-    Array.isArray(value.tasks) &&
-    value.tasks.every((task) => isHookaTask(task))
+    typeof value["id"] === "string" &&
+    typeof value["title"] === "string" &&
+    typeof value["description"] === "string" &&
+    Array.isArray(tasks) &&
+    tasks.every((task) => isHookaTask(task))
   );
 }
 
@@ -242,9 +249,9 @@ function isCompatibilityWebhookAdapter(
   }
 
   return (
-    typeof value.id === "string" &&
-    typeof value.routePath === "string" &&
-    typeof value.normalize === "function"
+    typeof value["id"] === "string" &&
+    typeof value["routePath"] === "string" &&
+    typeof value["normalize"] === "function"
   );
 }
 
@@ -253,18 +260,22 @@ function isHookaTask(value: unknown): value is HookaTask {
     return false;
   }
 
+  const requires = value["requires"];
+  const input = value["input"];
+  const executor = value["executor"];
+
   return (
-    typeof value.id === "string" &&
-    typeof value.title === "string" &&
-    Array.isArray(value.requires) &&
-    value.requires.every((entry) => typeof entry === "string") &&
-    isRecord(value.input) &&
-    typeof value.input.parse === "function" &&
-    isRecord(value.executor) &&
-    typeof value.executor.kind === "string"
+    typeof value["id"] === "string" &&
+    typeof value["title"] === "string" &&
+    Array.isArray(requires) &&
+    requires.every((entry) => typeof entry === "string") &&
+    isRecord(input) &&
+    typeof input["parse"] === "function" &&
+    isRecord(executor) &&
+    typeof executor["kind"] === "string"
   );
 }
 
-function isRecord(value: unknown): value is Record<string, any> {
+function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }

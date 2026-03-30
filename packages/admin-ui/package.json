@@ -2,6 +2,9 @@
   "name": "@hooka/admin-ui",
   "private": true,
   "type": "module",
+  "dependencies": {
+    "@hooka/bun-utils": "workspace:*"
+  },
   "scripts": {
     "build": "bun build ./src/index.html --outdir ./dist",
     "dev": "bun --hot ./src/dev.ts"

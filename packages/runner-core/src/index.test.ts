@@ -9,28 +9,30 @@ import {
 } from "./index";
 
 test("loadInstalledCapabilities honors HOOKA_INSTALLED_CAPABILITIES override", async () => {
-  const previousCapabilities = Bun.env.HOOKA_INSTALLED_CAPABILITIES;
-  const previousRole = Bun.env.HOOKA_RUNTIME_ROLE;
+  const previousCapabilities = Bun.env["HOOKA_INSTALLED_CAPABILITIES"];
+  const previousRole = Bun.env["HOOKA_RUNTIME_ROLE"];
 
-  Bun.env.HOOKA_INSTALLED_CAPABILITIES = "wrangler,wpcli,php-cli";
-  Bun.env.HOOKA_RUNTIME_ROLE = "worker:wp-wrangler";
+  Bun.env["HOOKA_INSTALLED_CAPABILITIES"] = "wrangler,wpcli,php-cli";
+  Bun.env["HOOKA_RUNTIME_ROLE"] = "worker:wp-wrangler";
 
   try {
-    const manifest = await loadInstalledCapabilities("/definitely/missing.json");
+    const manifest = await loadInstalledCapabilities(
+      "/definitely/missing.json",
+    );
 
     expect(manifest.installed).toEqual(["wrangler", "wpcli", "php-cli"]);
     expect(manifest.image).toBe("worker:wp-wrangler");
   } finally {
     if (previousCapabilities === undefined) {
-      delete Bun.env.HOOKA_INSTALLED_CAPABILITIES;
+      delete Bun.env["HOOKA_INSTALLED_CAPABILITIES"];
     } else {
-      Bun.env.HOOKA_INSTALLED_CAPABILITIES = previousCapabilities;
+      Bun.env["HOOKA_INSTALLED_CAPABILITIES"] = previousCapabilities;
     }
 
     if (previousRole === undefined) {
-      delete Bun.env.HOOKA_RUNTIME_ROLE;
+      delete Bun.env["HOOKA_RUNTIME_ROLE"];
     } else {
-      Bun.env.HOOKA_RUNTIME_ROLE = previousRole;
+      Bun.env["HOOKA_RUNTIME_ROLE"] = previousRole;
     }
   }
 });
@@ -45,7 +47,7 @@ test("getDefaultManifestPath honors HOOKA_MANIFEST_PATH override", () => {
 
 test("loadInstalledCapabilities reads the repo-local generated manifest by default", async () => {
   const tempDir = join(
-    Bun.env.TMPDIR ?? "/tmp",
+    Bun.env["TMPDIR"] ?? "/tmp",
     `hooka-runner-core-${Date.now()}-${crypto.randomUUID()}`,
   );
   const manifestPath = getDefaultManifestPath(tempDir, {});
@@ -66,7 +68,9 @@ test("loadInstalledCapabilities reads the repo-local generated manifest by defau
 
   expect(manifest.image).toBe("hooka:test");
   expect(manifest.installed).toEqual(["cloudflare-api"]);
-  expect(manifestPath).toBe(join(tempDir, ".hooka", "installed-capabilities.json"));
+  expect(manifestPath).toBe(
+    join(tempDir, ".hooka", "installed-capabilities.json"),
+  );
 });
 
 test("internal executor failures return failed task results", async () => {

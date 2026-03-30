@@ -1,5 +1,5 @@
 import type { GenericTaskWebhook } from "@hooka/contracts";
-import { z } from "zod";
+import type { z } from "zod";
 
 export type TaskInputSchema = z.ZodTypeAny;
 export type TaskCapabilityId = string;

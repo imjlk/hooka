@@ -1,3 +1,4 @@
+import { getEnv } from "@hooka/bun-utils";
 import type {
   InstalledCapabilitiesManifest,
   TaskRunResult,
@@ -8,7 +9,7 @@ import type { CommandRunner } from "@hooka/executor-process";
 import { runProcessTask } from "@hooka/executor-process";
 import type { HookaTask, TaskInputSchema } from "@hooka/task-sdk";
 import { resolve } from "node:path";
-import { z } from "zod";
+import type { z } from "zod";
 
 export interface RunTaskOptions {
   dryRun?: boolean;
@@ -27,7 +28,10 @@ export function getDefaultManifestPath(
     string | undefined
   >,
 ): string {
-  return resolve(cwd, env.HOOKA_MANIFEST_PATH ?? defaultManifestRelativePath);
+  return resolve(
+    cwd,
+    env["HOOKA_MANIFEST_PATH"] ?? defaultManifestRelativePath,
+  );
 }
 
 export function getMissingCapabilities(
@@ -61,10 +65,8 @@ export async function loadInstalledCapabilities(
   return installedCapabilitiesManifestSchema.parse(raw);
 }
 
-function parseInstalledCapabilitiesOverride():
-  | InstalledCapabilitiesManifest
-  | null {
-  const raw = Bun.env.HOOKA_INSTALLED_CAPABILITIES?.trim();
+function parseInstalledCapabilitiesOverride(): InstalledCapabilitiesManifest | null {
+  const raw = getEnv("HOOKA_INSTALLED_CAPABILITIES")?.trim();
 
   if (!raw) {
     return null;
@@ -76,7 +78,7 @@ function parseInstalledCapabilitiesOverride():
     .filter(Boolean);
 
   return installedCapabilitiesManifestSchema.parse({
-    image: Bun.env.HOOKA_RUNTIME_ROLE ?? "hooka:env-override",
+    image: getEnv("HOOKA_RUNTIME_ROLE") ?? "hooka:env-override",
     generatedAt: new Date().toISOString(),
     installed,
   });

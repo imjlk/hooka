@@ -4,8 +4,9 @@ const bunBinary = process.execPath;
 const cwd = process.cwd();
 
 test("webhook test sends a signed generic task payload", async () => {
-  let resolveRequest: ((value: { headers: Headers; body: string }) => void) | null =
-    null;
+  let resolveRequest:
+    | ((value: { headers: Headers; body: string }) => void)
+    | null = null;
   const receivedRequest = new Promise<{ headers: Headers; body: string }>(
     (resolve) => {
       resolveRequest = resolve;
@@ -30,22 +31,25 @@ test("webhook test sends a signed generic task payload", async () => {
   });
 
   try {
-    const result = await runCli([
-      "webhook",
-      "test",
-      "--url",
-      `http://127.0.0.1:${server.port}/api/webhooks/task`,
-      "--task-id",
-      "deploy.shared-volume.wrangler",
-      "--payload-json",
-      '{"kind":"pages-deploy","project":"staging-site","sourcePath":"/shared-source/site"}',
-      "--event-id",
-      "evt_cli",
-      "--timestamp",
-      "1774483200",
-    ], {
-      HOOKA_WEBHOOK_SECRET: "secret",
-    });
+    const result = await runCli(
+      [
+        "webhook",
+        "test",
+        "--url",
+        `http://127.0.0.1:${server.port}/api/webhooks/task`,
+        "--task-id",
+        "deploy.shared-volume.wrangler",
+        "--payload-json",
+        '{"kind":"pages-deploy","project":"staging-site","sourcePath":"/shared-source/site"}',
+        "--event-id",
+        "evt_cli",
+        "--timestamp",
+        "1774483200",
+      ],
+      {
+        HOOKA_WEBHOOK_SECRET: "secret",
+      },
+    );
 
     const request = await receivedRequest;
     const payload = JSON.parse(request.body) as {

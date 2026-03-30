@@ -45,9 +45,10 @@ export async function processNextRun(
   return true;
 }
 
-export async function startWorkerLoop(options: WorkerLoopOptions): Promise<void> {
-  const pollIntervalMs =
-    options.pollIntervalMs ?? defaultWorkerPollIntervalMs;
+export async function startWorkerLoop(
+  options: WorkerLoopOptions,
+): Promise<void> {
+  const pollIntervalMs = options.pollIntervalMs ?? defaultWorkerPollIntervalMs;
   const sleepFn = options.sleep ?? sleep;
 
   while (!options.shutdownSignal?.isShutdownRequested()) {
@@ -70,7 +71,7 @@ export async function startWorkerLoop(options: WorkerLoopOptions): Promise<void>
 }
 
 export function getDefaultWorkerId(): string {
-  return Bun.env.HOOKA_WORKER_ID ?? Bun.env.HOSTNAME ?? process.env.HOSTNAME ?? "hooka-worker";
+  return Bun.env["HOOKA_WORKER_ID"] ?? Bun.env["HOSTNAME"] ?? "hooka-worker";
 }
 
 function missingTaskResult(taskId: string): TaskRunResult {
@@ -100,7 +101,8 @@ async function executeTaskSafely(
       ok: false,
       status: "failed",
       summary: error instanceof Error ? error.message : String(error),
-      stderr: error instanceof Error ? error.stack ?? error.message : String(error),
+      stderr:
+        error instanceof Error ? (error.stack ?? error.message) : String(error),
       durationMs: 0,
     };
   }

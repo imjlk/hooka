@@ -41,8 +41,12 @@ export function findMissingCapabilityEnvRequirements(
 ): MissingCapabilityEnvRequirement[] {
   return collectCapabilityEnvRequirements(capabilities, capabilityIds).flatMap(
     (requirement) => {
-      const presentNames = requirement.names.filter((name) => hasValue(env, name));
-      const missingNames = requirement.names.filter((name) => !hasValue(env, name));
+      const presentNames = requirement.names.filter((name) =>
+        hasValue(env, name),
+      );
+      const missingNames = requirement.names.filter(
+        (name) => !hasValue(env, name),
+      );
 
       if (requirement.match === "allOf" && missingNames.length > 0) {
         return [

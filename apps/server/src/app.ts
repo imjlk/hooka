@@ -1,11 +1,5 @@
-import type {
-  EnqueueRunRequest,
-  GenericTaskWebhook,
-} from "@hooka/contracts";
-import {
-  enqueueRunRequestSchema,
-  runListQuerySchema,
-} from "@hooka/contracts";
+import type { EnqueueRunRequest, GenericTaskWebhook } from "@hooka/contracts";
+import { enqueueRunRequestSchema, runListQuerySchema } from "@hooka/contracts";
 import {
   createRegistrySummary,
   getPresetPlan,
@@ -47,7 +41,9 @@ export function createHookaFetchHandler(options: HookaServerAppOptions) {
     const url = new URL(request.url);
 
     try {
-      const exactHandler = exactRoutes.get(routeKey(request.method, url.pathname));
+      const exactHandler = exactRoutes.get(
+        routeKey(request.method, url.pathname),
+      );
       if (exactHandler) {
         return await exactHandler(request, url);
       }
@@ -256,7 +252,9 @@ async function enqueueRun(
     throw new NotFoundError(`Task not found: ${payload.taskId}`);
   }
 
-  const manifest = await loadInstalledCapabilities(options.capabilityManifestPath);
+  const manifest = await loadInstalledCapabilities(
+    options.capabilityManifestPath,
+  );
   const parsedInput = task.input.parse(payload.input ?? {});
   const queued = options.runStore.enqueueRun({
     taskId: task.id,
@@ -335,9 +333,7 @@ function getPositiveInt(value: string | null, fallback: number): number {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
-function withSecurityHeaders(
-  input: HeadersInit = {},
-): Headers {
+function withSecurityHeaders(input: HeadersInit = {}): Headers {
   const headers = new Headers(input);
   headers.set("x-content-type-options", "nosniff");
   headers.set("x-frame-options", "DENY");

@@ -1,7 +1,11 @@
+import { getEnvOrDefault, getNumberEnv } from "@hooka/bun-utils";
 import index from "./index.html";
 
-const port = Number(Bun.env.HOOKA_UI_PORT ?? 4310);
-const apiOrigin = Bun.env.HOOKA_UI_API_ORIGIN ?? "http://127.0.0.1:3000";
+const port = getNumberEnv("HOOKA_UI_PORT", 4310);
+const apiOrigin = getEnvOrDefault(
+  "HOOKA_UI_API_ORIGIN",
+  "http://127.0.0.1:3000",
+);
 
 function serveIndex(): Response {
   // Bun HTML imports are response-like at runtime, but currently need a narrow cast here.

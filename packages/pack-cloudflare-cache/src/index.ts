@@ -1,7 +1,10 @@
 import { defineTaskPack } from "@hooka/task-sdk";
 import { purgeCacheUrlsTask } from "./tasks/purgeCacheUrls";
 
-export { purgeCacheUrlsInput, purgeCacheUrlsTask } from "./tasks/purgeCacheUrls";
+export {
+  purgeCacheUrlsInput,
+  purgeCacheUrlsTask,
+} from "./tasks/purgeCacheUrls";
 
 export const cloudflareCacheTaskPack = defineTaskPack({
   id: "@hooka/pack-cloudflare-cache",

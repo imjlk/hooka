@@ -5,6 +5,9 @@ import {
   createTempDir,
   ensureDir,
   ensureParentDir,
+  getEnv,
+  getEnvOrDefault,
+  getNumberEnv,
   getTempRootDir,
   removeDir,
 } from "./index";
@@ -25,8 +28,12 @@ test("ensureParentDir creates the parent directory", async () => {
 });
 
 test("removeDir rejects dangerous paths", async () => {
-  await expect(removeDir("/")).rejects.toThrow("Refusing to remove dangerous path");
-  await expect(removeDir(".")).rejects.toThrow("Refusing to remove dangerous path");
+  await expect(removeDir("/")).rejects.toThrow(
+    "Refusing to remove dangerous path",
+  );
+  await expect(removeDir(".")).rejects.toThrow(
+    "Refusing to remove dangerous path",
+  );
 });
 
 test("removeDir removes safe directories", async () => {
@@ -38,4 +45,18 @@ test("removeDir removes safe directories", async () => {
 
   await removeDir(tempDir);
   expect(await Bun.file(tempDir).exists()).toBe(false);
+});
+
+test("env helpers read strings and numeric defaults from Bun-style env records", () => {
+  const env = {
+    HOOKA_NAME: "hooka",
+    HOOKA_PORT: "4310",
+    EMPTY: "",
+  };
+
+  expect(getEnv("HOOKA_NAME", env)).toBe("hooka");
+  expect(getEnv("MISSING", env)).toBeUndefined();
+  expect(getEnvOrDefault("MISSING", "fallback", env)).toBe("fallback");
+  expect(getNumberEnv("HOOKA_PORT", 3000, env)).toBe(4310);
+  expect(getNumberEnv("EMPTY", 3000, env)).toBe(3000);
 });

@@ -1,4 +1,5 @@
 import { defineCommand, defineGroup, option } from "@bunli/core";
+import { getEnvOrDefault } from "@hooka/bun-utils";
 import { createHmac } from "node:crypto";
 import { z } from "zod";
 
@@ -9,12 +10,15 @@ export function createWebhookCommandGroup() {
     commands: [
       defineCommand({
         name: "test",
-        description: "Send a signed generic task webhook to /api/webhooks/task.",
+        description:
+          "Send a signed generic task webhook to /api/webhooks/task.",
         options: {
           url: option(
-            z.string().default(
-              `http://127.0.0.1:${Bun.env.HOOKA_PORT ?? "3000"}/api/webhooks/task`,
-            ),
+            z
+              .string()
+              .default(
+                `http://127.0.0.1:${getEnvOrDefault("HOOKA_PORT", "3000")}/api/webhooks/task`,
+              ),
             {
               description: "Absolute webhook target URL.",
             },
@@ -44,7 +48,7 @@ export function createWebhookCommandGroup() {
           }),
         },
         handler: async ({ flags }) => {
-          const secret = flags.secret ?? Bun.env.HOOKA_WEBHOOK_SECRET;
+          const secret = flags.secret ?? Bun.env["HOOKA_WEBHOOK_SECRET"];
 
           if (!secret) {
             throw new Error(
@@ -53,8 +57,7 @@ export function createWebhookCommandGroup() {
           }
 
           const input = await loadWebhookPayload(flags);
-          const timestamp =
-            flags.timestamp ?? Math.floor(Date.now() / 1000);
+          const timestamp = flags.timestamp ?? Math.floor(Date.now() / 1000);
           const payload = {
             taskId: flags["task-id"],
             input,

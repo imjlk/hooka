@@ -3,10 +3,7 @@ import {
   normalizeWordpressSimplyStaticWebhook,
   parseWordpressSimplyStaticWebhook,
 } from "@hooka/pack-wordpress-cloudflare";
-import {
-  parseGenericTaskWebhook,
-  verifyHookaHmacSignature,
-} from "./webhooks";
+import { parseGenericTaskWebhook, verifyHookaHmacSignature } from "./webhooks";
 import { createHmac } from "node:crypto";
 
 test("valid hmac signature is accepted", () => {

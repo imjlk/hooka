@@ -1,6 +1,6 @@
 import type { TaskRunResult } from "@hooka/contracts";
 import type { HookaTask, TaskInputSchema } from "@hooka/task-sdk";
-import { z } from "zod";
+import type { z } from "zod";
 
 export interface CommandExecutionResult {
   stdout: string;

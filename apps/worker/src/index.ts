@@ -1,3 +1,4 @@
+import { getEnvOrDefault, getNumberEnv } from "@hooka/bun-utils";
 import { listCapabilities, listPresets, listTasks } from "@hooka/registry";
 import { findMissingCapabilityEnvRequirements } from "@hooka/runtime-contracts";
 import { createRunStore, defaultHookaDbPath } from "@hooka/run-store";
@@ -13,14 +14,15 @@ import {
 } from "./lib/worker";
 import { registerWorkerShutdownHandlers } from "./lib/shutdown";
 
-const dbPath = Bun.env.HOOKA_DB_PATH ?? defaultHookaDbPath;
-const runtimeRole = Bun.env.HOOKA_RUNTIME_ROLE ?? "hooka-worker";
+const dbPath = getEnvOrDefault("HOOKA_DB_PATH", defaultHookaDbPath);
+const runtimeRole = getEnvOrDefault("HOOKA_RUNTIME_ROLE", "hooka-worker");
 const manifestPath = getDefaultManifestPath();
 const workerId = getDefaultWorkerId();
-const pollIntervalMs = Number(
-  Bun.env.HOOKA_POLL_INTERVAL_MS ?? defaultWorkerPollIntervalMs,
+const pollIntervalMs = getNumberEnv(
+  "HOOKA_POLL_INTERVAL_MS",
+  defaultWorkerPollIntervalMs,
 );
-const leaseMs = Number(Bun.env.HOOKA_RUN_LEASE_MS ?? defaultRunLeaseMs);
+const leaseMs = getNumberEnv("HOOKA_RUN_LEASE_MS", defaultRunLeaseMs);
 const runStore = await createRunStore({
   dbPath,
 });

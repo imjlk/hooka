@@ -29,7 +29,7 @@ test("exportVerifyTask counts matching HTML files", async () => {
   }
 
   const tempDir = join(
-    Bun.env.TMPDIR ?? "/tmp",
+    Bun.env["TMPDIR"] ?? "/tmp",
     `hooka-export-verify-${crypto.randomUUID()}`,
   );
 

@@ -26,9 +26,7 @@ export function createWorkerShutdownSignal(
 }
 
 export function registerWorkerShutdownHandlers(
-  input: {
-    logger?: Pick<typeof console, "log">;
-  } = {},
+  input: { logger?: Pick<typeof console, "log"> } = {},
 ): WorkerShutdownSignal {
   const shutdownSignal = createWorkerShutdownSignal(input.logger);
   process.on("SIGINT", () => shutdownSignal.requestShutdown("SIGINT"));

@@ -145,7 +145,9 @@ export function validateRegistryState(input: {
   for (const preset of input.presets) {
     for (const packId of preset.taskPacks) {
       if (!taskPackMap.has(packId)) {
-        errors.push(`Preset ${preset.id} references missing task pack ${packId}`);
+        errors.push(
+          `Preset ${preset.id} references missing task pack ${packId}`,
+        );
       }
     }
   }
@@ -197,7 +199,9 @@ export function getPresetPlan(presetId: string): ImagePlan | undefined {
   };
 }
 
-export function recommendPresetForTasks(taskIds: string[]): PresetDefinition | undefined {
+export function recommendPresetForTasks(
+  taskIds: string[],
+): PresetDefinition | undefined {
   const candidates = presets.filter((preset) => {
     return taskIds.every((taskId) => {
       const task = getTask(taskId);
@@ -207,12 +211,16 @@ export function recommendPresetForTasks(taskIds: string[]): PresetDefinition | u
 
       const isIncluded = preset.taskPacks.some((packId) => {
         const pack = getTaskPack(packId);
-        return pack?.tasks.some((candidate) => candidate.id === task.id) ?? false;
+        return (
+          pack?.tasks.some((candidate) => candidate.id === task.id) ?? false
+        );
       });
 
       return (
         isIncluded &&
-        task.requires.every((requirement) => preset.capabilities.includes(requirement))
+        task.requires.every((requirement) =>
+          preset.capabilities.includes(requirement),
+        )
       );
     });
   });

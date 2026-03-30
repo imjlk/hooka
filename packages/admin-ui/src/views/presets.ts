@@ -62,7 +62,10 @@ export function renderPresetDetail(
             ${
               preset.capabilities.length > 0
                 ? preset.capabilities
-                    .map((capability) => `<span class="chip">${escapeHtml(capability)}</span>`)
+                    .map(
+                      (capability) =>
+                        `<span class="chip">${escapeHtml(capability)}</span>`,
+                    )
                     .join("")
                 : `<p class="muted">No extra capabilities required.</p>`
             }
@@ -83,7 +86,10 @@ export function renderPresetDetail(
                         <div class="stack">
                           <span class="chip">${escapeHtml(requirement.match)}</span>
                           ${requirement.names
-                            .map((name) => `<span class="chip">${escapeHtml(name)}</span>`)
+                            .map(
+                              (name) =>
+                                `<span class="chip">${escapeHtml(name)}</span>`,
+                            )
                             .join("")}
                         </div>
                       </div>
@@ -99,7 +105,10 @@ export function renderPresetDetail(
             ${
               plan && plan.coveredTasks.length > 0
                 ? plan.coveredTasks
-                    .map((taskId) => `<span class="chip">${escapeHtml(taskId)}</span>`)
+                    .map(
+                      (taskId) =>
+                        `<span class="chip">${escapeHtml(taskId)}</span>`,
+                    )
                     .join("")
                 : `<p class="muted">No tasks covered.</p>`
             }

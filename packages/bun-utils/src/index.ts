@@ -1,7 +1,8 @@
 import { dirname, join, resolve } from "node:path";
+export { getEnv, getEnvOrDefault, getNumberEnv } from "./env";
 
 export function getTempRootDir(): string {
-  return Bun.env.TMPDIR ?? Bun.env.TEMP ?? "/tmp";
+  return Bun.env["TMPDIR"] ?? Bun.env["TEMP"] ?? "/tmp";
 }
 
 export async function ensureDir(path: string): Promise<void> {
@@ -29,10 +30,7 @@ export async function createTempDir(
   prefix: string,
   baseDir = getTempRootDir(),
 ): Promise<string> {
-  const path = join(
-    baseDir,
-    `${prefix}-${Date.now()}-${crypto.randomUUID()}`,
-  );
+  const path = join(baseDir, `${prefix}-${Date.now()}-${crypto.randomUUID()}`);
   await ensureDir(path);
   return path;
 }
