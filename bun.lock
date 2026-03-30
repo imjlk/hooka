@@ -9,6 +9,7 @@
         "@types/bun": "^1.3.11",
         "@types/node": "^25.5.0",
         "typescript": "^6.0.2",
+        "zod": "^4.3.6",
       },
     },
     "apps/cli": {
@@ -19,6 +20,7 @@
       "dependencies": {
         "@bunli/core": "^0.9.0",
         "@hooka/bun-utils": "workspace:*",
+        "@hooka/config": "workspace:*",
         "@hooka/contracts": "workspace:*",
         "@hooka/registry": "workspace:*",
         "@hooka/run-store": "workspace:*",
@@ -31,8 +33,9 @@
     "apps/server": {
       "name": "@hooka/server",
       "dependencies": {
-        "@hooka/bun-utils": "workspace:*",
+        "@hooka/config": "workspace:*",
         "@hooka/contracts": "workspace:*",
+        "@hooka/logger": "workspace:*",
         "@hooka/registry": "workspace:*",
         "@hooka/run-store": "workspace:*",
         "@hooka/runner-core": "workspace:*",
@@ -42,6 +45,8 @@
     "apps/worker": {
       "name": "@hooka/worker",
       "dependencies": {
+        "@hooka/config": "workspace:*",
+        "@hooka/logger": "workspace:*",
         "@hooka/registry": "workspace:*",
         "@hooka/run-store": "workspace:*",
         "@hooka/runner-core": "workspace:*",
@@ -50,6 +55,9 @@
     },
     "packages/admin-ui": {
       "name": "@hooka/admin-ui",
+      "dependencies": {
+        "@hooka/config": "workspace:*",
+      },
     },
     "packages/bun-utils": {
       "name": "@hooka/bun-utils",
@@ -96,6 +104,13 @@
         "@hooka/task-sdk": "workspace:*",
       },
     },
+    "packages/config": {
+      "name": "@hooka/config",
+      "dependencies": {
+        "@hooka/run-store": "workspace:*",
+        "zod": "^4.3.6",
+      },
+    },
     "packages/contracts": {
       "name": "@hooka/contracts",
       "dependencies": {
@@ -117,6 +132,9 @@
         "@hooka/task-sdk": "workspace:*",
         "zod": "^4.3.6",
       },
+    },
+    "packages/logger": {
+      "name": "@hooka/logger",
     },
     "packages/pack-cloudflare": {
       "name": "@hooka/pack-cloudflare",
@@ -173,6 +191,8 @@
     "packages/runner-core": {
       "name": "@hooka/runner-core",
       "dependencies": {
+        "@hooka/bun-utils": "workspace:*",
+        "@hooka/config": "workspace:*",
         "@hooka/contracts": "workspace:*",
         "@hooka/executor-http": "workspace:*",
         "@hooka/executor-process": "workspace:*",
@@ -255,11 +275,15 @@
 
     "@hooka/cli": ["@hooka/cli@workspace:apps/cli"],
 
+    "@hooka/config": ["@hooka/config@workspace:packages/config"],
+
     "@hooka/contracts": ["@hooka/contracts@workspace:packages/contracts"],
 
     "@hooka/executor-http": ["@hooka/executor-http@workspace:packages/executor-http"],
 
     "@hooka/executor-process": ["@hooka/executor-process@workspace:packages/executor-process"],
+
+    "@hooka/logger": ["@hooka/logger@workspace:packages/logger"],
 
     "@hooka/pack-cloudflare": ["@hooka/pack-cloudflare@workspace:packages/pack-cloudflare"],
 

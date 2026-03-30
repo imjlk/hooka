@@ -10,7 +10,9 @@ test("createServerShutdownHandler stops the server and closes the run store once
     close: mock(() => {}),
   } as unknown as RunStore;
   const logger = {
-    log: mock(() => {}),
+    info: mock(() => {}),
+    warn: mock(() => {}),
+    error: mock(() => {}),
   };
   const shutdown = createServerShutdownHandler({
     server,
@@ -24,5 +26,5 @@ test("createServerShutdownHandler stops the server and closes the run store once
   expect(server.stop).toHaveBeenCalledTimes(1);
   expect(server.stop).toHaveBeenCalledWith(true);
   expect(runStore.close).toHaveBeenCalledTimes(1);
-  expect(logger.log).toHaveBeenCalledTimes(1);
+  expect(logger.info).toHaveBeenCalledTimes(1);
 });

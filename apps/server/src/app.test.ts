@@ -67,6 +67,38 @@ test("generic enqueue API returns queued run metadata", async () => {
   app.runStore.close();
 });
 
+test("health and readiness endpoints report server availability", async () => {
+  const app = await createTestServerApp();
+
+  const [healthResponse, readyResponse] = await Promise.all([
+    app.fetch(new Request("http://hooka.local/api/health")),
+    app.fetch(new Request("http://hooka.local/api/ready")),
+  ]);
+
+  expect(healthResponse.status).toBe(200);
+  expect(readyResponse.status).toBe(200);
+  expect((await healthResponse.json()).ok).toBe(true);
+  expect((await readyResponse.json()).ok).toBe(true);
+
+  app.runStore.close();
+});
+
+test("readiness endpoint returns 503 when the database is unavailable", async () => {
+  const app = await createTestServerApp();
+  app.runStore.close();
+
+  const response = await app.fetch(new Request("http://hooka.local/api/ready"));
+  const body = await response.json();
+
+  expect(response.status).toBe(503);
+  expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+  expect(body).toMatchObject({
+    ok: false,
+    service: "hooka-server",
+    error: "Database not ready.",
+  });
+});
+
 test("signed simply static webhook is idempotent by event id", async () => {
   const app = await createTestServerApp();
   const payload = JSON.stringify({

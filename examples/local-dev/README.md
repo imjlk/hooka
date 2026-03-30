@@ -15,6 +15,13 @@ HOOKA_INSTALLED_CAPABILITIES=wrangler \
 bun run dev:server
 ```
 
+You can verify the server after boot with:
+
+```bash
+curl http://127.0.0.1:3000/api/health
+curl http://127.0.0.1:3000/api/ready
+```
+
 Start the worker in another shell:
 
 ```bash

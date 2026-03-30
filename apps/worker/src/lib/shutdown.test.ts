@@ -3,7 +3,9 @@ import { createWorkerShutdownSignal } from "./shutdown";
 
 test("createWorkerShutdownSignal flips state once and logs once", () => {
   const logger = {
-    log: mock(() => {}),
+    info: mock(() => {}),
+    warn: mock(() => {}),
+    error: mock(() => {}),
   };
   const shutdownSignal = createWorkerShutdownSignal(logger);
 
@@ -13,5 +15,5 @@ test("createWorkerShutdownSignal flips state once and logs once", () => {
   shutdownSignal.requestShutdown("SIGINT");
 
   expect(shutdownSignal.isShutdownRequested()).toBe(true);
-  expect(logger.log).toHaveBeenCalledTimes(1);
+  expect(logger.info).toHaveBeenCalledTimes(1);
 });

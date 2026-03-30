@@ -1,16 +1,13 @@
-import { ensureParentDir, getEnvOrDefault } from "@hooka/bun-utils";
-import { defaultHookaDbPath } from "@hooka/run-store";
-import { getDefaultManifestPath } from "@hooka/runner-core";
+import { ensureParentDir } from "@hooka/bun-utils";
+import { createCliConfig } from "@hooka/config";
+import { createRunStore, type RunStore } from "@hooka/run-store";
 
 export interface CliDefaults {
   dbPath: string;
   manifestPath: string;
 }
 
-export const cliDefaults: CliDefaults = {
-  manifestPath: getDefaultManifestPath(),
-  dbPath: getEnvOrDefault("HOOKA_DB_PATH", defaultHookaDbPath),
-};
+export const cliDefaults: CliDefaults = createCliConfig();
 
 export function parseFeatureList(value: string): string[] {
   return value
@@ -21,4 +18,29 @@ export function parseFeatureList(value: string): string[] {
 
 export async function ensureParentDirectory(path: string): Promise<void> {
   await ensureParentDir(path);
+}
+
+export async function withClosable<T, TResource extends { close(): void }>(
+  resource: Promise<TResource> | TResource,
+  handler: (resource: TResource) => Promise<T> | T,
+): Promise<T> {
+  const closable = await resource;
+
+  try {
+    return await handler(closable);
+  } finally {
+    closable.close();
+  }
+}
+
+export async function withRunStore<T>(
+  dbPath: string,
+  handler: (runStore: RunStore) => Promise<T> | T,
+): Promise<T> {
+  return withClosable(
+    createRunStore({
+      dbPath,
+    }),
+    handler,
+  );
 }

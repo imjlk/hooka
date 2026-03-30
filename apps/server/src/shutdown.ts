@@ -1,3 +1,4 @@
+import type { Logger } from "@hooka/logger";
 import type { RunStore } from "@hooka/run-store";
 
 export interface HookaStoppableServer {
@@ -7,10 +8,10 @@ export interface HookaStoppableServer {
 export function createServerShutdownHandler(input: {
   runStore: RunStore;
   server: HookaStoppableServer;
-  logger?: Pick<typeof console, "log">;
+  logger?: Logger;
 }) {
   let shutdownRequested = false;
-  const logger = input.logger ?? console;
+  const logger = input.logger;
 
   return (signal: string) => {
     if (shutdownRequested) {
@@ -18,9 +19,9 @@ export function createServerShutdownHandler(input: {
     }
 
     shutdownRequested = true;
-    logger.log(
-      `[${new Date().toISOString()}] hooka-server shutting down after ${signal}`,
-    );
+    logger?.info("Server shutting down", {
+      signal,
+    });
     input.server.stop(true);
     input.runStore.close();
   };
@@ -29,7 +30,7 @@ export function createServerShutdownHandler(input: {
 export function registerServerShutdownHandlers(input: {
   runStore: RunStore;
   server: HookaStoppableServer;
-  logger?: Pick<typeof console, "log">;
+  logger?: Logger;
 }) {
   const shutdown = createServerShutdownHandler(input);
   process.on("SIGINT", () => shutdown("SIGINT"));

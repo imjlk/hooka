@@ -12,6 +12,7 @@
   "dependencies": {
     "@bunli/core": "^0.9.0",
     "@hooka/bun-utils": "workspace:*",
+    "@hooka/config": "workspace:*",
     "@hooka/contracts": "workspace:*",
     "@hooka/registry": "workspace:*",
     "@hooka/run-store": "workspace:*",

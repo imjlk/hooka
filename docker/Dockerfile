@@ -18,8 +18,10 @@ COPY packages/cap-rsync/package.json packages/cap-rsync/package.json
 COPY packages/cap-wpcli/package.json packages/cap-wpcli/package.json
 COPY packages/cap-wrangler/package.json packages/cap-wrangler/package.json
 COPY packages/contracts/package.json packages/contracts/package.json
+COPY packages/config/package.json packages/config/package.json
 COPY packages/executor-http/package.json packages/executor-http/package.json
 COPY packages/executor-process/package.json packages/executor-process/package.json
+COPY packages/logger/package.json packages/logger/package.json
 COPY packages/pack-cloudflare-cache/package.json packages/pack-cloudflare-cache/package.json
 COPY packages/pack-cloudflare/package.json packages/pack-cloudflare/package.json
 COPY packages/pack-wordpress-cloudflare/package.json packages/pack-wordpress-cloudflare/package.json

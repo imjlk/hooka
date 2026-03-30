@@ -78,6 +78,8 @@ GitHub Actions now cover both verification and GHCR publishing:
 - Compatibility webhook adapters are discovered from registry metadata, so producer-specific alias routes stay outside the server core.
 - The admin UI is split into small vanilla view modules and served by the server in production, or by Bun HMR in local development.
 - Both server and worker register graceful shutdown handlers so Docker stop does not keep claiming new work during exit.
+- Runtime entrypoints now load typed env-backed defaults through `@hooka/config` instead of parsing env inline in each app.
+- Long-running services emit structured JSON logs through `@hooka/logger` for startup, shutdown, readiness, and loop/runtime failures.
 - `server` and `worker` share the same `HOOKA_DB_PATH`.
 - Producers such as WordPress share an artifact/source volume with the `worker`, not the server.
 
@@ -151,6 +153,8 @@ Planned presets are documented but not published in registry APIs or GHCR releas
 
 ## APIs
 
+- `GET /api/health` returns a lightweight liveness response for the server role.
+- `GET /api/ready` returns readiness for deployment platforms and fails when the SQLite store is not ready.
 - `POST /api/runs` enqueues a task run.
 - `POST /api/webhooks/task` verifies an HMAC-signed generic webhook and enqueues any registered task.
 - `POST /api/webhooks/wordpress/simply-static` remains as a compatibility alias for the first producer example.
@@ -233,6 +237,15 @@ Hooka's default model is `signed webhook -> queue -> worker -> wrangler CLI`. Wo
 - Default proxied API origin: `http://127.0.0.1:3000`
 - The dev server only serves the UI source entrypoint and proxies `/api/*` to the configured backend.
 - `bun run test:dev-ui:smoke` verifies that `GET /` serves the shell and `/api/health` proxies correctly.
+
+## Next Security Tranche
+
+The current ops-hardening pass intentionally stopped short of broader security controls. The next security-focused tranche is expected to cover:
+
+- webhook rate limiting
+- admin UI authentication/protection
+- broader HTTP security policy and CORS decisions
+- richer runtime error taxonomy and codes
 
 ## Private GHCR Pulls
 

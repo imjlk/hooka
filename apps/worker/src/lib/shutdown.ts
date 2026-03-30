@@ -1,10 +1,12 @@
+import type { Logger } from "@hooka/logger";
+
 export interface WorkerShutdownSignal {
   isShutdownRequested(): boolean;
   requestShutdown(signal: string): void;
 }
 
 export function createWorkerShutdownSignal(
-  logger: Pick<typeof console, "log"> = console,
+  logger?: Logger,
 ): WorkerShutdownSignal {
   let shutdownRequested = false;
 
@@ -18,15 +20,15 @@ export function createWorkerShutdownSignal(
       }
 
       shutdownRequested = true;
-      logger.log(
-        `[${new Date().toISOString()}] hooka-worker shutting down after ${signal}`,
-      );
+      logger?.info("Worker shutting down", {
+        signal,
+      });
     },
   };
 }
 
 export function registerWorkerShutdownHandlers(
-  input: { logger?: Pick<typeof console, "log"> } = {},
+  input: { logger?: Logger } = {},
 ): WorkerShutdownSignal {
   const shutdownSignal = createWorkerShutdownSignal(input.logger);
   process.on("SIGINT", () => shutdownSignal.requestShutdown("SIGINT"));

@@ -1,12 +1,17 @@
 import type { TaskRunResult } from "@hooka/contracts";
+import {
+  defaultRunLeaseMs,
+  defaultWorkerPollIntervalMs,
+  getDefaultWorkerId,
+} from "@hooka/config";
 import type { CommandRunner } from "@hooka/executor-process";
+import type { Logger } from "@hooka/logger";
 import { getTask } from "@hooka/registry";
 import type { RunStore } from "@hooka/run-store";
 import { runTask } from "@hooka/runner-core";
 import type { WorkerShutdownSignal } from "./shutdown";
 
-export const defaultWorkerPollIntervalMs = 2_000;
-export const defaultRunLeaseMs = 900_000;
+export { defaultRunLeaseMs, defaultWorkerPollIntervalMs, getDefaultWorkerId };
 
 export interface ProcessNextRunOptions {
   commandRunner?: CommandRunner;
@@ -18,6 +23,7 @@ export interface ProcessNextRunOptions {
 }
 
 export interface WorkerLoopOptions extends ProcessNextRunOptions {
+  logger?: Logger;
   shutdownSignal?: WorkerShutdownSignal;
   sleep?: (ms: number) => Promise<void>;
   pollIntervalMs?: number;
@@ -59,19 +65,18 @@ export async function startWorkerLoop(
         await sleepFn(pollIntervalMs);
       }
     } catch (error) {
-      console.error(
-        `[${new Date().toISOString()}] hooka-worker loop error`,
-        error,
-      );
+      if (error instanceof Error) {
+        options.logger?.error("Worker loop error", error);
+      } else {
+        options.logger?.error("Worker loop error", {
+          error: String(error),
+        });
+      }
       if (!options.shutdownSignal?.isShutdownRequested()) {
         await sleepFn(pollIntervalMs);
       }
     }
   }
-}
-
-export function getDefaultWorkerId(): string {
-  return Bun.env["HOOKA_WORKER_ID"] ?? Bun.env["HOSTNAME"] ?? "hooka-worker";
 }
 
 function missingTaskResult(taskId: string): TaskRunResult {

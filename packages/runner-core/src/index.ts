@@ -1,4 +1,5 @@
 import { getEnv } from "@hooka/bun-utils";
+import { getDefaultManifestPath } from "@hooka/config";
 import type {
   InstalledCapabilitiesManifest,
   TaskRunResult,
@@ -8,8 +9,12 @@ import { runHttpTask } from "@hooka/executor-http";
 import type { CommandRunner } from "@hooka/executor-process";
 import { runProcessTask } from "@hooka/executor-process";
 import type { HookaTask, TaskInputSchema } from "@hooka/task-sdk";
-import { resolve } from "node:path";
 import type { z } from "zod";
+
+export {
+  defaultManifestRelativePath,
+  getDefaultManifestPath,
+} from "@hooka/config";
 
 export interface RunTaskOptions {
   dryRun?: boolean;
@@ -17,21 +22,6 @@ export interface RunTaskOptions {
   manifestPath?: string;
   commandRunner?: CommandRunner;
   env?: Record<string, string | undefined>;
-}
-
-export const defaultManifestRelativePath = ".hooka/installed-capabilities.json";
-
-export function getDefaultManifestPath(
-  cwd = process.cwd(),
-  env: Record<string, string | undefined> = Bun.env as Record<
-    string,
-    string | undefined
-  >,
-): string {
-  return resolve(
-    cwd,
-    env["HOOKA_MANIFEST_PATH"] ?? defaultManifestRelativePath,
-  );
 }
 
 export function getMissingCapabilities(

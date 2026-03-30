@@ -1,33 +1,24 @@
-import { getEnvOrDefault, getNumberEnv } from "@hooka/bun-utils";
+import { createWorkerConfig } from "@hooka/config";
+import { createLogger } from "@hooka/logger";
 import { listCapabilities, listPresets, listTasks } from "@hooka/registry";
 import { findMissingCapabilityEnvRequirements } from "@hooka/runtime-contracts";
-import { createRunStore, defaultHookaDbPath } from "@hooka/run-store";
-import {
-  getDefaultManifestPath,
-  loadInstalledCapabilities,
-} from "@hooka/runner-core";
-import {
-  defaultRunLeaseMs,
-  defaultWorkerPollIntervalMs,
-  getDefaultWorkerId,
-  startWorkerLoop,
-} from "./lib/worker";
+import { createRunStore } from "@hooka/run-store";
+import { loadInstalledCapabilities } from "@hooka/runner-core";
+import { startWorkerLoop } from "./lib/worker";
 import { registerWorkerShutdownHandlers } from "./lib/shutdown";
 
-const dbPath = getEnvOrDefault("HOOKA_DB_PATH", defaultHookaDbPath);
-const runtimeRole = getEnvOrDefault("HOOKA_RUNTIME_ROLE", "hooka-worker");
-const manifestPath = getDefaultManifestPath();
-const workerId = getDefaultWorkerId();
-const pollIntervalMs = getNumberEnv(
-  "HOOKA_POLL_INTERVAL_MS",
-  defaultWorkerPollIntervalMs,
-);
-const leaseMs = getNumberEnv("HOOKA_RUN_LEASE_MS", defaultRunLeaseMs);
-const runStore = await createRunStore({
-  dbPath,
+const config = createWorkerConfig();
+const logger = createLogger({
+  service: "hooka-worker",
+  runtimeRole: config.runtimeRole,
 });
-const shutdownSignal = registerWorkerShutdownHandlers();
-const manifest = await loadInstalledCapabilities(manifestPath);
+const runStore = await createRunStore({
+  dbPath: config.dbPath,
+});
+const shutdownSignal = registerWorkerShutdownHandlers({
+  logger,
+});
+const manifest = await loadInstalledCapabilities(config.manifestPath);
 
 const missingEnv = findMissingCapabilityEnvRequirements(
   listCapabilities(),
@@ -42,37 +33,33 @@ if (missingEnv.length > 0) {
         `${entry.capabilityId}:${entry.match}(${entry.missingNames.join(", ")})`,
     )
     .join(", ");
+  logger.error("Missing required runtime environment", {
+    missingEnv,
+  });
   throw new Error(`Missing required runtime environment: ${details}.`);
 }
 
-console.log(
-  JSON.stringify(
-    {
-      service: "hooka-worker",
-      runtimeRole,
-      dbPath,
-      workerId,
-      pollIntervalMs,
-      leaseMs,
-      manifestPath,
-      installedCapabilities: manifest.installed,
-      presets: listPresets().map((preset) => preset.id),
-      tasks: listTasks().map((task) => task.id),
-    },
-    null,
-    2,
-  ),
-);
+logger.info("Worker started", {
+  dbPath: config.dbPath,
+  workerId: config.workerId,
+  pollIntervalMs: config.pollIntervalMs,
+  leaseMs: config.leaseMs,
+  manifestPath: config.manifestPath,
+  installedCapabilities: manifest.installed,
+  presets: listPresets().map((preset) => preset.id),
+  tasks: listTasks().map((task) => task.id),
+});
 
 try {
   await startWorkerLoop({
     installedCapabilities: manifest.installed,
-    manifestPath,
+    manifestPath: config.manifestPath,
     runStore,
-    workerId,
-    leaseMs,
-    pollIntervalMs,
+    workerId: config.workerId,
+    leaseMs: config.leaseMs,
+    pollIntervalMs: config.pollIntervalMs,
     shutdownSignal,
+    logger,
   });
 } finally {
   runStore.close();

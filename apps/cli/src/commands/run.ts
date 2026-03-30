@@ -1,7 +1,7 @@
 import { defineCommand, defineGroup, option } from "@bunli/core";
-import { createRunStore } from "@hooka/run-store";
 import { z } from "zod";
 import type { CliDefaults } from "../lib/shared";
+import { withRunStore } from "../lib/shared";
 
 export function createRunCommandGroup(defaults: CliDefaults) {
   return defineGroup({
@@ -23,10 +23,9 @@ export function createRunCommandGroup(defaults: CliDefaults) {
           }),
         },
         handler: async ({ flags }) => {
-          const runStore = await createRunStore({
-            dbPath: flags.db,
+          const runs = await withRunStore(flags.db, (runStore) => {
+            return runStore.listRuns(flags.limit);
           });
-          const runs = runStore.listRuns(flags.limit);
 
           if (flags.json) {
             console.log(JSON.stringify(runs, null, 2));
@@ -42,8 +41,6 @@ export function createRunCommandGroup(defaults: CliDefaults) {
               })),
             );
           }
-
-          runStore.close();
         },
       }),
       defineCommand({
@@ -61,11 +58,9 @@ export function createRunCommandGroup(defaults: CliDefaults) {
             throw new Error("Usage: hooka run show <run-id>");
           }
 
-          const runStore = await createRunStore({
-            dbPath: flags.db,
+          const run = await withRunStore(flags.db, (runStore) => {
+            return runStore.getRun(runId);
           });
-          const run = runStore.getRun(runId);
-          runStore.close();
 
           if (!run) {
             throw new Error(`Run not found: ${runId}`);

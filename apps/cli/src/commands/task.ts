@@ -1,11 +1,11 @@
 import { defineCommand, defineGroup, option } from "@bunli/core";
 import { enqueueRunRequestSchema } from "@hooka/contracts";
-import { createRunStore } from "@hooka/run-store";
 import { loadInstalledCapabilities, runTask } from "@hooka/runner-core";
 import type { AnyTask } from "@hooka/task-sdk";
 import { listTasks } from "@hooka/registry";
 import { z } from "zod";
 import type { CliDefaults } from "../lib/shared";
+import { withRunStore } from "../lib/shared";
 import {
   buildTaskInputFromFlags,
   taskToBunliOptions,
@@ -143,14 +143,12 @@ function createTaskEnqueueCommands(task: AnyTask, defaults: CliDefaults) {
           input: parsedInput,
           source: "cli",
         });
-        const runStore = await createRunStore({
-          dbPath: flags.db,
+        const queued = await withRunStore(flags.db, (runStore) => {
+          return runStore.enqueueRun({
+            ...payload,
+            capabilitySnapshot: manifest.installed,
+          });
         });
-        const queued = runStore.enqueueRun({
-          ...payload,
-          capabilitySnapshot: manifest.installed,
-        });
-        runStore.close();
 
         console.log(JSON.stringify(queued.response, null, 2));
       },

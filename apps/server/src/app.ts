@@ -1,5 +1,6 @@
 import type { EnqueueRunRequest, GenericTaskWebhook } from "@hooka/contracts";
 import { enqueueRunRequestSchema, runListQuerySchema } from "@hooka/contracts";
+import type { Logger } from "@hooka/logger";
 import {
   createRegistrySummary,
   getPresetPlan,
@@ -25,6 +26,7 @@ export interface HookaServerAppOptions {
   runStore: RunStore;
   uiDistDir: string;
   webhookSecret?: string;
+  logger?: Logger;
 }
 
 class NotFoundError extends Error {}
@@ -67,6 +69,25 @@ export function createHookaFetchHandler(options: HookaServerAppOptions) {
 
       return serveUi(url.pathname, options.uiDistDir);
     } catch (error) {
+      if (
+        !(error instanceof NotFoundError) &&
+        !(error instanceof ZodError) &&
+        !(error instanceof SyntaxError)
+      ) {
+        if (error instanceof Error) {
+          options.logger?.error("Request failed unexpectedly", error, {
+            method: request.method,
+            pathname: url.pathname,
+          });
+        } else {
+          options.logger?.error("Request failed unexpectedly", {
+            method: request.method,
+            pathname: url.pathname,
+            error: String(error),
+          });
+        }
+      }
+
       return json(
         {
           ok: false,
@@ -94,6 +115,7 @@ function createExactRoutes(
           service: "hooka-server",
         }),
     ],
+    [routeKey("GET", "/api/ready"), () => checkReadiness(options)],
     [routeKey("GET", "/api/tasks"), () => json(listTasks())],
     [routeKey("GET", "/api/capabilities"), () => json(listCapabilities())],
     [
@@ -212,7 +234,12 @@ function verifySignedWebhook(
   request: Request,
   rawBody: string,
 ): Response | null {
+  const pathname = new URL(request.url).pathname;
+
   if (!options.webhookSecret) {
+    options.logger?.error("Webhook secret is not configured", {
+      pathname,
+    });
     return json(
       {
         ok: false,
@@ -230,6 +257,11 @@ function verifySignedWebhook(
   });
 
   if (!signatureCheck.ok) {
+    options.logger?.warn("Webhook signature rejected", {
+      pathname,
+      status: signatureCheck.status,
+      error: signatureCheck.error,
+    });
     return json(
       {
         ok: false,
@@ -240,6 +272,34 @@ function verifySignedWebhook(
   }
 
   return null;
+}
+
+function checkReadiness(options: HookaServerAppOptions): Response {
+  try {
+    options.runStore.db.query("select 1 as ok").get();
+
+    return json({
+      ok: true,
+      service: "hooka-server",
+    });
+  } catch (error) {
+    if (error instanceof Error) {
+      options.logger?.error("Readiness check failed", error);
+    } else {
+      options.logger?.error("Readiness check failed", {
+        error: String(error),
+      });
+    }
+
+    return json(
+      {
+        ok: false,
+        service: "hooka-server",
+        error: "Database not ready.",
+      },
+      503,
+    );
+  }
 }
 
 async function enqueueRun(

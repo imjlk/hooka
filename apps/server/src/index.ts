@@ -1,45 +1,38 @@
-import { getEnvOrDefault, getNumberEnv } from "@hooka/bun-utils";
-import { createRunStore, defaultHookaDbPath } from "@hooka/run-store";
-import { getDefaultManifestPath } from "@hooka/runner-core";
-import { resolve } from "node:path";
+import { createServerConfig } from "@hooka/config";
+import { createLogger } from "@hooka/logger";
+import { createRunStore } from "@hooka/run-store";
 import { createHookaFetchHandler } from "./app";
 import { registerServerShutdownHandlers } from "./shutdown";
 
-const port = getNumberEnv("HOOKA_PORT", 3000);
-const dbPath = getEnvOrDefault("HOOKA_DB_PATH", defaultHookaDbPath);
-const runtimeRole = getEnvOrDefault("HOOKA_RUNTIME_ROLE", "hooka-server");
-const uiDistDir = resolve(process.cwd(), "packages/admin-ui/dist");
-const capabilityManifestPath = getDefaultManifestPath();
+const config = createServerConfig();
+const logger = createLogger({
+  service: "hooka-server",
+  runtimeRole: config.runtimeRole,
+});
 const runStore = await createRunStore({
-  dbPath,
+  dbPath: config.dbPath,
 });
 
 const server = Bun.serve({
-  port,
+  port: config.port,
   idleTimeout: 30,
   fetch: createHookaFetchHandler({
-    capabilityManifestPath,
+    capabilityManifestPath: config.capabilityManifestPath,
     runStore,
-    uiDistDir,
-    webhookSecret: Bun.env["HOOKA_WEBHOOK_SECRET"],
+    uiDistDir: config.uiDistDir,
+    webhookSecret: config.webhookSecret,
+    logger,
   }),
 });
 
 registerServerShutdownHandlers({
   server,
   runStore,
+  logger,
 });
 
-console.log(
-  JSON.stringify(
-    {
-      service: "hooka-server",
-      runtimeRole,
-      port: server.port,
-      dbPath,
-      capabilityManifestPath,
-    },
-    null,
-    2,
-  ),
-);
+logger.info("Server started", {
+  port: server.port,
+  dbPath: config.dbPath,
+  capabilityManifestPath: config.capabilityManifestPath,
+});

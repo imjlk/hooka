@@ -110,7 +110,9 @@ test("worker loop finishes the in-flight run before honoring shutdown", async ()
     dbPath: ":memory:",
   });
   const shutdownSignal = createWorkerShutdownSignal({
-    log() {},
+    info() {},
+    warn() {},
+    error() {},
   });
 
   const queued = runStore.enqueueRun({
@@ -136,6 +138,11 @@ test("worker loop finishes the in-flight run before honoring shutdown", async ()
   await startWorkerLoop({
     commandRunner,
     installedCapabilities: ["wrangler"],
+    logger: {
+      info() {},
+      warn() {},
+      error() {},
+    },
     manifestPath: "/tmp/manifest.json",
     pollIntervalMs: 0,
     runStore,

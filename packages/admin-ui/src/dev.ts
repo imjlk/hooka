@@ -1,11 +1,7 @@
-import { getEnvOrDefault, getNumberEnv } from "@hooka/bun-utils";
+import { createAdminUiDevConfig } from "@hooka/config";
 import index from "./index.html";
 
-const port = getNumberEnv("HOOKA_UI_PORT", 4310);
-const apiOrigin = getEnvOrDefault(
-  "HOOKA_UI_API_ORIGIN",
-  "http://127.0.0.1:3000",
-);
+const config = createAdminUiDevConfig();
 
 function serveIndex(): Response {
   // Bun HTML imports are response-like at runtime, but currently need a narrow cast here.
@@ -13,7 +9,7 @@ function serveIndex(): Response {
 }
 
 const server = Bun.serve({
-  port,
+  port: config.uiPort,
   routes: {
     "/": index,
     "/index.html": index,
@@ -26,7 +22,10 @@ const server = Bun.serve({
     const url = new URL(request.url);
 
     if (url.pathname.startsWith("/api/")) {
-      const upstream = new URL(`${url.pathname}${url.search}`, apiOrigin);
+      const upstream = new URL(
+        `${url.pathname}${url.search}`,
+        config.apiOrigin,
+      );
       return fetch(upstream, {
         method: request.method,
         headers: request.headers,
@@ -46,7 +45,7 @@ console.log(
     {
       service: "hooka-admin-ui-dev",
       port: server.port,
-      apiOrigin,
+      apiOrigin: config.apiOrigin,
     },
     null,
     2,

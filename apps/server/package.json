@@ -6,8 +6,9 @@
     "build": "bun build ./src/index.ts --outdir ./dist --target bun"
   },
   "dependencies": {
-    "@hooka/bun-utils": "workspace:*",
+    "@hooka/config": "workspace:*",
     "@hooka/contracts": "workspace:*",
+    "@hooka/logger": "workspace:*",
     "@hooka/registry": "workspace:*",
     "@hooka/run-store": "workspace:*",
     "@hooka/runner-core": "workspace:*",
