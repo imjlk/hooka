@@ -1,10 +1,11 @@
 import { option, type CLIOption } from "@bunli/core";
 import type { AnyTask } from "@hooka/task-sdk";
 import { z } from "zod";
+import { booleanFlagSchema } from "./shared";
 
 const payloadJsonSchema = z.string().optional();
 const payloadFileSchema = z.string().optional();
-const dryRunSchema = z.coerce.boolean().default(false);
+const dryRunSchema = booleanFlagSchema;
 
 export interface TaskOptionConfig {
   includeDryRun?: boolean;

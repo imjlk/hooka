@@ -53,6 +53,7 @@ console.log("Dockerized preset E2E passed.");
 
 async function ensureDocker(): Promise<void> {
   await $`docker version`.quiet();
+  await $`docker compose config`.quiet();
 }
 
 async function buildImages(): Promise<void> {

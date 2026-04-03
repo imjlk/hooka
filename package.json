@@ -19,6 +19,7 @@
     "dev:ui": "bun --hot packages/admin-ui/src/dev.ts",
     "dev:cli": "bun --filter @hooka/cli run dev",
     "test": "bun test",
+    "test:watch": "bun test --watch",
     "test:dev-ui:smoke": "bun run scripts/smoke-dev-ui.ts",
     "test:e2e:docker": "bun run scripts/e2e/dockerized-preset-e2e.ts",
     "task:validate": "bun run apps/cli/src/index.ts task validate",

@@ -38,22 +38,29 @@ docker/      Dockerfile, Bake file, feature installers, manifest examples
 
 ```bash
 bun install
+cp .env.example .env
 bun run build
 ```
 
 Useful commands:
 
 ```bash
+bun run apps/cli/src/index.ts init --yes --preset cf-pages
+bun run apps/cli/src/index.ts dev
+bun run apps/cli/src/index.ts status
+bun run apps/cli/src/index.ts config
 bun run apps/cli/src/index.ts task list
 bun run apps/cli/src/index.ts capability list
 bun run apps/cli/src/index.ts image plan --preset cf-pages
 bun run apps/cli/src/index.ts image plan --preset wp-wrangler
 bun run apps/cli/src/index.ts task enqueue deploy.shared-volume.wrangler --project staging-site --source-path /shared-source/simply-static
 bun run apps/cli/src/index.ts run list
+bun run apps/cli/src/index.ts run retry <run-id>
 bun run bake:generate
 bun run test:e2e:docker
 bun run dev:server
 bun run dev:ui
+bun run test:watch
 ```
 
 ## Delivery Status
@@ -179,42 +186,28 @@ Generic webhook body:
 ## Local flow
 
 ```bash
-HOOKA_DB_PATH=/tmp/hooka.sqlite \
-HOOKA_MANIFEST_PATH=$PWD/.hooka/installed-capabilities.json \
-HOOKA_WEBHOOK_SECRET=local-secret \
-HOOKA_INSTALLED_CAPABILITIES=wrangler \
-bun run dev:server
+cp .env.example .env
+bun run apps/cli/src/index.ts init --yes --preset cf-pages
 ```
 
 ```bash
-HOOKA_DB_PATH=/tmp/hooka.sqlite \
-HOOKA_MANIFEST_PATH=$PWD/.hooka/installed-capabilities.json \
-HOOKA_INSTALLED_CAPABILITIES=wrangler \
-CLOUDFLARE_API_TOKEN=local-token \
-CLOUDFLARE_ACCOUNT_ID=local-account \
-bun run dev:worker
+bun run apps/cli/src/index.ts dev
 ```
 
 ```bash
-HOOKA_UI_PORT=4310 \
-HOOKA_UI_API_ORIGIN=http://127.0.0.1:3000 \
-bun run dev:ui
-```
-
-```bash
-mkdir -p /tmp/hooka-shared/simply-static "$PWD/.hooka"
-bun run apps/cli/src/index.ts image install-features \
-  --features wrangler \
-  --manifest "$PWD/.hooka/installed-capabilities.json" \
-  --image hooka:local
+bun run apps/cli/src/index.ts status
 ```
 
 ```bash
 HOOKA_WEBHOOK_SECRET=local-secret \
 bun run apps/cli/src/index.ts webhook test \
   --task-id deploy.shared-volume.wrangler \
-  --payload-json '{"kind":"pages-deploy","project":"staging-site","sourcePath":"/tmp/hooka-shared/simply-static"}'
+  --payload-json '{"kind":"pages-deploy","project":"staging-site","sourcePath":".hooka/shared-source/simply-static"}'
 ```
+
+Hooka uses Bun's built-in `.env` loading, so the default local flow is to copy
+`.env.example` once and then use the CLI commands above without repeating long
+inline env prefixes.
 
 ## Producer examples
 
@@ -233,10 +226,21 @@ Hooka's default model is `signed webhook -> queue -> worker -> wrangler CLI`. Wo
 ## Dev UI
 
 - `bun run dev:ui` starts a Bun HMR server for the admin UI.
+- `bun run apps/cli/src/index.ts dev` starts `server + worker + ui` together by default.
 - Default UI port: `4310`
 - Default proxied API origin: `http://127.0.0.1:3000`
 - The dev server only serves the UI source entrypoint and proxies `/api/*` to the configured backend.
 - `bun run test:dev-ui:smoke` verifies that `GET /` serves the shell and `/api/health` proxies correctly.
+
+## Local Docker Compose
+
+- `docker-compose.yml` is the local container smoke path.
+- It builds repo-local images from `docker/Dockerfile` instead of pulling GHCR tags.
+- It reads values from `.env`, keeps the SQLite path under `/data`, keeps the manifest under `/app/.hooka`, and bind-mounts `./.hooka/shared-source` to `/shared-source`.
+
+```bash
+docker compose up --build
+```
 
 ## Next Security Tranche
 

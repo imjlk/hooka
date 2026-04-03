@@ -39,7 +39,8 @@ export interface RegistryDiscoveryResult {
 export async function discoverRegistryArtifacts(
   rootDir?: string,
 ): Promise<RegistryDiscoveryResult> {
-  const resolvedRootDir = rootDir ?? resolveRegistryRoot(process.cwd());
+  const resolvedRootDir =
+    rootDir ?? resolveRegistryRootFromModule(import.meta.dir);
   const webhookAdapters: CompatibilityWebhookAdapter[] = [];
   const capabilities: CapabilityDefinition[] = [];
   const taskPacks: TaskPackDefinition[] = [];
@@ -141,6 +142,10 @@ export async function discoverRegistryArtifacts(
     taskPacks,
     errors,
   };
+}
+
+function resolveRegistryRootFromModule(moduleDir: string): string {
+  return resolveRegistryRoot(moduleDir);
 }
 
 function resolveRegistryRoot(startDir: string): string {

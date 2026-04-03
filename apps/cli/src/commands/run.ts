@@ -1,13 +1,57 @@
 import { defineCommand, defineGroup, option } from "@bunli/core";
 import { z } from "zod";
 import type { CliDefaults } from "../lib/shared";
-import { withRunStore } from "../lib/shared";
+import {
+  booleanFlagSchema,
+  resolveBooleanFlag,
+  withRunStore,
+} from "../lib/shared";
 
 export function createRunCommandGroup(defaults: CliDefaults) {
   return defineGroup({
     name: "run",
     description: "Inspect queued and completed runs from SQLite.",
     commands: [
+      defineCommand({
+        name: "retry",
+        description:
+          "Retry a completed run by enqueueing the same task payload again.",
+        options: {
+          db: option(z.string().default(defaults.dbPath), {
+            description: "Path to the Hooka SQLite database.",
+          }),
+        },
+        handler: async ({ flags, positional }) => {
+          const runId = positional[0];
+
+          if (!runId) {
+            throw new Error("Usage: hooka run retry <run-id>");
+          }
+
+          const queued = await withRunStore(flags.db, (runStore) => {
+            const run = runStore.getRun(runId);
+
+            if (!run) {
+              throw new Error(`Run not found: ${runId}`);
+            }
+
+            if (run.status !== "failed" && run.status !== "succeeded") {
+              throw new Error(
+                `Only failed or succeeded runs can be retried. Current status: ${run.status}`,
+              );
+            }
+
+            return runStore.enqueueRun({
+              taskId: run.taskId,
+              input: run.payload,
+              source: "cli.retry",
+              capabilitySnapshot: run.capabilitySnapshot,
+            });
+          });
+
+          console.log(JSON.stringify(queued.response, null, 2));
+        },
+      }),
       defineCommand({
         name: "list",
         description: "List recent queued or completed runs.",
@@ -18,16 +62,17 @@ export function createRunCommandGroup(defaults: CliDefaults) {
           limit: option(z.coerce.number().int().positive().default(20), {
             description: "Maximum number of runs to return.",
           }),
-          json: option(z.coerce.boolean().default(false), {
+          json: option(booleanFlagSchema, {
             description: "Print raw JSON instead of a table.",
           }),
         },
         handler: async ({ flags }) => {
+          const json = resolveBooleanFlag(flags.json, "--json");
           const runs = await withRunStore(flags.db, (runStore) => {
             return runStore.listRuns(flags.limit);
           });
 
-          if (flags.json) {
+          if (json) {
             console.log(JSON.stringify(runs, null, 2));
           } else {
             console.table(

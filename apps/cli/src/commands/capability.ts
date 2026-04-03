@@ -1,6 +1,6 @@
 import { defineCommand, defineGroup, option } from "@bunli/core";
 import { listCapabilities } from "@hooka/registry";
-import { z } from "zod";
+import { booleanFlagSchema, resolveBooleanFlag } from "../lib/shared";
 
 export function createCapabilityCommandGroup() {
   return defineGroup({
@@ -11,11 +11,12 @@ export function createCapabilityCommandGroup() {
         name: "list",
         description: "List capabilities and their healthchecks.",
         options: {
-          json: option(z.coerce.boolean().default(false), {
+          json: option(booleanFlagSchema, {
             description: "Print raw JSON instead of a table.",
           }),
         },
         handler: async ({ flags }) => {
+          const json = resolveBooleanFlag(flags.json, "--json");
           const capabilities = listCapabilities().map((capability) => ({
             id: capability.id,
             binaries: capability.binaries.join(", "),
@@ -32,7 +33,7 @@ export function createCapabilityCommandGroup() {
               .join(", "),
           }));
 
-          if (flags.json) {
+          if (json) {
             console.log(JSON.stringify(capabilities, null, 2));
             return;
           }

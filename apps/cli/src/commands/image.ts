@@ -8,7 +8,13 @@ import {
 import { resolve } from "node:path";
 import { z } from "zod";
 import type { CliDefaults } from "../lib/shared";
-import { ensureParentDirectory, parseFeatureList } from "../lib/shared";
+import {
+  booleanFlagSchema,
+  createInstalledCapabilitiesManifest,
+  parseFeatureList,
+  resolveBooleanFlag,
+  writeInstalledCapabilitiesManifest,
+} from "../lib/shared";
 
 export function createImageCommandGroup(defaults: CliDefaults) {
   return defineGroup({
@@ -98,11 +104,12 @@ export function createImageCommandGroup(defaults: CliDefaults) {
           image: option(z.string().default("hooka:custom"), {
             description: "Image label to write into the manifest.",
           }),
-          "dry-run": option(z.coerce.boolean().default(false), {
+          "dry-run": option(booleanFlagSchema, {
             description: "Print the installation plan without running scripts.",
           }),
         },
         handler: async ({ flags, shell }) => {
+          const dryRun = resolveBooleanFlag(flags["dry-run"], "--dry-run");
           const requested = parseFeatureList(flags.features);
           const installed = new Set<string>();
 
@@ -117,7 +124,7 @@ export function createImageCommandGroup(defaults: CliDefaults) {
               throw new Error(`Unknown capability: ${feature}`);
             }
 
-            if (!flags["dry-run"] && capability.docker) {
+            if (!dryRun && capability.docker) {
               const installScript = resolve(
                 process.cwd(),
                 capability.docker.installScript,
@@ -128,18 +135,13 @@ export function createImageCommandGroup(defaults: CliDefaults) {
             installed.add(capability.id);
           }
 
-          const manifest = {
+          const manifest = createInstalledCapabilitiesManifest({
             image: flags.image,
-            generatedAt: new Date().toISOString(),
             installed: [...installed],
-          };
+          });
 
-          if (!flags["dry-run"]) {
-            await ensureParentDirectory(flags.manifest);
-            await Bun.write(
-              flags.manifest,
-              `${JSON.stringify(manifest, null, 2)}\n`,
-            );
+          if (!dryRun) {
+            await writeInstalledCapabilitiesManifest(flags.manifest, manifest);
           }
 
           console.log(JSON.stringify(manifest, null, 2));

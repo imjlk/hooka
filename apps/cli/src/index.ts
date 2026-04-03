@@ -1,8 +1,12 @@
 import { createCLI } from "@bunli/core";
 import { createCapabilityCommandGroup } from "./commands/capability";
+import { createConfigCommand } from "./commands/config";
+import { createDevCommand } from "./commands/dev";
 import { createDoctorCommand } from "./commands/doctor";
 import { createImageCommandGroup } from "./commands/image";
+import { createInitCommand } from "./commands/init";
 import { createRunCommandGroup } from "./commands/run";
+import { createStatusCommand } from "./commands/status";
 import { createTaskCommandGroup } from "./commands/task";
 import { createWebhookCommandGroup } from "./commands/webhook";
 import { cliDefaults } from "./lib/shared";
@@ -21,6 +25,10 @@ cli.command(createTaskCommandGroup(cliDefaults));
 cli.command(createCapabilityCommandGroup());
 cli.command(createImageCommandGroup(cliDefaults));
 cli.command(createRunCommandGroup(cliDefaults));
+cli.command(createStatusCommand());
+cli.command(createConfigCommand());
+cli.command(createInitCommand());
+cli.command(createDevCommand());
 cli.command(createDoctorCommand(cliDefaults));
 cli.command(createWebhookCommandGroup());
 

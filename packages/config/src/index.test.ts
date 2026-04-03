@@ -1,10 +1,14 @@
 import { expect, test } from "bun:test";
 import {
+  assertServerStartupConfig,
   createAdminUiDevConfig,
   createCliConfig,
   createServerConfig,
   createWorkerConfig,
+  defaultLocalDbRelativePath,
   defaultManifestRelativePath,
+  getServerStartupIssues,
+  resolveManifestSource,
 } from "./index";
 
 test("createServerConfig applies defaults and resolves cwd-based paths", () => {
@@ -15,7 +19,7 @@ test("createServerConfig applies defaults and resolves cwd-based paths", () => {
 
   expect(config).toEqual({
     port: 3000,
-    dbPath: "/data/hooka.sqlite",
+    dbPath: `/repo/${defaultLocalDbRelativePath}`,
     runtimeRole: "hooka-server",
     webhookSecret: undefined,
     capabilityManifestPath: `/repo/${defaultManifestRelativePath}`,
@@ -53,7 +57,7 @@ test("createCliConfig resolves manifest and db defaults", () => {
   });
 
   expect(config).toEqual({
-    dbPath: "/data/hooka.sqlite",
+    dbPath: `/repo/${defaultLocalDbRelativePath}`,
     manifestPath: `/repo/${defaultManifestRelativePath}`,
   });
 });
@@ -67,4 +71,44 @@ test("createAdminUiDevConfig keeps local Bun HMR defaults", () => {
     uiPort: 4310,
     apiOrigin: "http://127.0.0.1:3000",
   });
+});
+
+test("resolveManifestSource distinguishes env override and manifest file precedence", () => {
+  expect(
+    resolveManifestSource({
+      cwd: "/repo",
+      env: {
+        HOOKA_INSTALLED_CAPABILITIES: "wrangler",
+      },
+    }),
+  ).toEqual({
+    kind: "env-inline",
+    manifestPath: `/repo/${defaultManifestRelativePath}`,
+  });
+
+  expect(
+    resolveManifestSource({
+      cwd: "/repo",
+      env: {
+        HOOKA_MANIFEST_PATH: "tmp/custom.json",
+      },
+    }),
+  ).toEqual({
+    kind: "manifest-explicit",
+    manifestPath: "/repo/tmp/custom.json",
+  });
+});
+
+test("server startup validation requires a webhook secret", () => {
+  const config = createServerConfig({
+    cwd: "/repo",
+    env: {},
+  });
+
+  expect(getServerStartupIssues(config)).toEqual([
+    "HOOKA_WEBHOOK_SECRET is required.",
+  ]);
+  expect(() => assertServerStartupConfig(config)).toThrow(
+    "HOOKA_WEBHOOK_SECRET is required.",
+  );
 });

@@ -1,10 +1,15 @@
-import { resolve } from "node:path";
+import { existsSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { z } from "zod";
-import { defaultHookaDbPath } from "@hooka/run-store";
 
 export type EnvRecord = Record<string, string | undefined>;
+export type ManifestSourceKind =
+  | "env-inline"
+  | "manifest-explicit"
+  | "manifest-default";
 
 export const defaultManifestRelativePath = ".hooka/installed-capabilities.json";
+export const defaultLocalDbRelativePath = ".hooka/hooka.sqlite";
 export const defaultServerPort = 3000;
 export const defaultWorkerPollIntervalMs = 2_000;
 export const defaultRunLeaseMs = 900_000;
@@ -43,6 +48,35 @@ export type ServerConfig = z.infer<typeof serverConfigSchema>;
 export type WorkerConfig = z.infer<typeof workerConfigSchema>;
 export type CliConfig = z.infer<typeof cliConfigSchema>;
 export type AdminUiDevConfig = z.infer<typeof adminUiDevConfigSchema>;
+export interface ManifestSourceResolution {
+  kind: ManifestSourceKind;
+  manifestPath: string;
+}
+
+export function resolveHookaProjectRoot(startDir = process.cwd()): string {
+  let current = resolve(startDir);
+
+  while (true) {
+    if (
+      existsSync(join(current, "package.json")) &&
+      existsSync(join(current, "packages"))
+    ) {
+      return current;
+    }
+
+    const parent = dirname(current);
+
+    if (parent === current) {
+      return startDir;
+    }
+
+    current = parent;
+  }
+}
+
+export function getDefaultLocalDbPath(cwd = process.cwd()): string {
+  return resolve(cwd, defaultLocalDbRelativePath);
+}
 
 export function getDefaultManifestPath(
   cwd = process.cwd(),
@@ -52,6 +86,32 @@ export function getDefaultManifestPath(
     cwd,
     env["HOOKA_MANIFEST_PATH"] ?? defaultManifestRelativePath,
   );
+}
+
+export function resolveManifestSource(
+  input: { cwd?: string; env?: EnvRecord } = {},
+): ManifestSourceResolution {
+  const cwd = input.cwd ?? process.cwd();
+  const env = input.env ?? (Bun.env as EnvRecord);
+
+  if (env["HOOKA_INSTALLED_CAPABILITIES"]?.trim()) {
+    return {
+      kind: "env-inline",
+      manifestPath: getDefaultManifestPath(cwd, env),
+    };
+  }
+
+  if (env["HOOKA_MANIFEST_PATH"]) {
+    return {
+      kind: "manifest-explicit",
+      manifestPath: getDefaultManifestPath(cwd, env),
+    };
+  }
+
+  return {
+    kind: "manifest-default",
+    manifestPath: getDefaultManifestPath(cwd, env),
+  };
 }
 
 export function getDefaultWorkerId(
@@ -68,7 +128,7 @@ export function createServerConfig(
 
   return serverConfigSchema.parse({
     port: parseNumberEnv(env["HOOKA_PORT"], defaultServerPort),
-    dbPath: env["HOOKA_DB_PATH"] ?? defaultHookaDbPath,
+    dbPath: env["HOOKA_DB_PATH"] ?? getDefaultLocalDbPath(cwd),
     runtimeRole: env["HOOKA_RUNTIME_ROLE"] ?? "hooka-server",
     webhookSecret: env["HOOKA_WEBHOOK_SECRET"] || undefined,
     capabilityManifestPath: getDefaultManifestPath(cwd, env),
@@ -83,7 +143,7 @@ export function createWorkerConfig(
   const env = input.env ?? (Bun.env as EnvRecord);
 
   return workerConfigSchema.parse({
-    dbPath: env["HOOKA_DB_PATH"] ?? defaultHookaDbPath,
+    dbPath: env["HOOKA_DB_PATH"] ?? getDefaultLocalDbPath(cwd),
     runtimeRole: env["HOOKA_RUNTIME_ROLE"] ?? "hooka-worker",
     manifestPath: getDefaultManifestPath(cwd, env),
     workerId: getDefaultWorkerId(env),
@@ -102,7 +162,7 @@ export function createCliConfig(
   const env = input.env ?? (Bun.env as EnvRecord);
 
   return cliConfigSchema.parse({
-    dbPath: env["HOOKA_DB_PATH"] ?? defaultHookaDbPath,
+    dbPath: env["HOOKA_DB_PATH"] ?? getDefaultLocalDbPath(cwd),
     manifestPath: getDefaultManifestPath(cwd, env),
   });
 }
@@ -124,4 +184,22 @@ function parseNumberEnv(raw: string | undefined, fallback: number): number {
   }
 
   return Number(raw);
+}
+
+export function getServerStartupIssues(config: ServerConfig): string[] {
+  const issues: string[] = [];
+
+  if (!config.webhookSecret) {
+    issues.push("HOOKA_WEBHOOK_SECRET is required.");
+  }
+
+  return issues;
+}
+
+export function assertServerStartupConfig(config: ServerConfig): void {
+  const issues = getServerStartupIssues(config);
+
+  if (issues.length > 0) {
+    throw new Error(issues.join(" "));
+  }
 }
