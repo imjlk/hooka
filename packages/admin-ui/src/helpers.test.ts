@@ -1,11 +1,14 @@
 import { expect, test } from "bun:test";
 import {
   buildRunQuery,
+  createTargetScaffold,
   deriveRunFilterOptions,
   formatCapabilityEnvRows,
+  parseTargetEditorValue,
   selectActiveRunId,
   selectPreset,
   selectTarget,
+  serializeTargetEditorValue,
   type Capability,
   type PresetWithPlan,
   type RunSummary,
@@ -214,4 +217,24 @@ test("selectTarget falls back to the first target when current is invalid", () =
   expect(selectTarget(targets, "pages-preview")?.id).toBe("pages-preview");
   expect(selectTarget(targets, "missing")?.id).toBe("pages-main");
   expect(selectTarget([], "missing")).toBe(null);
+});
+
+test("target editor helpers scaffold, serialize, and validate target JSON", () => {
+  const scaffold = createTargetScaffold();
+  const serialized = serializeTargetEditorValue(scaffold);
+  const parsed = parseTargetEditorValue(serialized);
+
+  expect(scaffold.id).toBe("new-target");
+  expect(serialized).toContain('"taskId": "deploy.shared-volume.wrangler"');
+  expect(parsed).toEqual({
+    ok: true,
+    target: expect.objectContaining({
+      id: "new-target",
+      taskId: "deploy.shared-volume.wrangler",
+    }),
+  });
+  expect(parseTargetEditorValue("{")).toEqual({
+    ok: false,
+    error: expect.any(String),
+  });
 });

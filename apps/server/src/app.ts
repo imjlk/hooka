@@ -1,10 +1,16 @@
 import type {
+  AuditEventCategory,
   EnqueueRunRequest,
   GenericTaskWebhook,
   IncomingTaskWebhook,
   TargetPolicy,
 } from "@hooka/contracts";
-import { enqueueRunRequestSchema, runListQuerySchema } from "@hooka/contracts";
+import {
+  auditEventListQuerySchema,
+  enqueueRunRequestSchema,
+  runListQuerySchema,
+  targetSchema,
+} from "@hooka/contracts";
 import type { Logger } from "@hooka/logger";
 import {
   createRegistrySummary,
@@ -19,13 +25,19 @@ import type { CompatibilityWebhookAdapter } from "@hooka/task-sdk";
 import type { RunStore } from "@hooka/run-store";
 import { loadInstalledCapabilities } from "@hooka/runner-core";
 import type { ResolvedTargetWebhook } from "@hooka/targets";
-import { loadTargets, resolveTargetWebhook } from "@hooka/targets";
+import {
+  createTarget,
+  deleteTarget,
+  loadTargets,
+  resolveTargetWebhook,
+  updateTarget,
+} from "@hooka/targets";
 import { extname, resolve } from "node:path";
 import { ZodError } from "zod";
 import { isAuthorizedAdminRequest, isPublicServerRoute } from "./lib/auth";
 import {
-  createServerRateLimitKey,
   InMemoryRateLimiter,
+  createServerRateLimitContext,
 } from "./lib/rate-limit";
 import {
   normalizeGenericTaskWebhook,
@@ -35,13 +47,17 @@ import {
 
 export interface HookaServerAppOptions {
   adminToken?: string;
+  apiRateLimit: number;
   capabilityManifestPath: string;
   defaultMaxAttempts: number;
+  logger?: Logger;
+  rateLimitWindowMs: number;
   runStore: RunStore;
   targetsPath: string;
+  trustProxy: boolean;
   uiDistDir: string;
+  webhookRateLimit: number;
   webhookSecret?: string;
-  logger?: Logger;
 }
 
 class NotFoundError extends Error {}
@@ -59,9 +75,13 @@ interface EnqueueMetadata {
 
 export function createHookaFetchHandler(options: HookaServerAppOptions) {
   const exactRoutes = createExactRoutes(options);
-  const rateLimiter = new InMemoryRateLimiter({
-    limit: 100,
-    windowMs: 60_000,
+  const apiRateLimiter = new InMemoryRateLimiter({
+    limit: options.apiRateLimit,
+    windowMs: options.rateLimitWindowMs,
+  });
+  const webhookRateLimiter = new InMemoryRateLimiter({
+    limit: options.webhookRateLimit,
+    windowMs: options.rateLimitWindowMs,
   });
 
   return async function fetch(request: Request): Promise<Response> {
@@ -69,7 +89,12 @@ export function createHookaFetchHandler(options: HookaServerAppOptions) {
 
     try {
       if (url.pathname.startsWith("/api/")) {
-        const rateLimitResponse = checkRateLimit(options, request, rateLimiter);
+        const rateLimitResponse = checkRateLimit(
+          options,
+          request,
+          apiRateLimiter,
+          webhookRateLimiter,
+        );
         if (rateLimitResponse) {
           return rateLimitResponse;
         }
@@ -109,9 +134,28 @@ export function createHookaFetchHandler(options: HookaServerAppOptions) {
         return json(run);
       }
 
-      const targetId = matchTargetRoute(request.method, url.pathname);
-      if (targetId) {
-        return handleTargetDetail(options, targetId);
+      const targetDetailId = matchTargetDetailRoute(
+        request.method,
+        url.pathname,
+      );
+      if (targetDetailId) {
+        return handleTargetDetail(options, targetDetailId);
+      }
+
+      const targetUpdateId = matchTargetUpdateRoute(
+        request.method,
+        url.pathname,
+      );
+      if (targetUpdateId) {
+        return handleTargetUpdate(options, request, targetUpdateId);
+      }
+
+      const targetDeleteId = matchTargetDeleteRoute(
+        request.method,
+        url.pathname,
+      );
+      if (targetDeleteId) {
+        return handleTargetDelete(options, request, targetDeleteId);
       }
 
       return serveUi(url.pathname, options.uiDistDir);
@@ -217,6 +261,14 @@ function createExactRoutes(
     ],
     [routeKey("GET", "/api/targets"), () => handleTargetsList(options)],
     [
+      routeKey("GET", "/api/audit-events"),
+      (_request, url) => handleAuditEventsList(options, url),
+    ],
+    [
+      routeKey("POST", "/api/targets"),
+      async (request) => handleTargetCreate(options, request),
+    ],
+    [
       routeKey("GET", "/api/events/stream"),
       (request) => createEventStreamResponse(options, request),
     ],
@@ -294,6 +346,25 @@ async function enqueueIncomingWebhook(
     resolved = resolveTargetWebhook(targets, payload);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    if (message.startsWith("Target override rejected:")) {
+      appendAuditEvent(options, {
+        category: "policy",
+        action: "target_policy_rejected",
+        outcome: "rejected",
+        subjectType: "target",
+        subjectId: payload.targetId,
+        message,
+        context: {
+          targetId: payload.targetId,
+          source: payload.source,
+          eventId: payload.eventId,
+        },
+      });
+      options.logger?.warn("Target policy rejected", {
+        targetId: payload.targetId,
+        error: message,
+      });
+    }
     return json(
       {
         ok: false,
@@ -348,6 +419,17 @@ function verifySignedWebhook(
   });
 
   if (!signatureCheck.ok) {
+    appendAuditEvent(options, {
+      category: "security",
+      action: "webhook_signature_rejected",
+      outcome: "rejected",
+      subjectType: "webhook",
+      request,
+      message: signatureCheck.error,
+      context: {
+        status: signatureCheck.status,
+      },
+    });
     options.logger?.warn("Webhook signature rejected", {
       pathname,
       status: signatureCheck.status,
@@ -399,6 +481,25 @@ async function handleTargetsList(
   return json(await loadTargets(options.targetsPath));
 }
 
+function handleAuditEventsList(
+  options: HookaServerAppOptions,
+  url: URL,
+): Response {
+  const filters = auditEventListQuerySchema.parse({
+    limit: getPositiveInt(url.searchParams.get("limit"), 20),
+    category: url.searchParams.get("category") ?? undefined,
+    outcome: url.searchParams.get("outcome") ?? undefined,
+  });
+
+  return json(
+    options.runStore.listAuditEvents({
+      limit: filters.limit,
+      category: filters.category,
+      outcome: filters.outcome,
+    }),
+  );
+}
+
 async function handleTargetDetail(
   options: HookaServerAppOptions,
   targetId: string,
@@ -418,6 +519,101 @@ async function handleTargetDetail(
   }
 
   return json(target);
+}
+
+async function handleTargetCreate(
+  options: HookaServerAppOptions,
+  request: Request,
+): Promise<Response> {
+  const target = targetSchema.parse(await request.json());
+
+  try {
+    await createTarget(options.targetsPath, target);
+  } catch (error) {
+    return handleTargetWriteError(error);
+  }
+
+  appendAuditEvent(options, {
+    category: "targets",
+    action: "target_created",
+    outcome: "created",
+    subjectType: "target",
+    subjectId: target.id,
+    request,
+    message: `Target ${target.id} was created.`,
+    context: {
+      taskId: target.taskId,
+    },
+  });
+
+  options.logger?.info("Target created", {
+    targetId: target.id,
+    taskId: target.taskId,
+  });
+  return json(target, 201);
+}
+
+async function handleTargetUpdate(
+  options: HookaServerAppOptions,
+  request: Request,
+  targetId: string,
+): Promise<Response> {
+  const target = targetSchema.parse(await request.json());
+
+  try {
+    await updateTarget(options.targetsPath, targetId, target);
+  } catch (error) {
+    return handleTargetWriteError(error);
+  }
+
+  appendAuditEvent(options, {
+    category: "targets",
+    action: "target_updated",
+    outcome: "updated",
+    subjectType: "target",
+    subjectId: target.id,
+    request,
+    message: `Target ${target.id} was updated.`,
+    context: {
+      taskId: target.taskId,
+    },
+  });
+
+  options.logger?.info("Target updated", {
+    targetId: target.id,
+    taskId: target.taskId,
+  });
+  return json(target);
+}
+
+async function handleTargetDelete(
+  options: HookaServerAppOptions,
+  request: Request,
+  targetId: string,
+): Promise<Response> {
+  try {
+    await deleteTarget(options.targetsPath, targetId);
+  } catch (error) {
+    return handleTargetWriteError(error);
+  }
+
+  appendAuditEvent(options, {
+    category: "targets",
+    action: "target_deleted",
+    outcome: "deleted",
+    subjectType: "target",
+    subjectId: targetId,
+    request,
+    message: `Target ${targetId} was deleted.`,
+  });
+
+  options.logger?.info("Target deleted", {
+    targetId,
+  });
+  return json({
+    ok: true,
+    targetId,
+  });
 }
 
 async function retryRun(
@@ -505,6 +701,7 @@ function createEventStreamResponse(
   const encoder = new TextEncoder();
   let interval: ReturnType<typeof setInterval> | undefined;
   let lastSequence = options.runStore.getLastRunEventSequence();
+  let lastAuditSequence = options.runStore.getLastAuditEventSequence();
   let lastWorkerSeenAt =
     options.runStore.listWorkerHeartbeats()[0]?.lastSeenAt ?? null;
 
@@ -512,25 +709,33 @@ function createEventStreamResponse(
     start(controller) {
       writeSseEvent(controller, encoder, "ready", {
         sequence: lastSequence,
+        auditSequence: lastAuditSequence,
         workers: options.runStore.listWorkerHeartbeats(),
       });
 
       interval = setInterval(() => {
         const events = options.runStore.listRunEventsSince(lastSequence, 100);
+        const auditSequence = options.runStore.getLastAuditEventSequence();
         const workers = options.runStore.listWorkerHeartbeats();
         const latestWorkerSeenAt = workers[0]?.lastSeenAt ?? null;
 
-        if (events.length === 0 && latestWorkerSeenAt === lastWorkerSeenAt) {
+        if (
+          events.length === 0 &&
+          auditSequence === lastAuditSequence &&
+          latestWorkerSeenAt === lastWorkerSeenAt
+        ) {
           return;
         }
 
         if (events.length > 0) {
           lastSequence = events[events.length - 1]?.sequence ?? lastSequence;
         }
+        lastAuditSequence = auditSequence;
         lastWorkerSeenAt = latestWorkerSeenAt;
 
         writeSseEvent(controller, encoder, "update", {
           events,
+          auditSequence,
           workers,
         });
       }, 1_000);
@@ -589,6 +794,14 @@ function requireAdminAuth(
     return null;
   }
 
+  appendAuditEvent(options, {
+    category: "security",
+    action: "admin_auth_rejected",
+    outcome: "rejected",
+    subjectType: "request",
+    request,
+    message: "Missing or invalid admin token.",
+  });
   options.logger?.warn("Admin authorization rejected", {
     pathname,
   });
@@ -604,7 +817,8 @@ function requireAdminAuth(
 function checkRateLimit(
   options: HookaServerAppOptions,
   request: Request,
-  rateLimiter: InMemoryRateLimiter,
+  apiRateLimiter: InMemoryRateLimiter,
+  webhookRateLimiter: InMemoryRateLimiter,
 ): Response | null {
   const pathname = new URL(request.url).pathname;
 
@@ -612,14 +826,35 @@ function checkRateLimit(
     return null;
   }
 
-  const decision = rateLimiter.check(createServerRateLimitKey(request));
+  const context = createServerRateLimitContext(request, {
+    trustProxy: options.trustProxy,
+  });
+  const rateLimiter =
+    context.bucket === "webhook" ? webhookRateLimiter : apiRateLimiter;
+  const decision = rateLimiter.check(context.key);
 
   if (decision.ok) {
     return null;
   }
 
+  appendAuditEvent(options, {
+    category: "security",
+    action: "rate_limit_rejected",
+    outcome: "rejected",
+    subjectType: context.bucket,
+    subjectId: context.key,
+    clientIp: context.clientIp,
+    requestPath: context.pathname,
+    message: "Rate limit exceeded.",
+    context: {
+      bucket: context.bucket,
+      retryAfterSeconds: decision.retryAfterSeconds,
+    },
+  });
   options.logger?.warn("Rate limit rejected", {
-    pathname,
+    pathname: context.pathname,
+    clientIp: context.clientIp,
+    bucket: context.bucket,
     key: decision.key,
     retryAfterSeconds: decision.retryAfterSeconds,
   });
@@ -672,8 +907,35 @@ function matchRunRetryRoute(method: string, pathname: string): string | null {
   return match?.[1] ?? null;
 }
 
-function matchTargetRoute(method: string, pathname: string): string | null {
+function matchTargetDetailRoute(
+  method: string,
+  pathname: string,
+): string | null {
   if (method.toUpperCase() !== "GET") {
+    return null;
+  }
+
+  const match = pathname.match(/^\/api\/targets\/([^/]+)$/);
+  return match?.[1] ?? null;
+}
+
+function matchTargetUpdateRoute(
+  method: string,
+  pathname: string,
+): string | null {
+  if (method.toUpperCase() !== "PUT") {
+    return null;
+  }
+
+  const match = pathname.match(/^\/api\/targets\/([^/]+)$/);
+  return match?.[1] ?? null;
+}
+
+function matchTargetDeleteRoute(
+  method: string,
+  pathname: string,
+): string | null {
+  if (method.toUpperCase() !== "DELETE") {
     return null;
   }
 
@@ -728,4 +990,56 @@ function withSecurityHeaders(input: HeadersInit = {}): Headers {
   headers.set("x-frame-options", "DENY");
   headers.set("referrer-policy", "no-referrer");
   return headers;
+}
+
+function appendAuditEvent(
+  options: HookaServerAppOptions,
+  input: {
+    category: AuditEventCategory;
+    action: string;
+    outcome: "rejected" | "created" | "updated" | "deleted";
+    subjectType: string;
+    subjectId?: string | null;
+    clientIp?: string | null;
+    requestPath?: string | null;
+    request?: Request;
+    message: string;
+    context?: unknown;
+  },
+): void {
+  const rateLimitContext = input.request
+    ? createServerRateLimitContext(input.request, {
+        trustProxy: options.trustProxy,
+      })
+    : null;
+
+  options.runStore.appendAuditEvent({
+    category: input.category,
+    action: input.action,
+    outcome: input.outcome,
+    subjectType: input.subjectType,
+    subjectId: input.subjectId ?? null,
+    clientIp: input.clientIp ?? rateLimitContext?.clientIp ?? null,
+    requestPath: input.requestPath ?? rateLimitContext?.pathname ?? null,
+    message: input.message,
+    context: input.context,
+  });
+}
+
+function handleTargetWriteError(error: unknown): Response {
+  const message = error instanceof Error ? error.message : String(error);
+
+  return json(
+    {
+      ok: false,
+      error: message,
+    },
+    message.startsWith("Target not found:")
+      ? 404
+      : message.startsWith("Target already exists:")
+        ? 409
+        : message.startsWith("Target id mismatch:")
+          ? 409
+          : 400,
+  );
 }

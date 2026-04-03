@@ -226,3 +226,52 @@ test("worker heartbeats are stored and listed", async () => {
 
   runStore.close();
 });
+
+test("audit events are stored and filterable", async () => {
+  const runStore = await createRunStore({
+    dbPath: ":memory:",
+    now: () => new Date("2026-03-26T00:00:00.000Z"),
+  });
+
+  runStore.appendAuditEvent({
+    category: "security",
+    action: "admin_auth_rejected",
+    outcome: "rejected",
+    subjectType: "request",
+    subjectId: null,
+    clientIp: "127.0.0.1",
+    requestPath: "/api/summary",
+    message: "Missing or invalid admin token.",
+  });
+  runStore.appendAuditEvent({
+    category: "targets",
+    action: "target_created",
+    outcome: "created",
+    subjectType: "target",
+    subjectId: "pages-main",
+    message: "Target pages-main was created.",
+  });
+
+  const security = runStore.listAuditEvents({
+    category: "security",
+  });
+  const created = runStore.listAuditEvents({
+    outcome: "created",
+  });
+
+  expect(security).toHaveLength(1);
+  expect(security[0]).toMatchObject({
+    category: "security",
+    action: "admin_auth_rejected",
+    clientIp: "127.0.0.1",
+  });
+  expect(created).toHaveLength(1);
+  expect(created[0]).toMatchObject({
+    category: "targets",
+    action: "target_created",
+    subjectId: "pages-main",
+  });
+  expect(runStore.getLastAuditEventSequence()).toBeGreaterThan(0);
+
+  runStore.close();
+});

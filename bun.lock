@@ -60,6 +60,7 @@
       "name": "@hooka/admin-ui",
       "dependencies": {
         "@hooka/config": "workspace:*",
+        "@hooka/contracts": "workspace:*",
       },
     },
     "packages/bun-utils": {
@@ -212,6 +213,7 @@
     "packages/targets": {
       "name": "@hooka/targets",
       "dependencies": {
+        "@hooka/bun-utils": "workspace:*",
         "@hooka/contracts": "workspace:*",
       },
     },

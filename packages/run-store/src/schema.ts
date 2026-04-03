@@ -48,6 +48,21 @@ export function initializeRunStoreSchema(db: Database): void {
       current_run_id text
     );
   `);
+  db.exec(`
+    create table if not exists audit_events (
+      sequence integer primary key autoincrement,
+      created_at text not null,
+      category text not null,
+      action text not null,
+      outcome text not null,
+      subject_type text not null,
+      subject_id text,
+      client_ip text,
+      request_path text,
+      message text not null,
+      context_json text
+    );
+  `);
   migrateRunsTable(db);
   db.exec(
     "create index if not exists idx_runs_status_queued on runs(status, queued_at, created_at);",
@@ -63,6 +78,12 @@ export function initializeRunStoreSchema(db: Database): void {
   );
   db.exec(
     "create index if not exists idx_worker_heartbeats_last_seen on worker_heartbeats(last_seen_at);",
+  );
+  db.exec(
+    "create index if not exists idx_audit_events_created_at on audit_events(created_at desc, sequence desc);",
+  );
+  db.exec(
+    "create index if not exists idx_audit_events_category_outcome on audit_events(category, outcome, created_at desc);",
   );
 }
 

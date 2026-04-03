@@ -152,6 +152,21 @@ h2 {
   font: inherit;
 }
 
+.field textarea {
+  width: 100%;
+  min-height: 320px;
+  resize: vertical;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--ink);
+  padding: 12px 14px;
+  font:
+    0.84rem / 1.5 "SFMono-Regular",
+    "Menlo",
+    monospace;
+}
+
 .field input {
   width: 100%;
 }
@@ -230,6 +245,10 @@ h2 {
 
 .task-list {
   display: block;
+}
+
+.audit-card h3 {
+  margin: 8px 0 0;
 }
 
 .run-row {

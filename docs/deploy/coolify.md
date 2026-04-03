@@ -23,6 +23,7 @@ Server:
 - `HOOKA_ADMIN_TOKEN`
 - `HOOKA_TARGETS_PATH=/app/.hooka/targets.json`
 - `HOOKA_PORT=3000`
+- `HOOKA_TRUST_PROXY=true`
 
 Worker:
 
@@ -84,6 +85,7 @@ volumes:
 - webhook routes use HMAC signatures
 - read/admin APIs use `Authorization: Bearer <HOOKA_ADMIN_TOKEN>`
 - the admin UI shell is static, but it cannot read protected data without the admin token
+- set `HOOKA_TRUST_PROXY=true` when Hooka is behind Coolify's public reverse proxy so rate limiting uses the forwarded client IP
 
 ## Shared-volume deploys
 

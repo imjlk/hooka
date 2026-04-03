@@ -92,6 +92,23 @@ export function renderShell(): string {
 
       <section class="panel">
         <div class="panel-head">
+          <h2>Target Editor</h2>
+          <span class="pill">crud</span>
+        </div>
+        <div class="toolbar">
+          <button type="button" id="target-create-scaffold" class="action-button">New Target</button>
+          <button type="button" id="target-save" class="action-button">Save Target</button>
+          <button type="button" id="target-delete" class="action-button">Delete Target</button>
+        </div>
+        <p id="target-editor-status" class="muted">Select a target or start from a scaffold.</p>
+        <label class="field field-block">
+          <span>Target JSON</span>
+          <textarea id="target-editor" rows="18" spellcheck="false"></textarea>
+        </label>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
           <h2>Task Availability</h2>
           <span class="pill">registry</span>
         </div>
@@ -141,6 +158,25 @@ export function renderShell(): string {
         <div id="run-detail" class="detail-panel">
           <p class="muted">Choose a run from the list to inspect its shared-volume payload, output, and events.</p>
         </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Audit Events</h2>
+          <span class="pill">security</span>
+        </div>
+        <div class="toolbar">
+          <label class="field">
+            <span>Category</span>
+            <select id="audit-filter-category">
+              <option value="">All</option>
+              <option value="security">security</option>
+              <option value="policy">policy</option>
+              <option value="targets">targets</option>
+            </select>
+          </label>
+        </div>
+        <div id="audit-list" class="stack task-list"></div>
       </section>
     </main>
   `;

@@ -17,6 +17,9 @@ export const defaultRunLeaseMs = 900_000;
 export const defaultRunMaxAttempts = 3;
 export const defaultRetryBaseDelayMs = 5_000;
 export const defaultWorkerHeartbeatIntervalMs = 10_000;
+export const defaultRateLimitWindowMs = 60_000;
+export const defaultApiRateLimit = 120;
+export const defaultWebhookRateLimit = 60;
 export const defaultUiPort = 4310;
 export const defaultUiApiOrigin = "http://127.0.0.1:3000";
 
@@ -27,6 +30,10 @@ const serverConfigSchema = z.object({
   webhookSecret: z.string().min(1).optional(),
   adminToken: z.string().min(1).optional(),
   maxAttempts: z.number().int().positive(),
+  trustProxy: z.boolean(),
+  rateLimitWindowMs: z.number().int().positive(),
+  apiRateLimit: z.number().int().positive(),
+  webhookRateLimit: z.number().int().positive(),
   capabilityManifestPath: z.string().min(1),
   targetsPath: z.string().min(1),
   uiDistDir: z.string().min(1),
@@ -155,6 +162,19 @@ export function createServerConfig(
       env["HOOKA_RUN_MAX_ATTEMPTS"],
       defaultRunMaxAttempts,
     ),
+    trustProxy: parseBooleanEnv(env["HOOKA_TRUST_PROXY"], false),
+    rateLimitWindowMs: parseNumberEnv(
+      env["HOOKA_RATE_LIMIT_WINDOW_MS"],
+      defaultRateLimitWindowMs,
+    ),
+    apiRateLimit: parseNumberEnv(
+      env["HOOKA_RATE_LIMIT_API_LIMIT"],
+      defaultApiRateLimit,
+    ),
+    webhookRateLimit: parseNumberEnv(
+      env["HOOKA_RATE_LIMIT_WEBHOOK_LIMIT"],
+      defaultWebhookRateLimit,
+    ),
     capabilityManifestPath: getDefaultManifestPath(cwd, env),
     targetsPath: getDefaultTargetsPath(cwd, env),
     uiDistDir: resolve(cwd, "packages/admin-ui/dist"),
@@ -223,6 +243,14 @@ function parseNumberEnv(raw: string | undefined, fallback: number): number {
   }
 
   return Number(raw);
+}
+
+function parseBooleanEnv(raw: string | undefined, fallback: boolean): boolean {
+  if (!raw || raw.trim().length === 0) {
+    return fallback;
+  }
+
+  return raw.trim().toLowerCase() === "true";
 }
 
 export function getServerStartupIssues(config: ServerConfig): string[] {

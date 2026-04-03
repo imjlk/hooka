@@ -32,18 +32,21 @@ export function renderTargetDetail(
   activeTargetId: string | null,
 ): {
   html: string;
+  target: Target | null;
   selectedTargetId: string | null;
 } {
   const target = selectTarget(targets, activeTargetId);
 
   if (!target) {
     return {
+      target: null,
       selectedTargetId: null,
       html: `<p class="muted">No target data is available.</p>`,
     };
   }
 
   return {
+    target,
     selectedTargetId: target.id,
     html: `
       <div class="detail-grid">

@@ -1,4 +1,5 @@
 import type {
+  AuditEvent,
   EnqueueRunResponse,
   RunDetail,
   RunEvent,
@@ -6,7 +7,10 @@ import type {
   TaskRunResult,
   WorkerHeartbeat,
 } from "@hooka/contracts";
-import { runListQuerySchema } from "@hooka/contracts";
+import {
+  auditEventListQuerySchema,
+  runListQuerySchema,
+} from "@hooka/contracts";
 import { ensureDir } from "@hooka/bun-utils";
 import { Database } from "bun:sqlite";
 import { dirname } from "node:path";
@@ -16,8 +20,14 @@ import {
   toRunEvent,
   toRunSummary,
 } from "./mappers";
-import { normalizeRunSummaryFilters } from "./rows";
+import {
+  normalizeRunSummaryFilters,
+  toAuditEvent,
+  toWorkerHeartbeat,
+} from "./rows";
 import type {
+  AuditEventFilters,
+  AuditEventRow,
   ClaimedRun,
   EnqueueRunInput,
   RunEventRow,
@@ -27,7 +37,6 @@ import type {
   WorkerHeartbeatRow,
 } from "./rows";
 import { initializeRunStoreSchema } from "./schema";
-import { toWorkerHeartbeat } from "./rows";
 
 export const defaultHookaDbPath = "/data/hooka.sqlite";
 
@@ -533,9 +542,94 @@ export class RunStore {
     return rows.map((row) => toWorkerHeartbeat(row));
   }
 
+  appendAuditEvent(input: {
+    category: AuditEvent["category"];
+    action: string;
+    outcome: AuditEvent["outcome"];
+    subjectType: string;
+    subjectId?: string | null;
+    clientIp?: string | null;
+    requestPath?: string | null;
+    message: string;
+    context?: unknown;
+  }): AuditEvent {
+    this.db
+      .query(
+        `insert into audit_events (
+          created_at,
+          category,
+          action,
+          outcome,
+          subject_type,
+          subject_id,
+          client_ip,
+          request_path,
+          message,
+          context_json
+        ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        this.timestamp(),
+        input.category,
+        input.action,
+        input.outcome,
+        input.subjectType,
+        input.subjectId ?? null,
+        input.clientIp ?? null,
+        input.requestPath ?? null,
+        input.message,
+        input.context === undefined ? null : JSON.stringify(input.context),
+      );
+
+    return this.requireAuditEvent();
+  }
+
+  listAuditEvents(filters: AuditEventFilters = {}): AuditEvent[] {
+    const normalizedFilters = auditEventListQuerySchema.parse({
+      limit: filters.limit,
+      category: filters.category,
+      outcome: filters.outcome,
+    });
+    const conditions: string[] = [];
+    const params: Array<string | number> = [];
+
+    if (normalizedFilters.category) {
+      conditions.push("category = ?");
+      params.push(normalizedFilters.category);
+    }
+
+    if (normalizedFilters.outcome) {
+      conditions.push("outcome = ?");
+      params.push(normalizedFilters.outcome);
+    }
+
+    const whereClause =
+      conditions.length > 0 ? `where ${conditions.join(" and ")}` : "";
+    params.push(normalizedFilters.limit ?? 20);
+
+    const rows = this.db
+      .query(
+        `select * from audit_events
+         ${whereClause}
+         order by sequence desc
+         limit ?`,
+      )
+      .all(...params) as AuditEventRow[];
+
+    return rows.map((row) => toAuditEvent(row));
+  }
+
   getLastRunEventSequence(): number {
     const row = this.db
       .query(`select max(rowid) as value from run_events`)
+      .get() as { value: number | null };
+
+    return row.value ?? 0;
+  }
+
+  getLastAuditEventSequence(): number {
+    const row = this.db
+      .query(`select max(sequence) as value from audit_events`)
       .get() as { value: number | null };
 
     return row.value ?? 0;
@@ -656,6 +750,22 @@ export class RunStore {
     }
 
     return toWorkerHeartbeat(row);
+  }
+
+  private requireAuditEvent(): AuditEvent {
+    const row = this.db
+      .query(
+        `select * from audit_events
+         order by sequence desc
+         limit 1`,
+      )
+      .get() as AuditEventRow | null;
+
+    if (!row) {
+      throw new Error("Audit event not found after write.");
+    }
+
+    return toAuditEvent(row);
   }
 
   private timestamp(): string {

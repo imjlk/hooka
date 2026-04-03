@@ -9,7 +9,11 @@ import {
   targetsFileSchema,
   type TargetArtifactReadiness,
 } from "@hooka/contracts";
+import { ensureParentDir } from "@hooka/bun-utils";
+import { rename } from "node:fs/promises";
 import { join, normalize } from "node:path/posix";
+
+const targetWriteLocks = new Map<string, Promise<void>>();
 
 export interface TargetOverrideViolation {
   field: string;
@@ -31,19 +35,94 @@ export interface TargetPreflightIssue {
 }
 
 export async function loadTargets(targetsPath: string): Promise<Target[]> {
+  return (await loadTargetsFile(targetsPath)).targets;
+}
+
+export async function loadTargetsFile(
+  targetsPath: string,
+): Promise<TargetsFile> {
   const file = Bun.file(targetsPath);
 
   if (!(await file.exists())) {
-    return [];
+    return targetsFileSchema.parse({
+      targets: [],
+    });
   }
 
   const raw = (await file.json()) as TargetsFile | Target[];
 
   if (Array.isArray(raw)) {
-    return raw.map((target) => targetSchema.parse(target));
+    return targetsFileSchema.parse({
+      targets: raw.map((target) => targetSchema.parse(target)),
+    });
   }
 
-  return targetsFileSchema.parse(raw).targets;
+  return targetsFileSchema.parse(raw);
+}
+
+export async function createTarget(
+  targetsPath: string,
+  target: Target,
+): Promise<Target[]> {
+  return withTargetFileWriteLock(targetsPath, async () => {
+    const file = await loadTargetsFile(targetsPath);
+    const parsed = targetSchema.parse(target);
+
+    if (file.targets.some((candidate) => candidate.id === parsed.id)) {
+      throw new Error(`Target already exists: ${parsed.id}`);
+    }
+
+    const nextTargets = [...file.targets, parsed];
+    await writeTargetsFile(targetsPath, nextTargets);
+    return nextTargets;
+  });
+}
+
+export async function updateTarget(
+  targetsPath: string,
+  targetId: string,
+  target: Target,
+): Promise<Target[]> {
+  return withTargetFileWriteLock(targetsPath, async () => {
+    const file = await loadTargetsFile(targetsPath);
+    const parsed = targetSchema.parse(target);
+
+    if (parsed.id !== targetId) {
+      throw new Error(
+        `Target id mismatch: path id ${targetId} does not match body id ${parsed.id}.`,
+      );
+    }
+
+    const index = file.targets.findIndex(
+      (candidate) => candidate.id === targetId,
+    );
+
+    if (index < 0) {
+      throw new Error(`Target not found: ${targetId}`);
+    }
+
+    const nextTargets = [...file.targets];
+    nextTargets[index] = parsed;
+    await writeTargetsFile(targetsPath, nextTargets);
+    return nextTargets;
+  });
+}
+
+export async function deleteTarget(
+  targetsPath: string,
+  targetId: string,
+): Promise<Target[]> {
+  return withTargetFileWriteLock(targetsPath, async () => {
+    const file = await loadTargetsFile(targetsPath);
+    const nextTargets = file.targets.filter((target) => target.id !== targetId);
+
+    if (nextTargets.length === file.targets.length) {
+      throw new Error(`Target not found: ${targetId}`);
+    }
+
+    await writeTargetsFile(targetsPath, nextTargets);
+    return nextTargets;
+  });
 }
 
 export function getTarget(
@@ -304,4 +383,46 @@ function hasEnvValue(
 ): boolean {
   const value = env[name];
   return value !== undefined && value.trim().length > 0;
+}
+
+async function writeTargetsFile(
+  targetsPath: string,
+  targets: Target[],
+): Promise<void> {
+  const payload = JSON.stringify(
+    targetsFileSchema.parse({
+      targets,
+    }),
+    null,
+    2,
+  );
+  const tempPath = `${targetsPath}.${crypto.randomUUID()}.tmp`;
+
+  await ensureParentDir(targetsPath);
+  await Bun.write(tempPath, `${payload}\n`);
+  await rename(tempPath, targetsPath);
+}
+
+async function withTargetFileWriteLock<T>(
+  targetsPath: string,
+  callback: () => Promise<T>,
+): Promise<T> {
+  const previous = targetWriteLocks.get(targetsPath) ?? Promise.resolve();
+  let release!: () => void;
+  const current = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const tail = previous.then(() => current);
+  targetWriteLocks.set(targetsPath, tail);
+
+  await previous;
+
+  try {
+    return await callback();
+  } finally {
+    release();
+    if (targetWriteLocks.get(targetsPath) === tail) {
+      targetWriteLocks.delete(targetsPath);
+    }
+  }
 }

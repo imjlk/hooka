@@ -1,4 +1,6 @@
 import type {
+  AuditEvent,
+  AuditFilters,
   Capability,
   PresetWithPlan,
   RunDetail,
@@ -7,7 +9,13 @@ import type {
   Summary,
   Target,
 } from "./helpers";
-import { buildRunQuery, selectActiveRunId } from "./helpers";
+import {
+  buildRunQuery,
+  createTargetScaffold,
+  parseTargetEditorValue,
+  selectActiveRunId,
+  serializeTargetEditorValue,
+} from "./helpers";
 import { escapeHtml, getElement, syncSelectedRows } from "./dom";
 import { renderShell } from "./shell";
 import {
@@ -23,6 +31,7 @@ import {
   renderRunFilterSelectOptions,
   renderRunList,
 } from "./views/runs";
+import { renderAuditList } from "./views/audit";
 import { renderTargetDetail, renderTargetList } from "./views/targets";
 
 const adminTokenStorageKey = "hooka.adminToken";
@@ -32,6 +41,8 @@ const state: {
   activeRunId: string | null;
   activeTargetId: string | null;
   adminToken: string;
+  auditEvents: AuditEvent[];
+  auditFilters: AuditFilters;
   capabilities: Capability[];
   eventSource: EventSource | null;
   filters: RunFilters;
@@ -44,6 +55,8 @@ const state: {
   activeRunId: null,
   activeTargetId: null,
   adminToken: localStorage.getItem(adminTokenStorageKey) ?? "",
+  auditEvents: [],
+  auditFilters: {},
   capabilities: [],
   eventSource: null,
   filters: {
@@ -111,6 +124,24 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  if (target.id === "target-create-scaffold") {
+    state.activeTargetId = null;
+    applyTargetEditorValue(serializeTargetEditorValue(createTargetScaffold()));
+    setTargetEditorStatus("New target scaffold ready. Save to create it.");
+    syncSelectedRows("[data-target-id]", state.activeTargetId);
+    return;
+  }
+
+  if (target.id === "target-save") {
+    void saveTargetFromEditor();
+    return;
+  }
+
+  if (target.id === "target-delete") {
+    void deleteActiveTarget();
+    return;
+  }
+
   if (target.id === "admin-token-save") {
     const input = getElement("admin-token") as HTMLInputElement;
     state.adminToken = input.value.trim();
@@ -128,6 +159,7 @@ document.addEventListener("click", (event) => {
     setAuthStatus();
     connectEventStream();
     void hydrate();
+    return;
   }
 });
 
@@ -152,6 +184,12 @@ document.addEventListener("change", (event) => {
     state.filters.source = target.value || undefined;
     void loadRuns();
   }
+
+  if (target.id === "audit-filter-category") {
+    state.auditFilters.category =
+      (target.value as AuditEvent["category"]) || undefined;
+    void loadAuditEvents();
+  }
 });
 
 void hydrate();
@@ -159,21 +197,25 @@ connectEventStream();
 
 async function hydrate(): Promise<void> {
   try {
-    const [summary, presets, capabilities, targets] = await Promise.all([
-      fetchJson<Summary>("/api/summary"),
-      fetchJson<PresetWithPlan[]>("/api/presets"),
-      fetchJson<Capability[]>("/api/capabilities"),
-      fetchJson<Target[]>("/api/targets"),
-    ]);
+    const [summary, presets, capabilities, targets, auditEvents] =
+      await Promise.all([
+        fetchJson<Summary>("/api/summary"),
+        fetchJson<PresetWithPlan[]>("/api/presets"),
+        fetchJson<Capability[]>("/api/capabilities"),
+        fetchJson<Target[]>("/api/targets"),
+        fetchJson<AuditEvent[]>(buildAuditEventsPath(state.auditFilters)),
+      ]);
 
     state.summary = summary;
     state.presets = presets;
     state.capabilities = capabilities;
     state.targets = targets;
+    state.auditEvents = auditEvents;
 
     renderSummaryPanels();
     renderPresetPanels();
     renderTargetPanels();
+    renderAuditPanel();
     renderTaskPanel();
     applyRunFilterValues();
     await loadRuns();
@@ -195,6 +237,8 @@ async function hydrate(): Promise<void> {
       `<p class="muted">Target data unavailable.</p>`;
     getElement("target-detail").innerHTML =
       `<p class="muted">Target detail unavailable.</p>`;
+    getElement("audit-list").innerHTML =
+      `<p class="muted">Audit data unavailable.</p>`;
     getElement("task-list").innerHTML =
       `<p class="muted">Task data unavailable.</p>`;
     getElement("run-list").innerHTML =
@@ -241,6 +285,20 @@ function renderTargetPanels(): void {
   state.activeTargetId = detail.selectedTargetId;
   getElement("target-detail").innerHTML = detail.html;
   syncSelectedRows("[data-target-id]", state.activeTargetId);
+  applyTargetEditorValue(
+    serializeTargetEditorValue(detail.target ?? createTargetScaffold()),
+  );
+  setTargetEditorStatus(
+    detail.target
+      ? `Editing target ${detail.target.id}.`
+      : "No targets configured. Start from a scaffold.",
+  );
+}
+
+function renderAuditPanel(): void {
+  getElement("audit-list").innerHTML = renderAuditList(state.auditEvents);
+  const filter = getElement("audit-filter-category") as HTMLSelectElement;
+  filter.value = state.auditFilters.category ?? "";
 }
 
 function renderTaskPanel(): void {
@@ -320,6 +378,19 @@ async function loadRunDetail(runId: string): Promise<void> {
   }
 }
 
+async function loadAuditEvents(): Promise<void> {
+  try {
+    state.auditEvents = await fetchJson<AuditEvent[]>(
+      buildAuditEventsPath(state.auditFilters),
+    );
+    renderAuditPanel();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    getElement("audit-list").innerHTML =
+      `<p class="muted">Audit data unavailable: ${escapeHtml(message)}</p>`;
+  }
+}
+
 async function retryRun(runId: string): Promise<void> {
   try {
     await fetchJson(`/api/runs/${encodeURIComponent(runId)}/retry`, {
@@ -329,6 +400,76 @@ async function retryRun(runId: string): Promise<void> {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     setAuthStatus(`Retry failed: ${message}`);
+  }
+}
+
+async function saveTargetFromEditor(): Promise<void> {
+  const parseResult = parseTargetEditorValue(readTargetEditorValue());
+
+  if (!parseResult.ok) {
+    setTargetEditorStatus(`Invalid target JSON: ${parseResult.error}`);
+    return;
+  }
+
+  if (state.activeTargetId && parseResult.target.id !== state.activeTargetId) {
+    setTargetEditorStatus(
+      "Target rename is not supported. Create a new target instead.",
+    );
+    return;
+  }
+
+  try {
+    if (state.activeTargetId) {
+      await fetchJson(
+        `/api/targets/${encodeURIComponent(state.activeTargetId)}`,
+        {
+          method: "PUT",
+          headers: {
+            "content-type": "application/json",
+          },
+          body: JSON.stringify(parseResult.target),
+        },
+      );
+      setTargetEditorStatus(`Updated target ${parseResult.target.id}.`);
+    } else {
+      await fetchJson("/api/targets", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(parseResult.target),
+      });
+      state.activeTargetId = parseResult.target.id;
+      setTargetEditorStatus(`Created target ${parseResult.target.id}.`);
+    }
+
+    await hydrate();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    setTargetEditorStatus(`Saving target failed: ${message}`);
+  }
+}
+
+async function deleteActiveTarget(): Promise<void> {
+  if (!state.activeTargetId) {
+    setTargetEditorStatus("Choose a target before deleting.");
+    return;
+  }
+
+  try {
+    await fetchJson(
+      `/api/targets/${encodeURIComponent(state.activeTargetId)}`,
+      {
+        method: "DELETE",
+      },
+    );
+    setTargetEditorStatus(`Deleted target ${state.activeTargetId}.`);
+    state.activeTargetId = null;
+    applyTargetEditorValue(serializeTargetEditorValue(createTargetScaffold()));
+    await hydrate();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    setTargetEditorStatus(`Deleting target failed: ${message}`);
   }
 }
 
@@ -371,6 +512,21 @@ function connectEventStream(): void {
   state.eventSource = stream;
 }
 
+function buildAuditEventsPath(filters: AuditFilters): string {
+  const params = new URLSearchParams();
+
+  if (filters.limit) {
+    params.set("limit", String(filters.limit));
+  }
+
+  if (filters.category) {
+    params.set("category", filters.category);
+  }
+
+  const query = params.toString();
+  return query.length > 0 ? `/api/audit-events?${query}` : "/api/audit-events";
+}
+
 function setAuthStatus(message?: string): void {
   getElement("auth-status").textContent =
     message ??
@@ -382,4 +538,17 @@ function setAuthStatus(message?: string): void {
 function applyAdminTokenValue(): void {
   const input = getElement("admin-token") as HTMLInputElement;
   input.value = state.adminToken;
+}
+
+function applyTargetEditorValue(value: string): void {
+  const input = getElement("target-editor") as HTMLTextAreaElement;
+  input.value = value;
+}
+
+function readTargetEditorValue(): string {
+  return (getElement("target-editor") as HTMLTextAreaElement).value;
+}
+
+function setTargetEditorStatus(message: string): void {
+  getElement("target-editor-status").textContent = message;
 }

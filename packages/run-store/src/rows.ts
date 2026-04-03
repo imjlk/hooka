@@ -1,4 +1,7 @@
 import type {
+  AuditEvent,
+  AuditEventCategory,
+  AuditEventOutcome,
   EnqueueRunRequest,
   RunListQuery,
   TaskRunStatus,
@@ -40,6 +43,20 @@ export interface RunEventRow {
   created_at: string;
 }
 
+export interface AuditEventRow {
+  sequence: number;
+  created_at: string;
+  category: string;
+  action: string;
+  outcome: string;
+  subject_type: string;
+  subject_id: string | null;
+  client_ip: string | null;
+  request_path: string | null;
+  message: string;
+  context_json: string | null;
+}
+
 export interface RunStoreOptions {
   dbPath?: string;
   now?: () => Date;
@@ -77,6 +94,12 @@ export interface WorkerHeartbeatRow {
   current_run_id: string | null;
 }
 
+export interface AuditEventFilters {
+  limit?: number;
+  category?: AuditEventCategory;
+  outcome?: AuditEventOutcome;
+}
+
 export function normalizeRunSummaryFilters(
   filters: RunListQuery,
 ): RunSummaryFilters {
@@ -95,5 +118,21 @@ export function toWorkerHeartbeat(row: WorkerHeartbeatRow): WorkerHeartbeat {
     installedCapabilities: JSON.parse(row.installed_capabilities_json),
     lastSeenAt: row.last_seen_at,
     currentRunId: row.current_run_id,
+  };
+}
+
+export function toAuditEvent(row: AuditEventRow): AuditEvent {
+  return {
+    sequence: row.sequence,
+    createdAt: row.created_at,
+    category: row.category as AuditEventCategory,
+    action: row.action,
+    outcome: row.outcome as AuditEventOutcome,
+    subjectType: row.subject_type,
+    subjectId: row.subject_id,
+    clientIp: row.client_ip,
+    requestPath: row.request_path,
+    message: row.message,
+    context: row.context_json ? JSON.parse(row.context_json) : undefined,
   };
 }

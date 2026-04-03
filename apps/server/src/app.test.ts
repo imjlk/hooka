@@ -5,7 +5,14 @@ import { join } from "node:path";
 import { createHmac } from "node:crypto";
 import { createHookaFetchHandler } from "./app";
 
-async function createTestServerApp(input: { targets?: unknown[] } = {}) {
+async function createTestServerApp(
+  input: {
+    targets?: unknown[];
+    trustProxy?: boolean;
+    apiRateLimit?: number;
+    webhookRateLimit?: number;
+  } = {},
+) {
   const tempDir = await createTempDir("hooka-server-test");
   const manifestPath = join(tempDir, "installed-capabilities.json");
   const targetsPath = join(tempDir, "targets.json");
@@ -35,11 +42,15 @@ async function createTestServerApp(input: { targets?: unknown[] } = {}) {
   return {
     fetch: createHookaFetchHandler({
       adminToken: "admin-token",
+      apiRateLimit: input.apiRateLimit ?? 120,
       capabilityManifestPath: manifestPath,
       defaultMaxAttempts: 3,
+      rateLimitWindowMs: 60_000,
       runStore,
       targetsPath,
+      trustProxy: input.trustProxy ?? false,
       uiDistDir,
+      webhookRateLimit: input.webhookRateLimit ?? 60,
       webhookSecret: "secret",
     }),
     runStore,
@@ -91,6 +102,11 @@ test("admin API routes reject missing bearer tokens", async () => {
 
   expect(response.status).toBe(401);
   expect(body.error).toContain("admin token");
+  expect(app.runStore.listAuditEvents({ limit: 5 })[0]).toMatchObject({
+    category: "security",
+    action: "admin_auth_rejected",
+    outcome: "rejected",
+  });
 
   app.runStore.close();
 });
@@ -274,6 +290,222 @@ test("target webhook resolves configured targets and stores target metadata", as
   const run = app.runStore.listRuns()[0];
   expect(run?.targetId).toBe("pages-main");
   expect(run?.maxAttempts).toBe(4);
+
+  app.runStore.close();
+});
+
+test("target CRUD APIs mutate the configured targets file and emit audit events", async () => {
+  const app = await createTestServerApp();
+  const target = {
+    id: "pages-main",
+    title: "Pages Main",
+    taskId: "deploy.shared-volume.wrangler",
+    source: "target.cloudflare-pages",
+    maxAttempts: 3,
+    defaultInput: {
+      kind: "pages-deploy",
+      project: "main-site",
+      sourcePath: "/shared-source/main-site",
+    },
+    policy: {
+      allowedProjects: ["main-site"],
+      allowedSourceRoots: ["/shared-source"],
+      allowedBranches: ["main"],
+      allowedOverrideFields: [],
+      requiredEnv: [],
+      artifactReadiness: {
+        mode: "none",
+      },
+    },
+  };
+
+  const createResponse = await app.fetch(
+    new Request("http://hooka.local/api/targets", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...createAdminHeaders(),
+      },
+      body: JSON.stringify(target),
+    }),
+  );
+  expect(createResponse.status).toBe(201);
+
+  const updateResponse = await app.fetch(
+    new Request("http://hooka.local/api/targets/pages-main", {
+      method: "PUT",
+      headers: {
+        "content-type": "application/json",
+        ...createAdminHeaders(),
+      },
+      body: JSON.stringify({
+        ...target,
+        maxAttempts: 4,
+      }),
+    }),
+  );
+  expect(updateResponse.status).toBe(200);
+
+  const auditResponse = await app.fetch(
+    new Request("http://hooka.local/api/audit-events?category=targets", {
+      headers: createAdminHeaders(),
+    }),
+  );
+  const auditEvents = await auditResponse.json();
+  expect(auditResponse.status).toBe(200);
+  expect(auditEvents).toEqual([
+    expect.objectContaining({
+      category: "targets",
+      action: "target_updated",
+      outcome: "updated",
+      subjectId: "pages-main",
+    }),
+    expect.objectContaining({
+      category: "targets",
+      action: "target_created",
+      outcome: "created",
+      subjectId: "pages-main",
+    }),
+  ]);
+
+  const deleteResponse = await app.fetch(
+    new Request("http://hooka.local/api/targets/pages-main", {
+      method: "DELETE",
+      headers: createAdminHeaders(),
+    }),
+  );
+  expect(deleteResponse.status).toBe(200);
+
+  const targetsResponse = await app.fetch(
+    new Request("http://hooka.local/api/targets", {
+      headers: createAdminHeaders(),
+    }),
+  );
+  expect(await targetsResponse.json()).toEqual([]);
+
+  app.runStore.close();
+});
+
+test("webhook signature failures are audited", async () => {
+  const app = await createTestServerApp();
+  const response = await app.fetch(
+    new Request("http://hooka.local/api/webhooks/task", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-hooka-timestamp": "123",
+        "x-hooka-signature": "sha256=bad",
+      },
+      body: "{}",
+    }),
+  );
+
+  expect(response.status).toBeGreaterThanOrEqual(400);
+  expect(app.runStore.listAuditEvents({ limit: 5 })[0]).toMatchObject({
+    category: "security",
+    action: "webhook_signature_rejected",
+    outcome: "rejected",
+  });
+
+  app.runStore.close();
+});
+
+test("target write errors map to conflict and not found responses", async () => {
+  const app = await createTestServerApp({
+    targets: [
+      {
+        id: "pages-main",
+        title: "Pages Main",
+        taskId: "deploy.shared-volume.wrangler",
+        source: "target.cloudflare-pages",
+        maxAttempts: 3,
+        defaultInput: {},
+        policy: {
+          allowedProjects: [],
+          allowedSourceRoots: [],
+          allowedBranches: [],
+          allowedOverrideFields: [],
+          requiredEnv: [],
+          artifactReadiness: {
+            mode: "none",
+          },
+        },
+      },
+    ],
+  });
+
+  const duplicateCreate = await app.fetch(
+    new Request("http://hooka.local/api/targets", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...createAdminHeaders(),
+      },
+      body: JSON.stringify({
+        id: "pages-main",
+        title: "Pages Main",
+        taskId: "deploy.shared-volume.wrangler",
+        source: "target.cloudflare-pages",
+        maxAttempts: 3,
+        defaultInput: {},
+        policy: {
+          allowedProjects: [],
+          allowedSourceRoots: [],
+          allowedBranches: [],
+          allowedOverrideFields: [],
+          requiredEnv: [],
+          artifactReadiness: {
+            mode: "none",
+          },
+        },
+      }),
+    }),
+  );
+  const missingDelete = await app.fetch(
+    new Request("http://hooka.local/api/targets/missing", {
+      method: "DELETE",
+      headers: createAdminHeaders(),
+    }),
+  );
+
+  expect(duplicateCreate.status).toBe(409);
+  expect(missingDelete.status).toBe(404);
+
+  app.runStore.close();
+});
+
+test("rate limit rejections are audited", async () => {
+  const app = await createTestServerApp({
+    apiRateLimit: 1,
+    trustProxy: true,
+  });
+
+  const first = await app.fetch(
+    new Request("http://hooka.local/api/summary", {
+      headers: {
+        ...createAdminHeaders(),
+        "x-forwarded-for": "203.0.113.10, 10.0.0.5",
+      },
+    }),
+  );
+  const second = await app.fetch(
+    new Request("http://hooka.local/api/summary", {
+      headers: {
+        ...createAdminHeaders(),
+        "x-forwarded-for": "203.0.113.10, 10.0.0.5",
+      },
+    }),
+  );
+
+  expect(first.status).toBe(200);
+  expect(second.status).toBe(429);
+  expect(app.runStore.listAuditEvents({ limit: 5 })[0]).toMatchObject({
+    category: "security",
+    action: "rate_limit_rejected",
+    outcome: "rejected",
+    clientIp: "203.0.113.10",
+    requestPath: "/api/summary",
+  });
 
   app.runStore.close();
 });

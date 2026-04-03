@@ -56,6 +56,9 @@ bun run apps/cli/src/index.ts dev
 bun run apps/cli/src/index.ts status
 bun run apps/cli/src/index.ts config
 bun run apps/cli/src/index.ts target list
+bun run apps/cli/src/index.ts target create --file ./target.json
+bun run apps/cli/src/index.ts target update cf-pages-default --file ./target.json
+bun run apps/cli/src/index.ts target delete cf-pages-default --yes
 bun run apps/cli/src/index.ts task list
 bun run apps/cli/src/index.ts capability list
 bun run apps/cli/src/index.ts image plan --preset cf-pages
@@ -96,8 +99,10 @@ GitHub Actions now cover both verification and GHCR publishing:
 - Runtime entrypoints now load typed env-backed defaults through `@hooka/config` instead of parsing env inline in each app.
 - Long-running services emit structured JSON logs through `@hooka/logger` for startup, shutdown, readiness, and loop/runtime failures.
 - Admin and read APIs are protected by `HOOKA_ADMIN_TOKEN`, while webhook ingress continues to use HMAC signatures.
+- Target CRUD stays file-backed through `HOOKA_TARGETS_PATH`, but can now be managed through the admin API, CLI, and admin UI without hand-editing the JSON file.
 - The worker applies retry backoff, dead-lettering, preflight validation, and heartbeat updates before and after task execution.
 - Optional targets in `.hooka/targets.json` provide policy-backed execution paths for shared-volume deploys and other reusable flows.
+- Audit events for auth failures, rate-limit rejections, policy rejections, and target mutations are stored in SQLite and surfaced in the admin UI.
 - `server` and `worker` share the same `HOOKA_DB_PATH`.
 - Producers such as WordPress share an artifact/source volume with the `worker`, not the server.
 
@@ -134,6 +139,10 @@ HOOKA_RUN_LEASE_MS=900000
 HOOKA_RUN_MAX_ATTEMPTS=3
 HOOKA_RETRY_BASE_DELAY_MS=5000
 HOOKA_WORKER_HEARTBEAT_MS=10000
+HOOKA_TRUST_PROXY=false
+HOOKA_RATE_LIMIT_WINDOW_MS=60000
+HOOKA_RATE_LIMIT_API_LIMIT=120
+HOOKA_RATE_LIMIT_WEBHOOK_LIMIT=60
 ```
 
 Recommended shared source mount:
@@ -192,9 +201,12 @@ Planned presets are documented but not published in registry APIs or GHCR releas
 - `GET /api/runs` returns recent runs.
 - `GET /api/runs/:id` returns run detail and event history.
 - `GET /api/targets` and `GET /api/targets/:id` expose configured targets.
+- `POST /api/targets`, `PUT /api/targets/:id`, and `DELETE /api/targets/:id` manage file-backed targets.
+- `GET /api/audit-events` exposes recent security, policy, and target mutation events.
 - `GET /api/events/stream` emits SSE updates for run events and worker heartbeats.
 - All admin/read APIs except `/api/health` and `/api/ready` require `Authorization: Bearer <HOOKA_ADMIN_TOKEN>`.
 - API routes are protected by in-memory rate limiting by default.
+- `HOOKA_TRUST_PROXY=true` should only be enabled when Hooka is behind a trusted reverse proxy that sets `X-Forwarded-For`.
 
 Generic webhook body:
 

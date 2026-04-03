@@ -21,6 +21,10 @@ export interface ConfigReport {
   webhookSecretConfigured: boolean;
   adminTokenConfigured: boolean;
   targets: string[];
+  trustProxy: boolean;
+  rateLimitWindowMs: number;
+  apiRateLimit: number;
+  webhookRateLimit: number;
   uiPort: number;
   uiApiOrigin: string;
   statusUrl: string;
@@ -62,6 +66,10 @@ export async function collectConfigReport(
     webhookSecretConfigured: Boolean(serverConfig.webhookSecret),
     adminTokenConfigured: Boolean(serverConfig.adminToken),
     targets: targets.map((target) => target.id),
+    trustProxy: serverConfig.trustProxy,
+    rateLimitWindowMs: serverConfig.rateLimitWindowMs,
+    apiRateLimit: serverConfig.apiRateLimit,
+    webhookRateLimit: serverConfig.webhookRateLimit,
     uiPort: uiConfig.uiPort,
     uiApiOrigin: uiConfig.apiOrigin,
     statusUrl: `http://127.0.0.1:${serverConfig.port}`,
@@ -102,6 +110,10 @@ export function createConfigCommand() {
         `Admin Token: ${report.adminTokenConfigured ? "configured" : "missing"}`,
       );
       console.log(`Targets: ${report.targets.join(", ") || "(none)"}`);
+      console.log(`Trust Proxy: ${report.trustProxy ? "enabled" : "disabled"}`);
+      console.log(
+        `Rate Limits: api=${report.apiRateLimit}, webhook=${report.webhookRateLimit}, window=${report.rateLimitWindowMs}ms`,
+      );
       console.log(
         `UI: http://127.0.0.1:${report.uiPort} -> ${report.uiApiOrigin}`,
       );

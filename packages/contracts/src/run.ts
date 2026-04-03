@@ -8,6 +8,25 @@ export const runListQuerySchema = z.object({
   source: z.string().min(1).optional(),
 });
 
+export const auditEventCategorySchema = z.enum([
+  "security",
+  "policy",
+  "targets",
+]);
+
+export const auditEventOutcomeSchema = z.enum([
+  "rejected",
+  "created",
+  "updated",
+  "deleted",
+]);
+
+export const auditEventListQuerySchema = z.object({
+  limit: z.coerce.number().int().positive().default(20),
+  category: auditEventCategorySchema.optional(),
+  outcome: auditEventOutcomeSchema.optional(),
+});
+
 export const runEventSchema = z.object({
   id: z.string(),
   runId: z.string(),
@@ -15,6 +34,20 @@ export const runEventSchema = z.object({
   message: z.string(),
   data: z.unknown().optional(),
   createdAt: z.string(),
+});
+
+export const auditEventSchema = z.object({
+  sequence: z.number().int().positive(),
+  createdAt: z.string(),
+  category: auditEventCategorySchema,
+  action: z.string().min(1),
+  outcome: auditEventOutcomeSchema,
+  subjectType: z.string().min(1),
+  subjectId: z.string().nullable(),
+  clientIp: z.string().nullable(),
+  requestPath: z.string().nullable(),
+  message: z.string(),
+  context: z.unknown().optional(),
 });
 
 export const runSummarySchema = z.object({
@@ -49,3 +82,7 @@ export type RunEvent = z.infer<typeof runEventSchema>;
 export type RunSummary = z.infer<typeof runSummarySchema>;
 export type RunDetail = z.infer<typeof runDetailSchema>;
 export type RunListQuery = z.infer<typeof runListQuerySchema>;
+export type AuditEvent = z.infer<typeof auditEventSchema>;
+export type AuditEventCategory = z.infer<typeof auditEventCategorySchema>;
+export type AuditEventOutcome = z.infer<typeof auditEventOutcomeSchema>;
+export type AuditEventListQuery = z.infer<typeof auditEventListQuerySchema>;

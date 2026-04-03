@@ -285,6 +285,10 @@ test("config reports resolved manifest precedence and installed capabilities", a
     adminTokenConfigured: boolean;
     targets: string[];
     targetsPath: string;
+    trustProxy: boolean;
+    rateLimitWindowMs: number;
+    apiRateLimit: number;
+    webhookRateLimit: number;
     uiPort: number;
     uiApiOrigin: string;
   };
@@ -296,6 +300,10 @@ test("config reports resolved manifest precedence and installed capabilities", a
   expect(report.webhookSecretConfigured).toBe(true);
   expect(report.adminTokenConfigured).toBe(true);
   expect(report.targets).toEqual([]);
+  expect(report.trustProxy).toBe(false);
+  expect(report.rateLimitWindowMs).toBe(60000);
+  expect(report.apiRateLimit).toBe(120);
+  expect(report.webhookRateLimit).toBe(60);
   expect(report.uiPort).toBe(4400);
   expect(report.uiApiOrigin).toBe("http://127.0.0.1:3300");
 });
@@ -352,6 +360,101 @@ test("target list and show read the configured targets file", async () => {
   ]);
   expect(JSON.parse(showResult.stdout)).toMatchObject({
     id: "pages-main",
+  });
+});
+
+test("target create, update, and delete mutate the configured targets file", async () => {
+  const tempDir = await createTempDir("hooka-cli-target-crud");
+  const targetsPath = join(tempDir, ".hooka", "targets.json");
+  const createPayloadPath = join(tempDir, "target-create.json");
+  const updatePayloadPath = join(tempDir, "target-update.json");
+
+  await ensureParentDir(createPayloadPath);
+  await Bun.write(
+    createPayloadPath,
+    JSON.stringify({
+      id: "pages-main",
+      title: "Pages Main",
+      taskId: "deploy.shared-volume.wrangler",
+      source: "target.cloudflare-pages",
+      maxAttempts: 3,
+      defaultInput: {
+        kind: "pages-deploy",
+      },
+      policy: {
+        allowedProjects: ["main-site"],
+        allowedSourceRoots: ["/shared-source"],
+        allowedBranches: ["main"],
+        allowedOverrideFields: [],
+        requiredEnv: [],
+        artifactReadiness: {
+          mode: "none",
+        },
+      },
+    }),
+  );
+  await Bun.write(
+    updatePayloadPath,
+    JSON.stringify({
+      id: "pages-main",
+      title: "Pages Main",
+      taskId: "deploy.shared-volume.wrangler",
+      source: "target.cloudflare-pages",
+      maxAttempts: 4,
+      defaultInput: {
+        kind: "pages-deploy",
+        branch: "main",
+      },
+      policy: {
+        allowedProjects: ["main-site"],
+        allowedSourceRoots: ["/shared-source"],
+        allowedBranches: ["main"],
+        allowedOverrideFields: ["branch"],
+        requiredEnv: [],
+        artifactReadiness: {
+          mode: "none",
+        },
+      },
+    }),
+  );
+
+  const createResult = await runCli(
+    ["target", "create", "--targets", targetsPath, "--file", createPayloadPath],
+    {},
+    tempDir,
+  );
+  const updateResult = await runCli(
+    [
+      "target",
+      "update",
+      "--targets",
+      targetsPath,
+      "--file",
+      updatePayloadPath,
+      "pages-main",
+    ],
+    {},
+    tempDir,
+  );
+  const deleteResult = await runCli(
+    ["target", "delete", "--targets", targetsPath, "pages-main", "--yes"],
+    {},
+    tempDir,
+  );
+
+  expect(createResult.exitCode).toBe(0);
+  expect(updateResult.exitCode).toBe(0);
+  expect(deleteResult.exitCode).toBe(0);
+  expect(JSON.parse(updateResult.stdout)).toMatchObject({
+    id: "pages-main",
+    maxAttempts: 4,
+  });
+  expect(JSON.parse(deleteResult.stdout)).toEqual({
+    ok: true,
+    targetId: "pages-main",
+  });
+  expect(await Bun.file(targetsPath).json()).toEqual({
+    targets: [],
   });
 });
 

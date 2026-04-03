@@ -28,6 +28,7 @@ export {
 export interface ProcessNextRunOptions {
   commandRunner?: CommandRunner;
   installedCapabilities: string[];
+  logger?: Logger;
   manifestPath: string;
   runtimeRole: string;
   runStore: RunStore;
@@ -167,6 +168,25 @@ async function executeTaskWithPreflight(
     const retryable = preflightIssues.every((issue) => issue.retryable);
     const summary = preflightIssues.map((issue) => issue.message).join(" ");
     options.runStore.appendEvent(claimed.id, "preflight-rejected", summary, {
+      issues: preflightIssues,
+    });
+    options.runStore.appendAuditEvent({
+      category: "policy",
+      action: "target_policy_rejected",
+      outcome: "rejected",
+      subjectType: "target",
+      subjectId: claimed.targetId,
+      message: summary,
+      context: {
+        runId: claimed.id,
+        taskId: task.id,
+        issues: preflightIssues,
+      },
+    });
+    options.logger?.warn("Target policy rejected during preflight", {
+      runId: claimed.id,
+      taskId: task.id,
+      targetId: claimed.targetId,
       issues: preflightIssues,
     });
 

@@ -1,3 +1,5 @@
+import { targetSchema } from "@hooka/contracts";
+
 export type Summary = {
   generatedAt: string;
   counts: {
@@ -95,11 +97,31 @@ export type Target = {
     allowedSourceRoots: string[];
     allowedBranches: string[];
     allowedOverrideFields: string[];
+    requiredEnv?: Array<{
+      match: "allOf" | "anyOf";
+      names: string[];
+      description: string;
+      secret?: boolean;
+    }>;
     artifactReadiness:
       | { mode: "none" }
       | { mode: "marker-file"; markerFile: string }
       | { mode: "quiet-period"; quietPeriodMs: number };
   };
+};
+
+export type AuditEvent = {
+  sequence: number;
+  createdAt: string;
+  category: "security" | "policy" | "targets";
+  action: string;
+  outcome: "rejected" | "created" | "updated" | "deleted";
+  subjectType: string;
+  subjectId: string | null;
+  clientIp: string | null;
+  requestPath: string | null;
+  message: string;
+  context?: unknown;
 };
 
 export type PresetPlan = {
@@ -136,6 +158,11 @@ export type RunFilters = {
   status?: string;
   taskId?: string;
   source?: string;
+  limit?: number;
+};
+
+export type AuditFilters = {
+  category?: AuditEvent["category"];
   limit?: number;
 };
 
@@ -250,4 +277,71 @@ export function selectTarget(
   }
 
   return targets[0] ?? null;
+}
+
+export function createTargetScaffold(): Target {
+  return {
+    id: "new-target",
+    title: "New Target",
+    description: "Describe the deployment policy for this target.",
+    taskId: "deploy.shared-volume.wrangler",
+    source: "target.local",
+    maxAttempts: 3,
+    defaultInput: {
+      kind: "pages-deploy",
+      project: "change-me",
+      sourcePath: "/shared-source/change-me",
+      branch: "main",
+    },
+    policy: {
+      allowedProjects: ["change-me"],
+      allowedSourceRoots: ["/shared-source"],
+      allowedBranches: ["main"],
+      allowedOverrideFields: [],
+      requiredEnv: [],
+      artifactReadiness: {
+        mode: "none",
+      },
+    },
+  };
+}
+
+export function serializeTargetEditorValue(target: Target): string {
+  return `${JSON.stringify(target, null, 2)}\n`;
+}
+
+export function parseTargetEditorValue(input: string):
+  | {
+      ok: true;
+      target: Target;
+    }
+  | {
+      ok: false;
+      error: string;
+    } {
+  try {
+    const raw = JSON.parse(input) as unknown;
+    const parsed = targetSchema.safeParse(raw);
+
+    if (!parsed.success) {
+      return {
+        ok: false,
+        error: parsed.error.issues
+          .map(
+            (issue) => `${issue.path.join(".") || "target"}: ${issue.message}`,
+          )
+          .join("; "),
+      };
+    }
+
+    return {
+      ok: true,
+      target: parsed.data as Target,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
 }

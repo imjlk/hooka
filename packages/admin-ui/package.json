@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "@hooka/config": "workspace:*"
+    "@hooka/config": "workspace:*",
+    "@hooka/contracts": "workspace:*"
   },
   "scripts": {
     "build": "bun build ./src/index.html --outdir ./dist",

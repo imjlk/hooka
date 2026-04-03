@@ -9,6 +9,13 @@ export interface InMemoryRateLimiterOptions {
   windowMs: number;
 }
 
+export interface ServerRateLimitContext {
+  bucket: "api" | "webhook";
+  clientIp: string;
+  key: string;
+  pathname: string;
+}
+
 export class InMemoryRateLimiter {
   readonly limit: number;
   readonly windowMs: number;
@@ -46,17 +53,36 @@ export class InMemoryRateLimiter {
   }
 }
 
-export function createServerRateLimitKey(request: Request): string {
+export function createServerRateLimitContext(
+  request: Request,
+  input: {
+    trustProxy: boolean;
+  },
+): ServerRateLimitContext {
   const url = new URL(request.url);
   const pathname = url.pathname;
+  const bucket = pathname.startsWith("/api/webhooks/") ? "webhook" : "api";
+  const clientIp = resolveClientIp(request, input);
 
-  return `${resolveClientIp(request)}:${pathname.startsWith("/api/webhooks/") ? "webhook" : "api"}`;
+  return {
+    bucket,
+    clientIp,
+    key: `${clientIp}:${bucket}`,
+    pathname,
+  };
 }
 
-function resolveClientIp(request: Request): string {
-  const forwardedFor = request.headers.get("x-forwarded-for");
-  if (forwardedFor) {
-    return forwardedFor.split(",")[0]?.trim() || "unknown";
+export function resolveClientIp(
+  request: Request,
+  input: {
+    trustProxy: boolean;
+  },
+): string {
+  if (input.trustProxy) {
+    const forwardedFor = request.headers.get("x-forwarded-for");
+    if (forwardedFor) {
+      return forwardedFor.split(",")[0]?.trim() || "unknown";
+    }
   }
 
   return (

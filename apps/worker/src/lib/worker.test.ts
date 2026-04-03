@@ -203,3 +203,54 @@ test("worker moves retryable failures to dead-letter after max attempts", async 
 
   runStore.close();
 });
+
+test("worker writes audit events for target policy preflight rejections", async () => {
+  const runStore = await createRunStore({
+    dbPath: ":memory:",
+  });
+
+  const queued = runStore.enqueueRun({
+    taskId: "deploy.shared-volume.wrangler",
+    input: {
+      kind: "pages-deploy",
+      project: "forbidden-site",
+      sourcePath: "/shared-source/forbidden-site",
+    },
+    source: "test",
+    capabilitySnapshot: ["wrangler"],
+    targetId: "pages-main",
+    targetPolicy: {
+      allowedProjects: ["main-site"],
+      allowedSourceRoots: ["/shared-source"],
+      allowedBranches: ["main"],
+      allowedOverrideFields: [],
+      requiredEnv: [],
+      artifactReadiness: {
+        mode: "none",
+      },
+    },
+  });
+
+  await processNextRun({
+    installedCapabilities: ["wrangler"],
+    manifestPath: "/tmp/manifest.json",
+    runtimeRole: "worker:test",
+    runStore,
+    workerId: "worker-a",
+    leaseMs: 60_000,
+    retryBaseDelayMs: 1000,
+  });
+
+  const auditEvents = runStore.listAuditEvents({
+    category: "policy",
+  });
+  expect(runStore.getRun(queued.response.runId)?.status).toBe("failed");
+  expect(auditEvents[0]).toMatchObject({
+    category: "policy",
+    action: "target_policy_rejected",
+    outcome: "rejected",
+    subjectId: "pages-main",
+  });
+
+  runStore.close();
+});
