@@ -11,9 +11,15 @@ Hooka follows a Bun-first style:
 - keep `node:path` where path composition is clearer and more stable
 - keep `node:crypto` for HMAC and constant-time signature checks
 
-V1.1 keeps Hooka as a generic task runtime. The first producer example is WordPress, and the first showcase task is:
+`1.0.0-rc.1` keeps Hooka as a generic task runtime. The first producer example is WordPress, and the first showcase task is:
 
 `signed webhook -> SQLite queue -> worker -> wrangler pages deploy`
+
+Release docs:
+
+- [Release notes](./docs/releases/1.0.0-rc.1.md)
+- [Upgrade guide](./docs/upgrade/v1.md)
+- [Coolify deployment guide](./docs/deploy/coolify.md)
 
 ## Workspace layout
 
@@ -78,7 +84,7 @@ GitHub Actions now cover both verification and GHCR publishing:
 
 - `.github/workflows/ci.yml` runs bake regeneration, typecheck, tests, build, and Docker E2E on pull requests and `main`.
 - The CI workflow also smoke-tests the Bun HMR admin UI and fails if the validation suite mutates tracked files.
-- `.github/workflows/publish-images.yml` publishes `webhook-server` plus active worker presets to GHCR on `main` and via manual dispatch.
+- `.github/workflows/publish-images.yml` publishes mutable `webhook-server` plus active worker preset tags from `main`, and publishes immutable semver aliases from release tags such as `v1.0.0-rc.1`.
 
 ## Runtime model
 
@@ -103,6 +109,14 @@ Recommended container tags:
 - `ghcr.io/imjlk/hooka:cf-cache`
 - `ghcr.io/imjlk/hooka:wp-ops`
 - `ghcr.io/imjlk/hooka:wp-wrangler`
+
+Immutable release tags follow the same catalog, for example:
+
+- `ghcr.io/imjlk/hooka:1.0.0-rc.1-webhook-server`
+- `ghcr.io/imjlk/hooka:1.0.0-rc.1-cf-pages`
+- `ghcr.io/imjlk/hooka:1.0.0-rc.1-cf-cache`
+- `ghcr.io/imjlk/hooka:1.0.0-rc.1-wp-ops`
+- `ghcr.io/imjlk/hooka:1.0.0-rc.1-wp-wrangler`
 
 `ghcr.io/imjlk/hooka` is currently published for public pull.
 

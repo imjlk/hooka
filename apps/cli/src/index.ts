@@ -14,7 +14,7 @@ import { cliDefaults } from "./lib/shared";
 
 const cli = await createCLI({
   name: "hooka",
-  version: "0.1.0",
+  version: "1.0.0-rc.1",
   description:
     "Composable task, capability, and preset control plane for Hooka.",
   commands: {
