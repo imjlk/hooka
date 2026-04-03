@@ -42,6 +42,14 @@ RUN bun run build
 
 FROM build AS runtime-base
 
+ARG HOOKA_SOURCE_REPO=https://github.com/imjlk/hooka
+ARG HOOKA_IMAGE_DESCRIPTION=Hooka webhook-driven automation runtime
+ARG HOOKA_IMAGE_LICENSES=MIT
+
+LABEL org.opencontainers.image.source=$HOOKA_SOURCE_REPO
+LABEL org.opencontainers.image.description=$HOOKA_IMAGE_DESCRIPTION
+LABEL org.opencontainers.image.licenses=$HOOKA_IMAGE_LICENSES
+
 ENV HOOKA_DB_PATH=/data/hooka.sqlite
 ENV HOOKA_MANIFEST_PATH=/app/.hooka/installed-capabilities.json
 ENV HOOKA_PORT=3000
