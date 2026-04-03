@@ -16,6 +16,7 @@ test("server exits non-zero when HOOKA_WEBHOOK_SECRET is missing", async () => {
     env: {
       ...Bun.env,
       HOOKA_DB_PATH: dbPath,
+      HOOKA_ADMIN_TOKEN: "admin-token",
       HOOKA_WEBHOOK_SECRET: "",
     },
   });

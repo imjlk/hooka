@@ -5,9 +5,10 @@ import { join } from "node:path";
 import { createHmac } from "node:crypto";
 import { createHookaFetchHandler } from "./app";
 
-async function createTestServerApp() {
+async function createTestServerApp(input: { targets?: unknown[] } = {}) {
   const tempDir = await createTempDir("hooka-server-test");
   const manifestPath = join(tempDir, "installed-capabilities.json");
+  const targetsPath = join(tempDir, "targets.json");
   const uiDistDir = join(tempDir, "ui");
   const runStore = await createRunStore({
     dbPath: ":memory:",
@@ -26,15 +27,28 @@ async function createTestServerApp() {
     join(uiDistDir, "index.html"),
     "<!doctype html><html></html>",
   );
+  await Bun.write(
+    targetsPath,
+    JSON.stringify({ targets: input.targets ?? [] }),
+  );
 
   return {
     fetch: createHookaFetchHandler({
+      adminToken: "admin-token",
       capabilityManifestPath: manifestPath,
+      defaultMaxAttempts: 3,
       runStore,
+      targetsPath,
       uiDistDir,
       webhookSecret: "secret",
     }),
     runStore,
+  };
+}
+
+function createAdminHeaders(): HeadersInit {
+  return {
+    authorization: "Bearer admin-token",
   };
 }
 
@@ -45,6 +59,7 @@ test("generic enqueue API returns queued run metadata", async () => {
       method: "POST",
       headers: {
         "content-type": "application/json",
+        ...createAdminHeaders(),
       },
       body: JSON.stringify({
         taskId: "deploy.shared-volume.wrangler",
@@ -63,6 +78,19 @@ test("generic enqueue API returns queued run metadata", async () => {
   expect(response.headers.get("referrer-policy")).toBe("no-referrer");
   const body = await response.json();
   expect(body.status).toBe("queued");
+
+  app.runStore.close();
+});
+
+test("admin API routes reject missing bearer tokens", async () => {
+  const app = await createTestServerApp();
+  const response = await app.fetch(
+    new Request("http://hooka.local/api/summary"),
+  );
+  const body = await response.json();
+
+  expect(response.status).toBe(401);
+  expect(body.error).toContain("admin token");
 
   app.runStore.close();
 });
@@ -145,7 +173,9 @@ test("signed simply static webhook is idempotent by event id", async () => {
   expect(second.headers.get("x-frame-options")).toBe("DENY");
 
   const runsResponse = await app.fetch(
-    new Request("http://hooka.local/api/runs"),
+    new Request("http://hooka.local/api/runs", {
+      headers: createAdminHeaders(),
+    }),
   );
   const runs = await runsResponse.json();
   expect(runs).toHaveLength(1);
@@ -187,6 +217,67 @@ test("wordpress alias normalizes to the generic runtime path", async () => {
   app.runStore.close();
 });
 
+test("target webhook resolves configured targets and stores target metadata", async () => {
+  const app = await createTestServerApp({
+    targets: [
+      {
+        id: "pages-main",
+        title: "Pages Main",
+        taskId: "deploy.shared-volume.wrangler",
+        source: "target.cloudflare-pages",
+        defaultInput: {
+          kind: "pages-deploy",
+          project: "main-site",
+          sourcePath: "/shared-source/main-site",
+          branch: "main",
+        },
+        maxAttempts: 4,
+        policy: {
+          allowedProjects: ["main-site"],
+          allowedSourceRoots: ["/shared-source"],
+          allowedBranches: ["main"],
+          allowedOverrideFields: ["branch"],
+          requiredEnv: [],
+          artifactReadiness: {
+            mode: "none",
+          },
+        },
+      },
+    ],
+  });
+  const payload = JSON.stringify({
+    targetId: "pages-main",
+    overrides: {
+      branch: "main",
+    },
+    eventId: "evt_target_1",
+    source: "target.trigger",
+  });
+  const timestamp = String(Math.floor(Date.now() / 1000));
+  const signature = createHmac("sha256", "secret")
+    .update(`${timestamp}.${payload}`)
+    .digest("hex");
+
+  const response = await app.fetch(
+    new Request("http://hooka.local/api/webhooks/task", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-hooka-timestamp": timestamp,
+        "x-hooka-signature": `sha256=${signature}`,
+      },
+      body: payload,
+    }),
+  );
+
+  expect(response.status).toBe(202);
+  const run = app.runStore.listRuns()[0];
+  expect(run?.targetId).toBe("pages-main");
+  expect(run?.maxAttempts).toBe(4);
+
+  app.runStore.close();
+});
+
 test("run detail API returns events", async () => {
   const app = await createTestServerApp();
   const queued = app.runStore.enqueueRun({
@@ -212,10 +303,16 @@ test("run detail API returns events", async () => {
   const response = await app.fetch(
     new Request(`http://hooka.local/api/runs/${queued.response.runId}`),
   );
-  const body = await response.json();
+  const authorized = await app.fetch(
+    new Request(`http://hooka.local/api/runs/${queued.response.runId}`, {
+      headers: createAdminHeaders(),
+    }),
+  );
+  expect(response.status).toBe(401);
+  const body = await authorized.json();
 
-  expect(response.status).toBe(200);
-  expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+  expect(authorized.status).toBe(200);
+  expect(authorized.headers.get("x-content-type-options")).toBe("nosniff");
   expect(body.events).toHaveLength(2);
   expect(body.result.stdout).toBe("stdout text");
   expect(body.result.stderr).toBe("stderr text");
@@ -224,13 +321,68 @@ test("run detail API returns events", async () => {
   app.runStore.close();
 });
 
+test("run retry API re-enqueues terminal runs", async () => {
+  const app = await createTestServerApp();
+  const queued = app.runStore.enqueueRun({
+    taskId: "deploy.shared-volume.wrangler",
+    input: {
+      kind: "pages-deploy",
+      project: "staging-site",
+      sourcePath: "/shared-source/simply-static",
+    },
+    source: "webhook",
+    capabilitySnapshot: ["wrangler"],
+  });
+  app.runStore.finishRun(
+    queued.response.runId,
+    {
+      taskId: "deploy.shared-volume.wrangler",
+      ok: false,
+      status: "failed",
+      retryable: false,
+      errorCode: "failed",
+      summary: "boom",
+      durationMs: 10,
+    },
+    {
+      attemptCount: 1,
+    },
+  );
+
+  const response = await app.fetch(
+    new Request(`http://hooka.local/api/runs/${queued.response.runId}/retry`, {
+      method: "POST",
+      headers: createAdminHeaders(),
+    }),
+  );
+  const body = await response.json();
+
+  expect(response.status).toBe(202);
+  expect(body.taskId).toBe("deploy.shared-volume.wrangler");
+  expect(app.runStore.listRuns(5)).toHaveLength(2);
+
+  app.runStore.close();
+});
+
 test("registry APIs expose canonical task and preset ids", async () => {
   const app = await createTestServerApp();
 
   const [tasksResponse, presetsResponse, summaryResponse] = await Promise.all([
-    app.fetch(new Request("http://hooka.local/api/tasks")),
-    app.fetch(new Request("http://hooka.local/api/presets")),
-    app.fetch(new Request("http://hooka.local/api/summary")),
+    app.fetch(
+      new Request("http://hooka.local/api/tasks", {
+        headers: createAdminHeaders(),
+      }),
+    ),
+    app.fetch(
+      new Request("http://hooka.local/api/presets", {
+        headers: createAdminHeaders(),
+      }),
+    ),
+    app.fetch(
+      new Request("http://hooka.local/api/summary", {
+        headers: createAdminHeaders(),
+      }),
+    ),
   ]);
 
   const tasks = (await tasksResponse.json()) as Array<{ id: string }>;
@@ -296,14 +448,23 @@ test("run list API supports status, taskId, and source filters", async () => {
   });
 
   const [statusResponse, taskResponse, sourceResponse] = await Promise.all([
-    app.fetch(new Request("http://hooka.local/api/runs?status=succeeded")),
+    app.fetch(
+      new Request("http://hooka.local/api/runs?status=succeeded", {
+        headers: createAdminHeaders(),
+      }),
+    ),
     app.fetch(
       new Request(
         "http://hooka.local/api/runs?taskId=cloudflare.cache.purge.urls",
+        {
+          headers: createAdminHeaders(),
+        },
       ),
     ),
     app.fetch(
-      new Request("http://hooka.local/api/runs?source=wordpress.webhook"),
+      new Request("http://hooka.local/api/runs?source=wordpress.webhook", {
+        headers: createAdminHeaders(),
+      }),
     ),
   ]);
 

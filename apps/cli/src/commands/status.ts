@@ -13,6 +13,12 @@ interface EndpointStatus<T> {
 
 export interface StatusReport {
   url: string;
+  workers: Array<{
+    workerId: string;
+    runtimeRole: string;
+    lastSeenAt: string;
+    currentRunId: string | null;
+  }>;
   health: EndpointStatus<{
     ok: boolean;
     service: string;
@@ -37,13 +43,20 @@ export function createStatusCommand() {
       url: option(z.string().url().default(defaultUrl), {
         description: "Hooka server base URL.",
       }),
+      token: option(z.string().optional(), {
+        description:
+          "Admin bearer token. Falls back to HOOKA_ADMIN_TOKEN when omitted.",
+      }),
       json: option(booleanFlagSchema, {
         description: "Print raw JSON instead of a human-readable summary.",
       }),
     },
     handler: async ({ flags }) => {
       const json = resolveBooleanFlag(flags.json, "--json");
-      const report = await collectStatusReport(flags.url);
+      const report = await collectStatusReport(
+        flags.url,
+        flags.token ?? Bun.env["HOOKA_ADMIN_TOKEN"],
+      );
 
       if (json) {
         console.log(JSON.stringify(report, null, 2));
@@ -62,6 +75,9 @@ export function createStatusCommand() {
           );
           console.log(
             `Registry Summary: ${report.summary.body.counts.tasks} tasks, ${report.summary.body.counts.capabilities} capabilities, ${report.summary.body.counts.presets} presets`,
+          );
+          console.log(
+            `Workers: ${report.workers.length > 0 ? report.workers.map((worker) => `${worker.workerId}@${worker.runtimeRole} (${worker.lastSeenAt})`).join(", ") : "(none)"}`,
           );
         } else {
           console.log(
@@ -96,8 +112,15 @@ export function createStatusCommand() {
 
 export async function collectStatusReport(
   baseUrl: string,
+  adminToken?: string,
 ): Promise<StatusReport> {
   const url = baseUrl.replace(/\/$/, "");
+  const authHeader =
+    adminToken && adminToken.trim().length > 0
+      ? {
+          authorization: `Bearer ${adminToken}`,
+        }
+      : undefined;
   const [health, ready, summary, recentRuns] = await Promise.all([
     fetchEndpoint<{
       ok: boolean;
@@ -108,12 +131,13 @@ export async function collectStatusReport(
       service: string;
       error?: string;
     }>(`${url}/api/ready`),
-    fetchEndpoint<RegistrySummary>(`${url}/api/summary`),
-    fetchEndpoint<RunSummary[]>(`${url}/api/runs?limit=5`),
+    fetchEndpoint<RegistrySummary>(`${url}/api/summary`, authHeader),
+    fetchEndpoint<RunSummary[]>(`${url}/api/runs?limit=5`, authHeader),
   ]);
 
   return {
     url,
+    workers: summary.body?.workers ?? [],
     health,
     ready,
     summary,
@@ -121,9 +145,14 @@ export async function collectStatusReport(
   };
 }
 
-async function fetchEndpoint<T>(url: string): Promise<EndpointStatus<T>> {
+async function fetchEndpoint<T>(
+  url: string,
+  headers?: HeadersInit,
+): Promise<EndpointStatus<T>> {
   try {
-    const response = await fetch(url);
+    const response = await fetch(url, {
+      headers,
+    });
     const rawBody = await response.text();
     const parsedBody = rawBody.length > 0 ? (tryParseJson(rawBody) as T) : null;
 

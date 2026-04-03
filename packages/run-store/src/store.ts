@@ -4,6 +4,7 @@ import type {
   RunEvent,
   RunSummary,
   TaskRunResult,
+  WorkerHeartbeat,
 } from "@hooka/contracts";
 import { runListQuerySchema } from "@hooka/contracts";
 import { ensureDir } from "@hooka/bun-utils";
@@ -23,8 +24,10 @@ import type {
   RunRow,
   RunStoreOptions,
   RunSummaryFilters,
+  WorkerHeartbeatRow,
 } from "./rows";
 import { initializeRunStoreSchema } from "./schema";
+import { toWorkerHeartbeat } from "./rows";
 
 export const defaultHookaDbPath = "/data/hooka.sqlite";
 
@@ -72,6 +75,7 @@ export class RunStore {
             task_id,
             source,
             source_event_id,
+            target_id,
             status,
             payload_json,
             result_json,
@@ -79,21 +83,28 @@ export class RunStore {
             error_text,
             capability_snapshot_json,
             attempt_count,
+            max_attempts,
+            next_retry_at,
+            last_error_code,
+            target_policy_json,
             created_at,
             queued_at,
             started_at,
             finished_at,
             lease_expires_at,
             worker_id
-          ) values (?, ?, ?, ?, 'queued', ?, null, null, null, ?, 0, ?, ?, null, null, null, null)`,
+          ) values (?, ?, ?, ?, ?, 'queued', ?, null, null, null, ?, 0, ?, null, null, ?, ?, ?, null, null, null, null)`,
         )
         .run(
           runId,
           input.taskId,
           input.source,
           input.sourceEventId ?? null,
+          input.targetId ?? null,
           JSON.stringify(input.input),
           JSON.stringify(input.capabilitySnapshot),
+          input.maxAttempts ?? 3,
+          input.targetPolicy ? JSON.stringify(input.targetPolicy) : null,
           queuedAt,
           queuedAt,
         );
@@ -177,13 +188,17 @@ export class RunStore {
     const now = this.timestamp();
     const rows = this.db
       .query(
-        `select id from runs
+        `select id, attempt_count, max_attempts from runs
          where status = 'running'
            and lease_expires_at is not null
            and lease_expires_at <= ?
          order by lease_expires_at asc`,
       )
-      .all(now) as Array<{ id: string }>;
+      .all(now) as Array<{
+      id: string;
+      attempt_count: number;
+      max_attempts: number;
+    }>;
 
     if (rows.length === 0) {
       return 0;
@@ -191,6 +206,42 @@ export class RunStore {
 
     return this.withTransaction(() => {
       for (const row of rows) {
+        const nextAttemptCount = row.attempt_count + 1;
+
+        if (nextAttemptCount >= row.max_attempts) {
+          this.db
+            .query(
+              `update runs
+               set status = 'dead-lettered',
+                   summary = ?,
+                   error_text = ?,
+                   attempt_count = ?,
+                   next_retry_at = null,
+                   finished_at = ?,
+                   lease_expires_at = null,
+                   worker_id = null
+               where id = ?`,
+            )
+            .run(
+              "Run lease expired too many times and was moved to the dead-letter queue.",
+              "Run lease expired too many times and was moved to the dead-letter queue.",
+              nextAttemptCount,
+              now,
+              row.id,
+            );
+
+          this.insertEvent(
+            row.id,
+            "dead-lettered",
+            "Run lease expired too many times and was moved to the dead-letter queue.",
+            {
+              attempts: nextAttemptCount,
+              errorCode: "lease_expired",
+            },
+          );
+          continue;
+        }
+
         this.db
           .query(
             `update runs
@@ -199,11 +250,12 @@ export class RunStore {
                  started_at = null,
                  finished_at = null,
                  lease_expires_at = null,
+                 next_retry_at = null,
                  worker_id = null,
-                 attempt_count = attempt_count + 1
+                 attempt_count = ?
              where id = ?`,
           )
-          .run(now, row.id);
+          .run(now, nextAttemptCount, row.id);
 
         this.insertEvent(
           row.id,
@@ -217,14 +269,16 @@ export class RunStore {
   }
 
   claimNextQueuedRun(workerId: string, leaseMs: number): ClaimedRun | null {
+    const now = this.timestamp();
     const queued = this.db
       .query(
         `select id from runs
          where status = 'queued'
+           and (next_retry_at is null or next_retry_at <= ?)
          order by queued_at asc, created_at asc
          limit 1`,
       )
-      .get() as { id: string } | null;
+      .get(now) as { id: string } | null;
 
     if (!queued) {
       return null;
@@ -240,7 +294,8 @@ export class RunStore {
          set status = 'running',
              worker_id = ?,
              started_at = ?,
-             lease_expires_at = ?
+             lease_expires_at = ?,
+             next_retry_at = null
          where id = ?
            and status = 'queued'`,
       )
@@ -260,20 +315,29 @@ export class RunStore {
       },
     );
 
-    const claimed = this.requireRun(queued.id);
+    const claimed = this.requireRunRow(queued.id);
     return {
       id: claimed.id,
-      taskId: claimed.taskId,
-      payload: claimed.payload,
-      attemptCount: claimed.attemptCount,
+      taskId: claimed.task_id,
+      targetId: claimed.target_id,
+      payload: JSON.parse(claimed.payload_json),
+      attemptCount: claimed.attempt_count,
+      maxAttempts: claimed.max_attempts,
+      targetPolicy: claimed.target_policy_json
+        ? JSON.parse(claimed.target_policy_json)
+        : null,
     };
   }
 
-  finishRun(runId: string, result: TaskRunResult): RunDetail {
+  finishRun(
+    runId: string,
+    result: TaskRunResult,
+    input: { attemptCount?: number } = {},
+  ): RunDetail {
     return this.withTransaction(() => {
       const finishedAt = this.timestamp();
       const errorText =
-        result.status === "failed"
+        result.status === "failed" || result.status === "dead-lettered"
           ? (result.stderr ?? result.summary ?? null)
           : null;
 
@@ -284,6 +348,9 @@ export class RunStore {
                result_json = ?,
                summary = ?,
                error_text = ?,
+               attempt_count = ?,
+               next_retry_at = null,
+               last_error_code = ?,
                finished_at = ?,
                lease_expires_at = null
            where id = ?`,
@@ -293,6 +360,8 @@ export class RunStore {
           JSON.stringify(result),
           result.summary ?? null,
           errorText,
+          input.attemptCount ?? this.requireRun(runId).attemptCount,
+          result.errorCode ?? null,
           finishedAt,
           runId,
         );
@@ -312,6 +381,104 @@ export class RunStore {
     });
   }
 
+  scheduleRetry(
+    runId: string,
+    result: TaskRunResult,
+    input: { attemptCount: number; nextRetryAt: string },
+  ): RunDetail {
+    return this.withTransaction(() => {
+      this.db
+        .query(
+          `update runs
+           set status = 'queued',
+               result_json = ?,
+               summary = ?,
+               error_text = ?,
+               attempt_count = ?,
+               next_retry_at = ?,
+               last_error_code = ?,
+               queued_at = ?,
+               started_at = null,
+               finished_at = null,
+               lease_expires_at = null,
+               worker_id = null
+           where id = ?`,
+        )
+        .run(
+          JSON.stringify(result),
+          result.summary ?? "Retry scheduled.",
+          result.stderr ?? result.summary ?? null,
+          input.attemptCount,
+          input.nextRetryAt,
+          result.errorCode ?? null,
+          this.timestamp(),
+          runId,
+        );
+
+      this.insertEvent(
+        runId,
+        "retry-scheduled",
+        result.summary
+          ? `${result.summary} Retry scheduled.`
+          : "Retry scheduled.",
+        {
+          retryAt: input.nextRetryAt,
+          errorCode: result.errorCode ?? null,
+        },
+      );
+
+      return this.requireRun(runId);
+    });
+  }
+
+  deadLetterRun(
+    runId: string,
+    result: TaskRunResult,
+    input: { attemptCount: number },
+  ): RunDetail {
+    return this.withTransaction(() => {
+      this.db
+        .query(
+          `update runs
+           set status = 'dead-lettered',
+               result_json = ?,
+               summary = ?,
+               error_text = ?,
+               attempt_count = ?,
+               next_retry_at = null,
+               last_error_code = ?,
+               finished_at = ?,
+               lease_expires_at = null
+           where id = ?`,
+        )
+        .run(
+          JSON.stringify({
+            ...result,
+            status: "dead-lettered",
+            retryable: false,
+          }),
+          result.summary ?? "Run moved to the dead-letter queue.",
+          result.stderr ?? result.summary ?? null,
+          input.attemptCount,
+          result.errorCode ?? null,
+          this.timestamp(),
+          runId,
+        );
+
+      this.insertEvent(
+        runId,
+        "dead-lettered",
+        result.summary ?? "Run moved to the dead-letter queue.",
+        {
+          attempts: input.attemptCount,
+          errorCode: result.errorCode ?? null,
+        },
+      );
+
+      return this.requireRun(runId);
+    });
+  }
+
   appendEvent(
     runId: string,
     type: string,
@@ -320,6 +487,77 @@ export class RunStore {
   ): RunEvent {
     this.insertEvent(runId, type, message, data);
     return this.requireEvent(runId);
+  }
+
+  upsertWorkerHeartbeat(input: {
+    workerId: string;
+    runtimeRole: string;
+    installedCapabilities: string[];
+    currentRunId?: string | null;
+  }): WorkerHeartbeat {
+    const lastSeenAt = this.timestamp();
+    this.db
+      .query(
+        `insert into worker_heartbeats (
+          worker_id,
+          runtime_role,
+          installed_capabilities_json,
+          last_seen_at,
+          current_run_id
+        ) values (?, ?, ?, ?, ?)
+        on conflict(worker_id) do update set
+          runtime_role = excluded.runtime_role,
+          installed_capabilities_json = excluded.installed_capabilities_json,
+          last_seen_at = excluded.last_seen_at,
+          current_run_id = excluded.current_run_id`,
+      )
+      .run(
+        input.workerId,
+        input.runtimeRole,
+        JSON.stringify(input.installedCapabilities),
+        lastSeenAt,
+        input.currentRunId ?? null,
+      );
+
+    return this.requireWorkerHeartbeat(input.workerId);
+  }
+
+  listWorkerHeartbeats(): WorkerHeartbeat[] {
+    const rows = this.db
+      .query(
+        `select * from worker_heartbeats
+         order by last_seen_at desc, worker_id asc`,
+      )
+      .all() as WorkerHeartbeatRow[];
+
+    return rows.map((row) => toWorkerHeartbeat(row));
+  }
+
+  getLastRunEventSequence(): number {
+    const row = this.db
+      .query(`select max(rowid) as value from run_events`)
+      .get() as { value: number | null };
+
+    return row.value ?? 0;
+  }
+
+  listRunEventsSince(
+    sequence = 0,
+    limit = 100,
+  ): Array<RunEvent & { sequence: number }> {
+    const rows = this.db
+      .query(
+        `select rowid as sequence, * from run_events
+         where rowid > ?
+         order by rowid asc
+         limit ?`,
+      )
+      .all(sequence, limit) as Array<RunEventRow & { sequence: number }>;
+
+    return rows.map((row) => ({
+      sequence: row.sequence,
+      ...toRunEvent(row),
+    }));
   }
 
   private findRunBySourceEventId(sourceEventId: string): RunDetail | null {
@@ -379,6 +617,18 @@ export class RunStore {
     return run;
   }
 
+  private requireRunRow(runId: string): RunRow {
+    const row = this.db
+      .query(`select * from runs where id = ? limit 1`)
+      .get(runId) as RunRow | null;
+
+    if (!row) {
+      throw new Error(`Run row not found after write: ${runId}`);
+    }
+
+    return row;
+  }
+
   private requireEvent(runId: string): RunEvent {
     const row = this.db
       .query(
@@ -394,6 +644,18 @@ export class RunStore {
     }
 
     return toRunEvent(row);
+  }
+
+  private requireWorkerHeartbeat(workerId: string): WorkerHeartbeat {
+    const row = this.db
+      .query(`select * from worker_heartbeats where worker_id = ? limit 1`)
+      .get(workerId) as WorkerHeartbeatRow | null;
+
+    if (!row) {
+      throw new Error(`Worker heartbeat not found after write: ${workerId}`);
+    }
+
+    return toWorkerHeartbeat(row);
   }
 
   private timestamp(): string {

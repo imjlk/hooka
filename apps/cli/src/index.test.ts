@@ -56,7 +56,7 @@ test("image plan exposes the active cf-cache preset contract", async () => {
 });
 
 test("doctor reports missing env for installed wrangler capability", async () => {
-  const result = await runCli(["doctor"], {
+  const result = await runCli(["doctor", "--json"], {
     HOOKA_INSTALLED_CAPABILITIES: "wrangler",
     CLOUDFLARE_API_TOKEN: "",
     CLOUDFLARE_ACCOUNT_ID: "",
@@ -115,7 +115,7 @@ test("doctor honors HOOKA_MANIFEST_PATH for the default manifest lookup", async 
     }),
   );
 
-  const result = await runCli(["doctor"], {
+  const result = await runCli(["doctor", "--json"], {
     HOOKA_MANIFEST_PATH: manifestPath,
     HOOKA_INSTALLED_CAPABILITIES: undefined,
     CLOUDFLARE_API_TOKEN: "",
@@ -166,6 +166,15 @@ test("status aggregates health, readiness, summary, and recent runs", async () =
             presets: 2,
           },
           installedCapabilities: ["wrangler"],
+          workers: [
+            {
+              workerId: "worker-a",
+              runtimeRole: "worker:cf-pages",
+              installedCapabilities: ["wrangler"],
+              lastSeenAt: "2026-04-03T00:00:04.000Z",
+              currentRunId: null,
+            },
+          ],
           tasks: [],
           capabilities: [],
           presets: [],
@@ -179,10 +188,14 @@ test("status aggregates health, readiness, summary, and recent runs", async () =
             taskId: "deploy.shared-volume.wrangler",
             source: "webhook",
             sourceEventId: null,
+            targetId: null,
             status: "succeeded",
             summary: "done",
             errorText: null,
             attemptCount: 0,
+            maxAttempts: 3,
+            nextRetryAt: null,
+            lastErrorCode: null,
             createdAt: "2026-04-03T00:00:00.000Z",
             queuedAt: "2026-04-03T00:00:00.000Z",
             startedAt: "2026-04-03T00:00:01.000Z",
@@ -202,6 +215,8 @@ test("status aggregates health, readiness, summary, and recent runs", async () =
       "status",
       "--url",
       `http://127.0.0.1:${server.port}`,
+      "--token",
+      "admin-token",
       "--json",
     ]);
 
@@ -214,6 +229,7 @@ test("status aggregates health, readiness, summary, and recent runs", async () =
       summary: {
         body: {
           installedCapabilities: string[];
+          workers: Array<{ workerId: string }>;
         };
       };
       recentRuns: {
@@ -223,6 +239,7 @@ test("status aggregates health, readiness, summary, and recent runs", async () =
 
     expect(report.ready.ok).toBe(true);
     expect(report.summary.body.installedCapabilities).toEqual(["wrangler"]);
+    expect(report.summary.body.workers[0]?.workerId).toBe("worker-a");
     expect(report.recentRuns.body[0]?.id).toBe("run_1");
   } finally {
     server.stop(true);
@@ -250,6 +267,7 @@ test("config reports resolved manifest precedence and installed capabilities", a
       HOOKA_MANIFEST_PATH: manifestPath,
       HOOKA_INSTALLED_CAPABILITIES: undefined,
       HOOKA_WEBHOOK_SECRET: "local-secret",
+      HOOKA_ADMIN_TOKEN: "admin-token",
       HOOKA_UI_PORT: "4400",
       HOOKA_UI_API_ORIGIN: "http://127.0.0.1:3300",
     },
@@ -264,6 +282,9 @@ test("config reports resolved manifest precedence and installed capabilities", a
     manifestPath: string;
     installedCapabilities: string[];
     webhookSecretConfigured: boolean;
+    adminTokenConfigured: boolean;
+    targets: string[];
+    targetsPath: string;
     uiPort: number;
     uiApiOrigin: string;
   };
@@ -273,8 +294,65 @@ test("config reports resolved manifest precedence and installed capabilities", a
   expect(report.manifestPath).toBe(manifestPath);
   expect(report.installedCapabilities).toEqual(["wrangler", "wpcli"]);
   expect(report.webhookSecretConfigured).toBe(true);
+  expect(report.adminTokenConfigured).toBe(true);
+  expect(report.targets).toEqual([]);
   expect(report.uiPort).toBe(4400);
   expect(report.uiApiOrigin).toBe("http://127.0.0.1:3300");
+});
+
+test("target list and show read the configured targets file", async () => {
+  const tempDir = await createTempDir("hooka-cli-targets");
+  const targetsPath = join(tempDir, ".hooka", "targets.json");
+  await ensureParentDir(targetsPath);
+  await Bun.write(
+    targetsPath,
+    JSON.stringify({
+      targets: [
+        {
+          id: "pages-main",
+          title: "Pages Main",
+          taskId: "deploy.shared-volume.wrangler",
+          source: "target.local",
+          maxAttempts: 3,
+          defaultInput: {
+            kind: "pages-deploy",
+          },
+          policy: {
+            allowedProjects: ["main-site"],
+            allowedSourceRoots: ["/shared-source"],
+            allowedBranches: ["main"],
+            allowedOverrideFields: [],
+            requiredEnv: [],
+            artifactReadiness: {
+              mode: "none",
+            },
+          },
+        },
+      ],
+    }),
+  );
+
+  const listResult = await runCli(
+    ["target", "list", "--targets", targetsPath, "--json"],
+    {},
+    tempDir,
+  );
+  const showResult = await runCli(
+    ["target", "show", "--targets", targetsPath, "pages-main"],
+    {},
+    tempDir,
+  );
+
+  expect(listResult.exitCode).toBe(0);
+  expect(showResult.exitCode).toBe(0);
+  expect(JSON.parse(listResult.stdout)).toEqual([
+    expect.objectContaining({
+      id: "pages-main",
+    }),
+  ]);
+  expect(JSON.parse(showResult.stdout)).toMatchObject({
+    id: "pages-main",
+  });
 });
 
 test("init scaffolds .env, manifest, and shared source for the selected preset", async () => {
@@ -297,6 +375,12 @@ test("init scaffolds .env, manifest, and shared source for the selected preset",
     installed: string[];
   };
   expect(manifest.installed).toEqual(["wrangler"]);
+  const targets = (await Bun.file(
+    join(tempDir, ".hooka/targets.json"),
+  ).json()) as {
+    targets: Array<{ id: string }>;
+  };
+  expect(targets.targets[0]?.id).toBe("cf-pages-default");
   expect(
     await directoryExists(join(tempDir, ".hooka/shared-source/simply-static")),
   ).toBe(true);
@@ -345,6 +429,56 @@ test("run retry re-enqueues a completed run with cli.retry as the source", async
   expect(runs[0]?.source).toBe("cli.retry");
   expect(runs[0]?.taskId).toBe("deploy.shared-volume.wrangler");
   verifyStore.close();
+});
+
+test("run watch streams until a run reaches a terminal state", async () => {
+  const tempDir = await createTempDir("hooka-cli-watch");
+  const dbPath = join(tempDir, "hooka.sqlite");
+  const runStore = await createRunStore({
+    dbPath,
+  });
+  const queued = runStore.enqueueRun({
+    taskId: "deploy.shared-volume.wrangler",
+    input: {
+      kind: "pages-deploy",
+      project: "watch-site",
+      sourcePath: "/shared-source/watch",
+    },
+    source: "webhook",
+    capabilitySnapshot: ["wrangler"],
+  });
+
+  setTimeout(async () => {
+    const nestedStore = await createRunStore({
+      dbPath,
+    });
+    nestedStore.finishRun(
+      queued.response.runId,
+      {
+        taskId: "deploy.shared-volume.wrangler",
+        ok: true,
+        status: "succeeded",
+        retryable: false,
+        summary: "done",
+        durationMs: 1,
+      },
+      {
+        attemptCount: 1,
+      },
+    );
+    nestedStore.close();
+  }, 50);
+  runStore.close();
+
+  const result = await runCli(
+    ["run", "watch", "--db", dbPath, "--interval", "20", queued.response.runId],
+    {},
+    tempDir,
+  );
+
+  expect(result.exitCode).toBe(0);
+  expect(result.stdout).toContain("succeeded");
+  expect(result.stdout).toContain(queued.response.runId);
 });
 
 test("task discovery still works when the CLI is launched from a repo subdirectory", async () => {

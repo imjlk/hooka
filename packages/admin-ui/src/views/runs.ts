@@ -36,6 +36,12 @@ export function renderRunList(
 }
 
 export function renderRunDetail(run: RunDetail): string {
+  const canRetry =
+    run.status === "failed" ||
+    run.status === "succeeded" ||
+    run.status === "dead-lettered" ||
+    run.status === "skipped";
+
   return `
     <div class="detail-grid">
       <div class="detail-card">
@@ -45,8 +51,15 @@ export function renderRunDetail(run: RunDetail): string {
         <div class="stack">
           <span class="chip">${escapeHtml(run.source)}</span>
           <span class="status ${runStatusClass(run.status)}">${escapeHtml(run.status)}</span>
+          <span class="chip">attempts ${run.attemptCount}/${run.maxAttempts}</span>
+          ${run.targetId ? `<span class="chip">target ${escapeHtml(run.targetId)}</span>` : ""}
           ${run.workerId ? `<span class="chip">${escapeHtml(run.workerId)}</span>` : ""}
         </div>
+        ${
+          canRetry
+            ? `<div class="stack top-gap"><button type="button" class="action-button" data-run-retry-id="${run.id}">Retry Run</button></div>`
+            : ""
+        }
       </div>
       <div class="detail-card">
         <span class="eyebrow">Timing</span>
@@ -54,12 +67,18 @@ export function renderRunDetail(run: RunDetail): string {
         <p>Queued: ${formatTimestamp(run.queuedAt)}</p>
         <p>Started: ${formatTimestamp(run.startedAt)}</p>
         <p>Finished: ${formatTimestamp(run.finishedAt)}</p>
+        <p>Next retry: ${formatTimestamp(run.nextRetryAt)}</p>
       </div>
     </div>
     <div class="detail-grid">
       <div class="detail-card">
         <span class="eyebrow">Summary</span>
         <p>${escapeHtml(run.result?.summary ?? run.summary ?? "No summary recorded.")}</p>
+        ${
+          run.lastErrorCode
+            ? `<p><strong>Error code:</strong> ${escapeHtml(run.lastErrorCode)}</p>`
+            : ""
+        }
         ${
           run.errorText
             ? `<p class="detail-error">${escapeHtml(run.errorText)}</p>`

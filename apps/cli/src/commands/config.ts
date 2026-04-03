@@ -9,14 +9,18 @@ import {
   type ManifestSourceKind,
 } from "@hooka/config";
 import { loadInstalledCapabilities } from "@hooka/runner-core";
+import { loadTargets } from "@hooka/targets";
 import { booleanFlagSchema, resolveBooleanFlag } from "../lib/shared";
 
 export interface ConfigReport {
   dbPath: string;
   manifestPath: string;
+  targetsPath: string;
   manifestSourceKind: ManifestSourceKind;
   installedCapabilities: string[];
   webhookSecretConfigured: boolean;
+  adminTokenConfigured: boolean;
+  targets: string[];
   uiPort: number;
   uiApiOrigin: string;
   statusUrl: string;
@@ -47,13 +51,17 @@ export async function collectConfigReport(
     env,
   });
   const manifest = await loadInstalledCapabilities(workerConfig.manifestPath);
+  const targets = await loadTargets(cliConfig.targetsPath);
 
   return {
     dbPath: cliConfig.dbPath,
     manifestPath: manifestSource.manifestPath,
+    targetsPath: cliConfig.targetsPath,
     manifestSourceKind: manifestSource.kind,
     installedCapabilities: manifest.installed,
     webhookSecretConfigured: Boolean(serverConfig.webhookSecret),
+    adminTokenConfigured: Boolean(serverConfig.adminToken),
+    targets: targets.map((target) => target.id),
     uiPort: uiConfig.uiPort,
     uiApiOrigin: uiConfig.apiOrigin,
     statusUrl: `http://127.0.0.1:${serverConfig.port}`,
@@ -83,12 +91,17 @@ export function createConfigCommand() {
         `Manifest Source: ${formatManifestSourceKind(report.manifestSourceKind)}`,
       );
       console.log(`Manifest Path: ${report.manifestPath}`);
+      console.log(`Targets Path: ${report.targetsPath}`);
       console.log(
         `Installed Capabilities: ${report.installedCapabilities.join(", ") || "(none)"}`,
       );
       console.log(
         `Webhook Secret: ${report.webhookSecretConfigured ? "configured" : "missing"}`,
       );
+      console.log(
+        `Admin Token: ${report.adminTokenConfigured ? "configured" : "missing"}`,
+      );
+      console.log(`Targets: ${report.targets.join(", ") || "(none)"}`);
       console.log(
         `UI: http://127.0.0.1:${report.uiPort} -> ${report.uiApiOrigin}`,
       );

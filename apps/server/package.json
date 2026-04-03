@@ -12,6 +12,7 @@
     "@hooka/registry": "workspace:*",
     "@hooka/run-store": "workspace:*",
     "@hooka/runner-core": "workspace:*",
+    "@hooka/targets": "workspace:*",
     "zod": "^4.3.6"
   }
 }

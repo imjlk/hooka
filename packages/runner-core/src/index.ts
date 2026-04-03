@@ -80,8 +80,24 @@ export async function runTask<TSchema extends TaskInputSchema>(
   options: RunTaskOptions = {},
 ): Promise<TaskRunResult> {
   const dryRun = options.dryRun ?? false;
-  const input = task.input.parse(rawInput ?? {});
   const env = options.env ?? (Bun.env as Record<string, string | undefined>);
+  let input: z.output<TSchema>;
+
+  try {
+    input = task.input.parse(rawInput ?? {});
+  } catch (error) {
+    return {
+      taskId: task.id,
+      ok: false,
+      status: "failed",
+      retryable: false,
+      errorCode: "input_invalid",
+      stderr: error instanceof Error ? error.message : String(error),
+      summary: `Invalid input for ${task.id}.`,
+      durationMs: 0,
+    };
+  }
+
   const installedCapabilities =
     options.installedCapabilities ??
     (await loadInstalledCapabilities(options.manifestPath)).installed;
@@ -96,6 +112,8 @@ export async function runTask<TSchema extends TaskInputSchema>(
       taskId: task.id,
       ok: false,
       status: "failed",
+      retryable: false,
+      errorCode: "missing_capabilities",
       summary: `Missing required capabilities: ${missing.join(", ")}.`,
       durationMs: 0,
       data: {
@@ -137,6 +155,7 @@ export async function runTask<TSchema extends TaskInputSchema>(
         taskId: task.id,
         ok: true,
         status: dryRun ? "skipped" : "succeeded",
+        retryable: false,
         summary:
           task.executor.summarize?.({
             input: input as z.output<TSchema>,
@@ -157,6 +176,8 @@ export async function runTask<TSchema extends TaskInputSchema>(
         taskId: task.id,
         ok: false,
         status: "failed",
+        retryable: true,
+        errorCode: "internal_execution_failed",
         stderr: message,
         summary: message,
         durationMs: performance.now() - startedAt,

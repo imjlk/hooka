@@ -5,6 +5,7 @@ export const taskRunStatusSchema = z.enum([
   "running",
   "succeeded",
   "failed",
+  "dead-lettered",
   "skipped",
 ]);
 
@@ -25,6 +26,8 @@ export const taskRunResultSchema = z.object({
   taskId: z.string(),
   ok: z.boolean(),
   status: taskRunStatusSchema,
+  retryable: z.boolean().optional(),
+  errorCode: z.string().min(1).optional(),
   command: z.array(z.string()).optional(),
   stdout: z.string().optional(),
   stderr: z.string().optional(),

@@ -30,8 +30,11 @@ const server = Bun.serve({
   port: config.port,
   idleTimeout: 30,
   fetch: createHookaFetchHandler({
+    adminToken: config.adminToken,
     capabilityManifestPath: config.capabilityManifestPath,
+    defaultMaxAttempts: config.maxAttempts,
     runStore,
+    targetsPath: config.targetsPath,
     uiDistDir: config.uiDistDir,
     webhookSecret: config.webhookSecret,
     logger,
@@ -48,4 +51,6 @@ logger.info("Server started", {
   port: server.port,
   dbPath: config.dbPath,
   capabilityManifestPath: config.capabilityManifestPath,
+  targetsPath: config.targetsPath,
+  maxAttempts: config.maxAttempts,
 });

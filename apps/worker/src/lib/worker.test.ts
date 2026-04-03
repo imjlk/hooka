@@ -32,9 +32,11 @@ test("worker executes a queued run and stores the result", async () => {
       commandRunner,
       installedCapabilities: ["wrangler"],
       manifestPath: "/tmp/manifest.json",
+      runtimeRole: "worker:test",
       runStore,
       workerId: "worker-a",
       leaseMs: 60_000,
+      retryBaseDelayMs: 1000,
     }),
   ).toBe(true);
 
@@ -64,9 +66,11 @@ test("worker records failed runs when capabilities are missing", async () => {
   await processNextRun({
     installedCapabilities: [],
     manifestPath: "/tmp/manifest.json",
+    runtimeRole: "worker:test",
     runStore,
     workerId: "worker-a",
     leaseMs: 60_000,
+    retryBaseDelayMs: 1000,
   });
 
   const run = runStore.getRun(queued.response.runId);
@@ -93,14 +97,20 @@ test("worker records failed runs when task execution throws", async () => {
   await processNextRun({
     installedCapabilities: [],
     manifestPath: "/tmp/manifest.json",
+    runtimeRole: "worker:test",
     runStore,
     workerId: "worker-a",
     leaseMs: 60_000,
+    retryBaseDelayMs: 1000,
   });
 
   const run = runStore.getRun(queued.response.runId);
-  expect(run?.status).toBe("failed");
+  expect(run?.status).toBe("queued");
   expect(run?.summary).toContain("Export directory not found");
+  expect(run?.nextRetryAt).not.toBeNull();
+  expect(run?.events.some((event) => event.type === "retry-scheduled")).toBe(
+    true,
+  );
 
   runStore.close();
 });
@@ -145,14 +155,51 @@ test("worker loop finishes the in-flight run before honoring shutdown", async ()
     },
     manifestPath: "/tmp/manifest.json",
     pollIntervalMs: 0,
+    runtimeRole: "worker:test",
     runStore,
     shutdownSignal,
     workerId: "worker-a",
     leaseMs: 60_000,
+    retryBaseDelayMs: 1000,
   });
 
   const run = runStore.getRun(queued.response.runId);
   expect(run?.status).toBe("succeeded");
+
+  runStore.close();
+});
+
+test("worker moves retryable failures to dead-letter after max attempts", async () => {
+  const runStore = await createRunStore({
+    dbPath: ":memory:",
+  });
+
+  const queued = runStore.enqueueRun({
+    taskId: "wordpress.export.verify",
+    input: {
+      exportDir: "/definitely/missing",
+    },
+    source: "test",
+    capabilitySnapshot: [],
+    maxAttempts: 1,
+  });
+
+  await processNextRun({
+    installedCapabilities: [],
+    manifestPath: "/tmp/manifest.json",
+    runtimeRole: "worker:test",
+    runStore,
+    workerId: "worker-a",
+    leaseMs: 60_000,
+    retryBaseDelayMs: 1000,
+  });
+
+  const run = runStore.getRun(queued.response.runId);
+  expect(run?.status).toBe("dead-lettered");
+  expect(run?.attemptCount).toBe(1);
+  expect(run?.events.some((event) => event.type === "dead-lettered")).toBe(
+    true,
+  );
 
   runStore.close();
 });

@@ -5,10 +5,12 @@ import {
   formatCapabilityEnvRows,
   selectActiveRunId,
   selectPreset,
+  selectTarget,
   type Capability,
   type PresetWithPlan,
   type RunSummary,
   type Summary,
+  type Target,
 } from "./helpers";
 
 test("buildRunQuery includes only active filters", () => {
@@ -26,20 +28,28 @@ test("selectActiveRunId keeps current run when present and falls back to first",
     {
       id: "run-1",
       taskId: "task-1",
+      targetId: null,
       source: "webhook",
       status: "queued",
       summary: null,
       createdAt: "2026-03-29T00:00:00.000Z",
       attemptCount: 0,
+      maxAttempts: 3,
+      nextRetryAt: null,
+      lastErrorCode: null,
     },
     {
       id: "run-2",
       taskId: "task-2",
+      targetId: null,
       source: "cli",
       status: "failed",
       summary: null,
       createdAt: "2026-03-29T00:00:01.000Z",
       attemptCount: 1,
+      maxAttempts: 3,
+      nextRetryAt: null,
+      lastErrorCode: "failed",
     },
   ];
 
@@ -57,6 +67,7 @@ test("deriveRunFilterOptions builds stable task and source option lists", () => 
       presets: 1,
     },
     installedCapabilities: [],
+    workers: [],
     tasks: [
       {
         id: "task-b",
@@ -77,20 +88,28 @@ test("deriveRunFilterOptions builds stable task and source option lists", () => 
     {
       id: "run-1",
       taskId: "task-a",
+      targetId: null,
       source: "wordpress.webhook",
       status: "queued",
       summary: null,
       createdAt: "2026-03-29T00:00:00.000Z",
       attemptCount: 0,
+      maxAttempts: 3,
+      nextRetryAt: null,
+      lastErrorCode: null,
     },
     {
       id: "run-2",
       taskId: "task-b",
+      targetId: null,
       source: "cli",
       status: "failed",
       summary: null,
       createdAt: "2026-03-29T00:00:01.000Z",
       attemptCount: 1,
+      maxAttempts: 3,
+      nextRetryAt: null,
+      lastErrorCode: "failed",
     },
   ];
 
@@ -156,4 +175,43 @@ test("selectPreset falls back to the first preset when current is invalid", () =
   expect(selectPreset(presets, "wp-wrangler")?.id).toBe("wp-wrangler");
   expect(selectPreset(presets, "missing")?.id).toBe("cf-pages");
   expect(selectPreset([], "missing")).toBe(null);
+});
+
+test("selectTarget falls back to the first target when current is invalid", () => {
+  const targets: Target[] = [
+    {
+      id: "pages-main",
+      title: "Pages Main",
+      taskId: "deploy.shared-volume.wrangler",
+      source: "target",
+      maxAttempts: 3,
+      defaultInput: {},
+      policy: {
+        allowedProjects: [],
+        allowedSourceRoots: [],
+        allowedBranches: [],
+        allowedOverrideFields: [],
+        artifactReadiness: { mode: "none" },
+      },
+    },
+    {
+      id: "pages-preview",
+      title: "Pages Preview",
+      taskId: "deploy.shared-volume.wrangler",
+      source: "target",
+      maxAttempts: 2,
+      defaultInput: {},
+      policy: {
+        allowedProjects: [],
+        allowedSourceRoots: [],
+        allowedBranches: [],
+        allowedOverrideFields: [],
+        artifactReadiness: { mode: "none" },
+      },
+    },
+  ];
+
+  expect(selectTarget(targets, "pages-preview")?.id).toBe("pages-preview");
+  expect(selectTarget(targets, "missing")?.id).toBe("pages-main");
+  expect(selectTarget([], "missing")).toBe(null);
 });

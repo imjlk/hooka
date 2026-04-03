@@ -1,4 +1,8 @@
-import type { ImagePlan, RegistrySummary } from "@hooka/contracts";
+import type {
+  ImagePlan,
+  RegistrySummary,
+  WorkerHeartbeat,
+} from "@hooka/contracts";
 import { registrySummarySchema } from "@hooka/contracts";
 import { listActiveWorkerPresets } from "@hooka/preset-catalog";
 import {
@@ -248,6 +252,7 @@ function createAliasMap<T extends { id: string; aliases?: string[] }>(
 
 export function createRegistrySummary(
   installedCapabilities: string[] = [],
+  workers: WorkerHeartbeat[] = [],
 ): RegistrySummary {
   return registrySummarySchema.parse({
     generatedAt: new Date().toISOString(),
@@ -257,6 +262,7 @@ export function createRegistrySummary(
       presets: presets.length,
     },
     installedCapabilities,
+    workers,
     tasks: tasks.map((task) => ({
       id: task.id,
       title: task.title,

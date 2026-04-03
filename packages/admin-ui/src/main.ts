@@ -5,6 +5,7 @@ import type {
   RunFilters,
   RunSummary,
   Summary,
+  Target,
 } from "./helpers";
 import { buildRunQuery, selectActiveRunId } from "./helpers";
 import { escapeHtml, getElement, syncSelectedRows } from "./dom";
@@ -22,25 +23,36 @@ import {
   renderRunFilterSelectOptions,
   renderRunList,
 } from "./views/runs";
+import { renderTargetDetail, renderTargetList } from "./views/targets";
+
+const adminTokenStorageKey = "hooka.adminToken";
 
 const state: {
   activePresetId: string | null;
   activeRunId: string | null;
+  activeTargetId: string | null;
+  adminToken: string;
   capabilities: Capability[];
+  eventSource: EventSource | null;
   filters: RunFilters;
   presets: PresetWithPlan[];
   runs: RunSummary[];
   summary: Summary | null;
+  targets: Target[];
 } = {
   activePresetId: null,
   activeRunId: null,
+  activeTargetId: null,
+  adminToken: localStorage.getItem(adminTokenStorageKey) ?? "",
   capabilities: [],
+  eventSource: null,
   filters: {
     limit: 8,
   },
   presets: [],
   runs: [],
   summary: null,
+  targets: [],
 };
 
 const root = document.querySelector<HTMLDivElement>("#app");
@@ -50,6 +62,8 @@ if (!root) {
 }
 
 root.innerHTML = renderShell();
+setAuthStatus();
+applyAdminTokenValue();
 
 document.addEventListener("click", (event) => {
   const target = event.target;
@@ -76,7 +90,43 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  const targetTrigger = target.closest<HTMLElement>("[data-target-id]");
+
+  if (targetTrigger?.dataset["targetId"]) {
+    state.activeTargetId = targetTrigger.dataset["targetId"];
+    syncSelectedRows("[data-target-id]", state.activeTargetId);
+    renderTargetPanels();
+    return;
+  }
+
+  const retryTrigger = target.closest<HTMLElement>("[data-run-retry-id]");
+
+  if (retryTrigger?.dataset["runRetryId"]) {
+    void retryRun(retryTrigger.dataset["runRetryId"]);
+    return;
+  }
+
   if (target.id === "run-refresh") {
+    void hydrate();
+    return;
+  }
+
+  if (target.id === "admin-token-save") {
+    const input = getElement("admin-token") as HTMLInputElement;
+    state.adminToken = input.value.trim();
+    localStorage.setItem(adminTokenStorageKey, state.adminToken);
+    setAuthStatus();
+    connectEventStream();
+    void hydrate();
+    return;
+  }
+
+  if (target.id === "admin-token-clear") {
+    state.adminToken = "";
+    localStorage.removeItem(adminTokenStorageKey);
+    applyAdminTokenValue();
+    setAuthStatus();
+    connectEventStream();
     void hydrate();
   }
 });
@@ -105,39 +155,29 @@ document.addEventListener("change", (event) => {
 });
 
 void hydrate();
+connectEventStream();
 
 async function hydrate(): Promise<void> {
   try {
-    const [summaryResponse, presetsResponse, capabilitiesResponse] =
-      await Promise.all([
-        fetch("/api/summary"),
-        fetch("/api/presets"),
-        fetch("/api/capabilities"),
-      ]);
+    const [summary, presets, capabilities, targets] = await Promise.all([
+      fetchJson<Summary>("/api/summary"),
+      fetchJson<PresetWithPlan[]>("/api/presets"),
+      fetchJson<Capability[]>("/api/capabilities"),
+      fetchJson<Target[]>("/api/targets"),
+    ]);
 
-    if (!summaryResponse.ok) {
-      throw new Error(`Summary API returned ${summaryResponse.status}`);
-    }
-
-    if (!presetsResponse.ok) {
-      throw new Error(`Presets API returned ${presetsResponse.status}`);
-    }
-
-    if (!capabilitiesResponse.ok) {
-      throw new Error(
-        `Capabilities API returned ${capabilitiesResponse.status}`,
-      );
-    }
-
-    state.summary = (await summaryResponse.json()) as Summary;
-    state.presets = (await presetsResponse.json()) as PresetWithPlan[];
-    state.capabilities = (await capabilitiesResponse.json()) as Capability[];
+    state.summary = summary;
+    state.presets = presets;
+    state.capabilities = capabilities;
+    state.targets = targets;
 
     renderSummaryPanels();
     renderPresetPanels();
+    renderTargetPanels();
     renderTaskPanel();
     applyRunFilterValues();
     await loadRuns();
+    setAuthStatus();
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
 
@@ -151,6 +191,10 @@ async function hydrate(): Promise<void> {
       `<p class="muted">Preset data unavailable.</p>`;
     getElement("preset-detail").innerHTML =
       `<p class="muted">Preset detail unavailable.</p>`;
+    getElement("target-list").innerHTML =
+      `<p class="muted">Target data unavailable.</p>`;
+    getElement("target-detail").innerHTML =
+      `<p class="muted">Target detail unavailable.</p>`;
     getElement("task-list").innerHTML =
       `<p class="muted">Task data unavailable.</p>`;
     getElement("run-list").innerHTML =
@@ -158,6 +202,7 @@ async function hydrate(): Promise<void> {
     getElement("run-detail").innerHTML = renderRunDetailPlaceholder(
       "Run detail unavailable.",
     );
+    setAuthStatus(message);
   }
 }
 
@@ -187,6 +232,17 @@ function renderPresetPanels(): void {
   syncSelectedRows("[data-preset-id]", state.activePresetId);
 }
 
+function renderTargetPanels(): void {
+  getElement("target-list").innerHTML = renderTargetList(
+    state.targets,
+    state.activeTargetId,
+  );
+  const detail = renderTargetDetail(state.targets, state.activeTargetId);
+  state.activeTargetId = detail.selectedTargetId;
+  getElement("target-detail").innerHTML = detail.html;
+  syncSelectedRows("[data-target-id]", state.activeTargetId);
+}
+
 function renderTaskPanel(): void {
   if (!state.summary) {
     return;
@@ -199,13 +255,9 @@ async function loadRuns(): Promise<void> {
   const runList = getElement("run-list");
 
   try {
-    const response = await fetch(`/api/runs${buildRunQuery(state.filters)}`);
-
-    if (!response.ok) {
-      throw new Error(`Runs API returned ${response.status}`);
-    }
-
-    state.runs = (await response.json()) as RunSummary[];
+    state.runs = await fetchJson<RunSummary[]>(
+      `/api/runs${buildRunQuery(state.filters)}`,
+    );
     renderRunFilters();
     runList.innerHTML = renderRunList(state.runs, state.activeRunId);
     state.activeRunId = selectActiveRunId(state.runs, state.activeRunId);
@@ -256,13 +308,9 @@ function applyRunFilterValues(): void {
 
 async function loadRunDetail(runId: string): Promise<void> {
   try {
-    const response = await fetch(`/api/runs/${encodeURIComponent(runId)}`);
-
-    if (!response.ok) {
-      throw new Error(`Run detail API returned ${response.status}`);
-    }
-
-    const run = (await response.json()) as RunDetail;
+    const run = await fetchJson<RunDetail>(
+      `/api/runs/${encodeURIComponent(runId)}`,
+    );
     getElement("run-detail").innerHTML = renderRunDetail(run);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -270,4 +318,68 @@ async function loadRunDetail(runId: string): Promise<void> {
       `Failed to load run detail: ${message}`,
     );
   }
+}
+
+async function retryRun(runId: string): Promise<void> {
+  try {
+    await fetchJson(`/api/runs/${encodeURIComponent(runId)}/retry`, {
+      method: "POST",
+    });
+    await hydrate();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    setAuthStatus(`Retry failed: ${message}`);
+  }
+}
+
+async function fetchJson<T>(input: string, init: RequestInit = {}): Promise<T> {
+  const headers = new Headers(init.headers ?? {});
+
+  if (state.adminToken) {
+    headers.set("authorization", `Bearer ${state.adminToken}`);
+  }
+
+  const response = await fetch(input, {
+    ...init,
+    headers,
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(text || `HTTP ${response.status}`);
+  }
+
+  return (await response.json()) as T;
+}
+
+function connectEventStream(): void {
+  state.eventSource?.close();
+  state.eventSource = null;
+
+  if (!state.adminToken) {
+    return;
+  }
+
+  const token = encodeURIComponent(state.adminToken);
+  const stream = new EventSource(`/api/events/stream?token=${token}`);
+  stream.addEventListener("update", () => {
+    void hydrate();
+  });
+  stream.onerror = () => {
+    setAuthStatus("Live updates disconnected. Check admin token or refresh.");
+  };
+  state.eventSource = stream;
+}
+
+function setAuthStatus(message?: string): void {
+  getElement("auth-status").textContent =
+    message ??
+    (state.adminToken
+      ? "Admin token configured. Protected APIs and SSE are enabled."
+      : "Enter the admin token to unlock protected APIs and live updates.");
+}
+
+function applyAdminTokenValue(): void {
+  const input = getElement("admin-token") as HTMLInputElement;
+  input.value = state.adminToken;
 }

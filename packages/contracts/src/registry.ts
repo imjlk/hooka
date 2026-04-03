@@ -1,6 +1,14 @@
 import { z } from "zod";
 import { capabilityEnvRequirementSchema } from "./capability";
 
+export const workerHeartbeatSchema = z.object({
+  workerId: z.string(),
+  runtimeRole: z.string(),
+  installedCapabilities: z.array(z.string()),
+  lastSeenAt: z.string(),
+  currentRunId: z.string().nullable(),
+});
+
 export const imagePlanSchema = z.object({
   presetId: z.string(),
   tier: z.enum(["lean", "combo"]).optional(),
@@ -24,6 +32,7 @@ export const registrySummarySchema = z.object({
     presets: z.number().int().nonnegative(),
   }),
   installedCapabilities: z.array(z.string()),
+  workers: z.array(workerHeartbeatSchema).default([]),
   tasks: z.array(
     z.object({
       id: z.string(),
@@ -46,3 +55,4 @@ export const registrySummarySchema = z.object({
 
 export type ImagePlan = z.infer<typeof imagePlanSchema>;
 export type RegistrySummary = z.infer<typeof registrySummarySchema>;
+export type WorkerHeartbeat = z.infer<typeof workerHeartbeatSchema>;

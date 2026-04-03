@@ -13,6 +13,7 @@ test("renderSummaryCards includes the core metric labels", () => {
       presets: 2,
     },
     installedCapabilities: [],
+    workers: [],
     tasks: [],
     presets: [],
   } satisfies Summary);
@@ -64,10 +65,14 @@ test("renderRunDetail includes stdout, stderr, and timeline data", () => {
     taskId: "deploy.shared-volume.wrangler",
     source: "cli.webhook-test",
     sourceEventId: null,
+    targetId: "target-a",
     status: "failed",
     summary: "failed summary",
     errorText: "stderr output",
     attemptCount: 1,
+    maxAttempts: 3,
+    nextRetryAt: null,
+    lastErrorCode: "process_exit_1",
     createdAt: "2026-03-29T00:00:00.000Z",
     queuedAt: "2026-03-29T00:00:01.000Z",
     startedAt: "2026-03-29T00:00:02.000Z",
@@ -100,4 +105,5 @@ test("renderRunDetail includes stdout, stderr, and timeline data", () => {
   expect(html).toContain("stdout output");
   expect(html).toContain("stderr output");
   expect(html).toContain("task failed");
+  expect(html).toContain("Retry Run");
 });

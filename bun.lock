@@ -25,6 +25,7 @@
         "@hooka/registry": "workspace:*",
         "@hooka/run-store": "workspace:*",
         "@hooka/runner-core": "workspace:*",
+        "@hooka/targets": "workspace:*",
         "@hooka/task-sdk": "workspace:*",
         "bunli": "^0.9.0",
         "zod": "^4.3.6",
@@ -39,6 +40,7 @@
         "@hooka/registry": "workspace:*",
         "@hooka/run-store": "workspace:*",
         "@hooka/runner-core": "workspace:*",
+        "@hooka/targets": "workspace:*",
         "zod": "^4.3.6",
       },
     },
@@ -51,6 +53,7 @@
         "@hooka/run-store": "workspace:*",
         "@hooka/runner-core": "workspace:*",
         "@hooka/runtime-contracts": "workspace:*",
+        "@hooka/targets": "workspace:*",
       },
     },
     "packages/admin-ui": {
@@ -206,6 +209,12 @@
         "@hooka/task-sdk": "workspace:*",
       },
     },
+    "packages/targets": {
+      "name": "@hooka/targets",
+      "dependencies": {
+        "@hooka/contracts": "workspace:*",
+      },
+    },
     "packages/task-sdk": {
       "name": "@hooka/task-sdk",
       "dependencies": {
@@ -304,6 +313,8 @@
     "@hooka/runtime-contracts": ["@hooka/runtime-contracts@workspace:packages/runtime-contracts"],
 
     "@hooka/server": ["@hooka/server@workspace:apps/server"],
+
+    "@hooka/targets": ["@hooka/targets@workspace:packages/targets"],
 
     "@hooka/task-sdk": ["@hooka/task-sdk@workspace:packages/task-sdk"],
 

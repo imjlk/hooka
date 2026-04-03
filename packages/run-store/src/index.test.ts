@@ -156,3 +156,73 @@ test("queryRuns rejects invalid status filters", async () => {
 
   runStore.close();
 });
+
+test("scheduleRetry keeps the run queued with a future retry time", async () => {
+  const runStore = await createRunStore({
+    dbPath: ":memory:",
+  });
+
+  const queued = runStore.enqueueRun({
+    taskId: "deploy.shared-volume.wrangler",
+    input: {
+      kind: "pages-deploy",
+      project: "retry-site",
+      sourcePath: "/shared-source/retry-site",
+    },
+    source: "test",
+    capabilitySnapshot: ["wrangler"],
+  });
+
+  runStore.scheduleRetry(
+    queued.response.runId,
+    {
+      taskId: "deploy.shared-volume.wrangler",
+      ok: false,
+      status: "failed",
+      retryable: true,
+      errorCode: "http_request_failed",
+      summary: "retry later",
+      durationMs: 10,
+    },
+    {
+      attemptCount: 1,
+      nextRetryAt: "2026-03-26T00:00:10.000Z",
+    },
+  );
+
+  const run = runStore.getRun(queued.response.runId);
+  expect(run?.status).toBe("queued");
+  expect(run?.attemptCount).toBe(1);
+  expect(run?.nextRetryAt).toBe("2026-03-26T00:00:10.000Z");
+  expect(run?.events.some((event) => event.type === "retry-scheduled")).toBe(
+    true,
+  );
+
+  runStore.close();
+});
+
+test("worker heartbeats are stored and listed", async () => {
+  const runStore = await createRunStore({
+    dbPath: ":memory:",
+    now: () => new Date("2026-03-26T00:00:00.000Z"),
+  });
+
+  runStore.upsertWorkerHeartbeat({
+    workerId: "worker-a",
+    runtimeRole: "worker:cf-pages",
+    installedCapabilities: ["wrangler"],
+    currentRunId: "run_1",
+  });
+
+  const workers = runStore.listWorkerHeartbeats();
+  expect(workers).toEqual([
+    expect.objectContaining({
+      workerId: "worker-a",
+      runtimeRole: "worker:cf-pages",
+      installedCapabilities: ["wrangler"],
+      currentRunId: "run_1",
+    }),
+  ]);
+
+  runStore.close();
+});

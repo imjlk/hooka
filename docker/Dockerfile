@@ -32,6 +32,7 @@ COPY packages/run-store/package.json packages/run-store/package.json
 COPY packages/runner-core/package.json packages/runner-core/package.json
 COPY packages/runtime-contracts/package.json packages/runtime-contracts/package.json
 COPY packages/task-sdk/package.json packages/task-sdk/package.json
+COPY packages/targets/package.json packages/targets/package.json
 
 RUN bun install --frozen-lockfile
 

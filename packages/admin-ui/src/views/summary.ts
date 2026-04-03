@@ -7,6 +7,7 @@ export function renderSummaryCards(summary: Summary): string {
     metricCard("Tasks", String(summary.counts.tasks)),
     metricCard("Capabilities", String(summary.counts.capabilities)),
     metricCard("Presets", String(summary.counts.presets)),
+    metricCard("Workers", String(summary.workers.length)),
     metricCard(
       "Generated",
       new Date(summary.generatedAt).toLocaleTimeString([], {
@@ -18,13 +19,36 @@ export function renderSummaryCards(summary: Summary): string {
 }
 
 export function renderInstalledCapabilities(summary: Summary): string {
-  return summary.installedCapabilities.length > 0
-    ? summary.installedCapabilities
-        .map(
-          (capability) => `<span class="chip">${escapeHtml(capability)}</span>`,
-        )
-        .join("")
-    : `<p class="muted">No capability manifest loaded yet.</p>`;
+  const capabilityChips =
+    summary.installedCapabilities.length > 0
+      ? summary.installedCapabilities
+          .map(
+            (capability) =>
+              `<span class="chip">${escapeHtml(capability)}</span>`,
+          )
+          .join("")
+      : `<p class="muted">No capability manifest loaded yet.</p>`;
+  const workerRows =
+    summary.workers.length > 0
+      ? summary.workers
+          .map(
+            (worker) => `
+              <div class="detail-card compact-card">
+                <strong>${escapeHtml(worker.workerId)}</strong>
+                <p>${escapeHtml(worker.runtimeRole)}</p>
+                <p>Last seen: ${escapeHtml(worker.lastSeenAt)}</p>
+                ${
+                  worker.currentRunId
+                    ? `<p>Current run: ${escapeHtml(worker.currentRunId)}</p>`
+                    : `<p class="muted">No run in flight.</p>`
+                }
+              </div>
+            `,
+          )
+          .join("")
+      : `<p class="muted">No worker heartbeat recorded yet.</p>`;
+
+  return `${capabilityChips}<div class="detail-stack">${workerRows}</div>`;
 }
 
 export function renderCapabilityEnv(

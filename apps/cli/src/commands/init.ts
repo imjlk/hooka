@@ -1,6 +1,6 @@
 import { defineCommand, option } from "@bunli/core";
 import { ensureDir, ensureParentDir } from "@hooka/bun-utils";
-import { getDefaultManifestPath } from "@hooka/config";
+import { getDefaultManifestPath, getDefaultTargetsPath } from "@hooka/config";
 import { getPreset, getPresetPlan, listPresets } from "@hooka/registry";
 import { join } from "node:path";
 import { z } from "zod";
@@ -53,6 +53,7 @@ export function createInitCommand() {
       const envExamplePath = join(repoRoot, ".env.example");
       const envPath = join(projectDir, ".env");
       const manifestPath = getDefaultManifestPath(projectDir, {});
+      const targetsPath = getDefaultTargetsPath(projectDir, {});
       const sharedSourcePath = join(
         projectDir,
         ".hooka/shared-source/simply-static",
@@ -80,15 +81,34 @@ export function createInitCommand() {
         await writeInstalledCapabilitiesManifest(manifestPath, manifest);
       }
 
+      if (!(await Bun.file(targetsPath).exists()) || force) {
+        await ensureParentDir(targetsPath);
+        await Bun.write(
+          targetsPath,
+          `${JSON.stringify(
+            {
+              targets: createDefaultTargetsForPreset(
+                preset.id,
+                sharedSourcePath,
+              ),
+            },
+            null,
+            2,
+          )}\n`,
+        );
+      }
+
       await ensureDir(sharedSourcePath);
 
       console.log(`Initialized Hooka DX scaffold for preset "${preset.id}".`);
       console.log(`- .env: ${envPath}`);
       console.log(`- manifest: ${manifestPath}`);
+      console.log(`- targets: ${targetsPath}`);
       console.log(`- shared source: ${sharedSourcePath}`);
       console.log("Next steps:");
       console.log("- hooka dev");
       console.log("- hooka status");
+      console.log("- hooka target list");
       console.log(
         `- hooka webhook test --task-id deploy.shared-volume.wrangler --payload-json '{"kind":"pages-deploy","project":"staging-site","sourcePath":"${sharedSourcePath}"}'`,
       );
@@ -136,4 +156,40 @@ function applyPresetToEnvTemplate(
   );
 
   return next.endsWith("\n") ? next : `${next}\n`;
+}
+
+function createDefaultTargetsForPreset(
+  presetId: string,
+  sharedSourcePath: string,
+): Array<Record<string, unknown>> {
+  if (presetId === "cf-pages" || presetId === "wp-wrangler") {
+    return [
+      {
+        id: `${presetId}-default`,
+        title: `${presetId} default deploy`,
+        description: "Edit this target before using target-based webhooks.",
+        taskId: "deploy.shared-volume.wrangler",
+        source: "target.local",
+        defaultInput: {
+          kind: "pages-deploy",
+          project: "change-me",
+          sourcePath: sharedSourcePath,
+          branch: "main",
+        },
+        maxAttempts: 3,
+        policy: {
+          allowedProjects: ["change-me"],
+          allowedSourceRoots: [join(process.cwd(), ".hooka/shared-source")],
+          allowedBranches: ["main"],
+          allowedOverrideFields: [],
+          requiredEnv: [],
+          artifactReadiness: {
+            mode: "none",
+          },
+        },
+      },
+    ];
+  }
+
+  return [];
 }

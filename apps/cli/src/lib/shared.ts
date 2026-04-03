@@ -9,6 +9,7 @@ import { z } from "zod";
 export interface CliDefaults {
   dbPath: string;
   manifestPath: string;
+  targetsPath: string;
 }
 
 export const cliDefaults: CliDefaults = createCliConfig();

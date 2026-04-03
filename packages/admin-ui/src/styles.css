@@ -141,6 +141,7 @@ h2 {
 }
 
 .field select,
+.field input,
 .action-button {
   min-height: 42px;
   border-radius: 14px;
@@ -151,10 +152,18 @@ h2 {
   font: inherit;
 }
 
+.field input {
+  width: 100%;
+}
+
 .action-button {
   align-self: end;
   cursor: pointer;
   font-weight: 600;
+}
+
+.auth-toolbar {
+  grid-template-columns: minmax(0, 1fr) auto auto;
 }
 
 .panel-head {
@@ -337,6 +346,10 @@ h2 {
   color: var(--warn);
 }
 
+.top-gap {
+  margin-top: 14px;
+}
+
 .muted {
   color: var(--muted);
 }
@@ -357,6 +370,10 @@ h2 {
   }
 
   .toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .auth-toolbar {
     grid-template-columns: 1fr;
   }
 

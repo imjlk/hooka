@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - main
+    tags:
+      - "v*"
   workflow_dispatch:
 
 permissions:
@@ -63,3 +65,12 @@ jobs:
             --set '*.cache-from=type=gha' \
             --set '*.cache-to=type=gha,mode=max' \
             release
+
+      - name: Publish immutable semver aliases
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          REGISTRY: ghcr.io/${{ steps.image_repo.outputs.value }}
+          HOOKA_IMAGE_VERSION: ${{ github.ref_name }}
+        run: |
+          export HOOKA_IMAGE_VERSION="${HOOKA_IMAGE_VERSION#v}"
+          bun run scripts/publish-versioned-tags.ts

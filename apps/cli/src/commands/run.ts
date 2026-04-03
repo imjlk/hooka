@@ -35,9 +35,14 @@ export function createRunCommandGroup(defaults: CliDefaults) {
               throw new Error(`Run not found: ${runId}`);
             }
 
-            if (run.status !== "failed" && run.status !== "succeeded") {
+            if (
+              run.status !== "failed" &&
+              run.status !== "succeeded" &&
+              run.status !== "dead-lettered" &&
+              run.status !== "skipped"
+            ) {
               throw new Error(
-                `Only failed or succeeded runs can be retried. Current status: ${run.status}`,
+                `Only terminal runs can be retried. Current status: ${run.status}`,
               );
             }
 
@@ -50,6 +55,59 @@ export function createRunCommandGroup(defaults: CliDefaults) {
           });
 
           console.log(JSON.stringify(queued.response, null, 2));
+        },
+      }),
+      defineCommand({
+        name: "watch",
+        description: "Poll one run until it reaches a terminal state.",
+        options: {
+          db: option(z.string().default(defaults.dbPath), {
+            description: "Path to the Hooka SQLite database.",
+          }),
+          interval: option(z.coerce.number().int().positive().default(1000), {
+            description: "Polling interval in milliseconds.",
+          }),
+        },
+        handler: async ({ flags, positional }) => {
+          const runId = positional[0];
+
+          if (!runId) {
+            throw new Error("Usage: hooka run watch <run-id>");
+          }
+
+          let lastStatus: string | null = null;
+
+          while (true) {
+            const run = await withRunStore(flags.db, (runStore) => {
+              return runStore.getRun(runId);
+            });
+
+            if (!run) {
+              throw new Error(`Run not found: ${runId}`);
+            }
+
+            if (run.status !== lastStatus) {
+              lastStatus = run.status;
+              console.log(
+                `${run.status} ${run.taskId} attempts=${run.attemptCount}/${run.maxAttempts} summary=${run.summary ?? "(none)"}`,
+              );
+            }
+
+            if (
+              run.status === "succeeded" ||
+              run.status === "failed" ||
+              run.status === "dead-lettered" ||
+              run.status === "skipped"
+            ) {
+              console.log(JSON.stringify(run, null, 2));
+              if (run.status !== "succeeded" && run.status !== "skipped") {
+                process.exitCode = 1;
+              }
+              return;
+            }
+
+            await Bun.sleep(flags.interval);
+          }
         },
       }),
       defineCommand({
@@ -81,7 +139,7 @@ export function createRunCommandGroup(defaults: CliDefaults) {
                 taskId: run.taskId,
                 status: run.status,
                 source: run.source,
-                attempts: run.attemptCount,
+                attempts: `${run.attemptCount}/${run.maxAttempts}`,
                 createdAt: run.createdAt,
               })),
             );

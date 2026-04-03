@@ -9,10 +9,14 @@ export type ManifestSourceKind =
   | "manifest-default";
 
 export const defaultManifestRelativePath = ".hooka/installed-capabilities.json";
+export const defaultTargetsRelativePath = ".hooka/targets.json";
 export const defaultLocalDbRelativePath = ".hooka/hooka.sqlite";
 export const defaultServerPort = 3000;
 export const defaultWorkerPollIntervalMs = 2_000;
 export const defaultRunLeaseMs = 900_000;
+export const defaultRunMaxAttempts = 3;
+export const defaultRetryBaseDelayMs = 5_000;
+export const defaultWorkerHeartbeatIntervalMs = 10_000;
 export const defaultUiPort = 4310;
 export const defaultUiApiOrigin = "http://127.0.0.1:3000";
 
@@ -21,7 +25,10 @@ const serverConfigSchema = z.object({
   dbPath: z.string().min(1),
   runtimeRole: z.string().min(1),
   webhookSecret: z.string().min(1).optional(),
+  adminToken: z.string().min(1).optional(),
+  maxAttempts: z.number().int().positive(),
   capabilityManifestPath: z.string().min(1),
+  targetsPath: z.string().min(1),
   uiDistDir: z.string().min(1),
 });
 
@@ -29,14 +36,19 @@ const workerConfigSchema = z.object({
   dbPath: z.string().min(1),
   runtimeRole: z.string().min(1),
   manifestPath: z.string().min(1),
+  targetsPath: z.string().min(1),
   workerId: z.string().min(1),
   pollIntervalMs: z.number().int().positive(),
   leaseMs: z.number().int().positive(),
+  maxAttempts: z.number().int().positive(),
+  retryBaseDelayMs: z.number().int().positive(),
+  heartbeatIntervalMs: z.number().int().positive(),
 });
 
 const cliConfigSchema = z.object({
   dbPath: z.string().min(1),
   manifestPath: z.string().min(1),
+  targetsPath: z.string().min(1),
 });
 
 const adminUiDevConfigSchema = z.object({
@@ -88,6 +100,13 @@ export function getDefaultManifestPath(
   );
 }
 
+export function getDefaultTargetsPath(
+  cwd = process.cwd(),
+  env: EnvRecord = Bun.env as EnvRecord,
+): string {
+  return resolve(cwd, env["HOOKA_TARGETS_PATH"] ?? defaultTargetsRelativePath);
+}
+
 export function resolveManifestSource(
   input: { cwd?: string; env?: EnvRecord } = {},
 ): ManifestSourceResolution {
@@ -131,7 +150,13 @@ export function createServerConfig(
     dbPath: env["HOOKA_DB_PATH"] ?? getDefaultLocalDbPath(cwd),
     runtimeRole: env["HOOKA_RUNTIME_ROLE"] ?? "hooka-server",
     webhookSecret: env["HOOKA_WEBHOOK_SECRET"] || undefined,
+    adminToken: env["HOOKA_ADMIN_TOKEN"] || undefined,
+    maxAttempts: parseNumberEnv(
+      env["HOOKA_RUN_MAX_ATTEMPTS"],
+      defaultRunMaxAttempts,
+    ),
     capabilityManifestPath: getDefaultManifestPath(cwd, env),
+    targetsPath: getDefaultTargetsPath(cwd, env),
     uiDistDir: resolve(cwd, "packages/admin-ui/dist"),
   });
 }
@@ -146,12 +171,25 @@ export function createWorkerConfig(
     dbPath: env["HOOKA_DB_PATH"] ?? getDefaultLocalDbPath(cwd),
     runtimeRole: env["HOOKA_RUNTIME_ROLE"] ?? "hooka-worker",
     manifestPath: getDefaultManifestPath(cwd, env),
+    targetsPath: getDefaultTargetsPath(cwd, env),
     workerId: getDefaultWorkerId(env),
     pollIntervalMs: parseNumberEnv(
       env["HOOKA_POLL_INTERVAL_MS"],
       defaultWorkerPollIntervalMs,
     ),
     leaseMs: parseNumberEnv(env["HOOKA_RUN_LEASE_MS"], defaultRunLeaseMs),
+    maxAttempts: parseNumberEnv(
+      env["HOOKA_RUN_MAX_ATTEMPTS"],
+      defaultRunMaxAttempts,
+    ),
+    retryBaseDelayMs: parseNumberEnv(
+      env["HOOKA_RETRY_BASE_DELAY_MS"],
+      defaultRetryBaseDelayMs,
+    ),
+    heartbeatIntervalMs: parseNumberEnv(
+      env["HOOKA_WORKER_HEARTBEAT_MS"],
+      defaultWorkerHeartbeatIntervalMs,
+    ),
   });
 }
 
@@ -164,6 +202,7 @@ export function createCliConfig(
   return cliConfigSchema.parse({
     dbPath: env["HOOKA_DB_PATH"] ?? getDefaultLocalDbPath(cwd),
     manifestPath: getDefaultManifestPath(cwd, env),
+    targetsPath: getDefaultTargetsPath(cwd, env),
   });
 }
 
@@ -191,6 +230,10 @@ export function getServerStartupIssues(config: ServerConfig): string[] {
 
   if (!config.webhookSecret) {
     issues.push("HOOKA_WEBHOOK_SECRET is required.");
+  }
+
+  if (!config.adminToken) {
+    issues.push("HOOKA_ADMIN_TOKEN is required.");
   }
 
   return issues;

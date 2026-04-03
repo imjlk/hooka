@@ -33,6 +33,7 @@ try {
     serverInstalledCapabilities: cfPagesSpec.installedCapabilities,
     wranglerExitCode: "0",
     expectedStatus: "succeeded",
+    maxAttempts: "3",
     expectedStderr: null,
   });
   await runScenario({
@@ -40,7 +41,8 @@ try {
     workerImage: legacyWorkerImageTag,
     serverInstalledCapabilities: cfPagesSpec.installedCapabilities,
     wranglerExitCode: "17",
-    expectedStatus: "failed",
+    expectedStatus: "dead-lettered",
+    maxAttempts: "1",
     expectedStderr: "mock wrangler failed",
   });
 } finally {
@@ -69,7 +71,8 @@ async function runScenario(input: {
   workerImage: string;
   serverInstalledCapabilities: string;
   wranglerExitCode: string;
-  expectedStatus: "succeeded" | "failed";
+  expectedStatus: "succeeded" | "dead-lettered";
+  maxAttempts: string;
   expectedStderr: string | null;
 }): Promise<void> {
   const tempDir = await createTempDir(`hooka-e2e-${input.name}`);
@@ -79,19 +82,25 @@ async function runScenario(input: {
   const serverName = `hooka-e2e-server-${input.name}-${Date.now()}`;
   const workerName = `hooka-e2e-worker-${input.name}-${Date.now()}`;
   const secret = "e2e-secret";
+  const adminToken = "e2e-admin-token";
 
   await ensureDir(exportDir);
   await Bun.write(join(exportDir, "index.html"), "<html>ok</html>");
   await Bun.write(join(exportDir, "about.html"), "<html>about</html>");
 
   try {
-    await $`docker run -d --rm --name ${serverName} -P -e HOOKA_DB_PATH=/data/hooka.sqlite -e HOOKA_WEBHOOK_SECRET=${secret} -e HOOKA_INSTALLED_CAPABILITIES=${input.serverInstalledCapabilities} -e PATH=${defaultPath} -e HOOKA_TEST_WRANGLER_EXIT_CODE=${input.wranglerExitCode} -e HOOKA_TEST_WRANGLER_STDERR=${input.expectedStderr ?? ""} -v ${dataDir}:/data -v ${mockBinDir}:/mock-bin:ro ${serverImageTag}`.quiet();
+    await $`docker run -d --rm --name ${serverName} -P -e HOOKA_DB_PATH=/data/hooka.sqlite -e HOOKA_WEBHOOK_SECRET=${secret} -e HOOKA_ADMIN_TOKEN=${adminToken} -e HOOKA_RUN_MAX_ATTEMPTS=${input.maxAttempts} -e HOOKA_INSTALLED_CAPABILITIES=${input.serverInstalledCapabilities} -e PATH=${defaultPath} -e HOOKA_TEST_WRANGLER_EXIT_CODE=${input.wranglerExitCode} -e HOOKA_TEST_WRANGLER_STDERR=${input.expectedStderr ?? ""} -v ${dataDir}:/data -v ${mockBinDir}:/mock-bin:ro ${serverImageTag}`.quiet();
     await $`docker run -d --rm --name ${workerName} -e HOOKA_DB_PATH=/data/hooka.sqlite -e HOOKA_WEBHOOK_SECRET=${secret} -e CLOUDFLARE_API_TOKEN=test-token -e CLOUDFLARE_ACCOUNT_ID=test-account -e PATH=${defaultPath} -e HOOKA_TEST_WRANGLER_EXIT_CODE=${input.wranglerExitCode} -e HOOKA_TEST_WRANGLER_STDERR=${input.expectedStderr ?? ""} -v ${dataDir}:/data -v ${sharedSourceDir}:/shared-source -v ${mockBinDir}:/mock-bin:ro ${input.workerImage}`.quiet();
     const serverPort = await resolvePublishedPort(serverName);
 
     await waitForHealth(serverPort);
     const runId = await enqueueGenericWebhook(serverPort, secret);
-    const run = await waitForRunStatus(serverPort, runId, input.expectedStatus);
+    const run = await waitForRunStatus(
+      serverPort,
+      runId,
+      input.expectedStatus,
+      adminToken,
+    );
 
     if (run.status !== input.expectedStatus) {
       throw new Error(
@@ -195,7 +204,8 @@ async function enqueueGenericWebhook(
 async function waitForRunStatus(
   port: number,
   runId: string,
-  expectedStatus: "succeeded" | "failed",
+  expectedStatus: "succeeded" | "dead-lettered",
+  adminToken: string,
 ): Promise<{
   status: string;
   result: {
@@ -210,7 +220,11 @@ async function waitForRunStatus(
   } | null = null;
 
   await waitFor(async () => {
-    const response = await fetch(`http://127.0.0.1:${port}/api/runs/${runId}`);
+    const response = await fetch(`http://127.0.0.1:${port}/api/runs/${runId}`, {
+      headers: {
+        authorization: `Bearer ${adminToken}`,
+      },
+    });
 
     if (!response.ok) {
       return false;

@@ -7,6 +7,9 @@ import {
   createWorkerConfig,
   defaultLocalDbRelativePath,
   defaultManifestRelativePath,
+  defaultRetryBaseDelayMs,
+  defaultTargetsRelativePath,
+  defaultWorkerHeartbeatIntervalMs,
   getServerStartupIssues,
   resolveManifestSource,
 } from "./index";
@@ -22,7 +25,10 @@ test("createServerConfig applies defaults and resolves cwd-based paths", () => {
     dbPath: `/repo/${defaultLocalDbRelativePath}`,
     runtimeRole: "hooka-server",
     webhookSecret: undefined,
+    adminToken: undefined,
+    maxAttempts: 3,
     capabilityManifestPath: `/repo/${defaultManifestRelativePath}`,
+    targetsPath: `/repo/${defaultTargetsRelativePath}`,
     uiDistDir: "/repo/packages/admin-ui/dist",
   });
 });
@@ -44,9 +50,13 @@ test("createWorkerConfig uses env overrides and derived worker id", () => {
     dbPath: "/tmp/hooka.sqlite",
     runtimeRole: "cf-pages-worker",
     manifestPath: "/repo/tmp/manifest.json",
+    targetsPath: `/repo/${defaultTargetsRelativePath}`,
     workerId: "worker-host",
     pollIntervalMs: 5000,
     leaseMs: 120000,
+    maxAttempts: 3,
+    retryBaseDelayMs: defaultRetryBaseDelayMs,
+    heartbeatIntervalMs: defaultWorkerHeartbeatIntervalMs,
   });
 });
 
@@ -59,6 +69,7 @@ test("createCliConfig resolves manifest and db defaults", () => {
   expect(config).toEqual({
     dbPath: `/repo/${defaultLocalDbRelativePath}`,
     manifestPath: `/repo/${defaultManifestRelativePath}`,
+    targetsPath: `/repo/${defaultTargetsRelativePath}`,
   });
 });
 
@@ -107,8 +118,9 @@ test("server startup validation requires a webhook secret", () => {
 
   expect(getServerStartupIssues(config)).toEqual([
     "HOOKA_WEBHOOK_SECRET is required.",
+    "HOOKA_ADMIN_TOKEN is required.",
   ]);
   expect(() => assertServerStartupConfig(config)).toThrow(
-    "HOOKA_WEBHOOK_SECRET is required.",
+    "HOOKA_WEBHOOK_SECRET is required. HOOKA_ADMIN_TOKEN is required.",
   );
 });

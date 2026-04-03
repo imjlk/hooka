@@ -14,7 +14,10 @@ export function syncSelectedRows(
 ): void {
   for (const button of document.querySelectorAll<HTMLElement>(selector)) {
     const selectedId =
-      button.dataset["runId"] ?? button.dataset["presetId"] ?? null;
+      button.dataset["runId"] ??
+      button.dataset["presetId"] ??
+      button.dataset["targetId"] ??
+      null;
     button.classList.toggle("selected", selectedId === activeId);
   }
 }
@@ -35,6 +38,10 @@ export function runStatusClass(status: string): string {
 
   if (status === "queued" || status === "running") {
     return "pending";
+  }
+
+  if (status === "dead-lettered") {
+    return "blocked";
   }
 
   return "blocked";

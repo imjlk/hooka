@@ -6,6 +6,13 @@ export type Summary = {
     presets: number;
   };
   installedCapabilities: string[];
+  workers: Array<{
+    workerId: string;
+    runtimeRole: string;
+    installedCapabilities: string[];
+    lastSeenAt: string;
+    currentRunId: string | null;
+  }>;
   tasks: Array<{
     id: string;
     title: string;
@@ -25,11 +32,15 @@ export type Summary = {
 export type RunSummary = {
   id: string;
   taskId: string;
+  targetId: string | null;
   source: string;
   status: string;
   summary: string | null;
   createdAt: string;
   attemptCount: number;
+  maxAttempts: number;
+  nextRetryAt: string | null;
+  lastErrorCode: string | null;
 };
 
 export type RunDetail = RunSummary & {
@@ -68,6 +79,27 @@ export type Capability = {
     description: string;
     secret?: boolean;
   }>;
+};
+
+export type Target = {
+  id: string;
+  title: string;
+  description?: string;
+  taskId: string;
+  presetId?: string;
+  source: string;
+  maxAttempts: number;
+  defaultInput: Record<string, unknown>;
+  policy: {
+    allowedProjects: string[];
+    allowedSourceRoots: string[];
+    allowedBranches: string[];
+    allowedOverrideFields: string[];
+    artifactReadiness:
+      | { mode: "none" }
+      | { mode: "marker-file"; markerFile: string }
+      | { mode: "quiet-period"; quietPeriodMs: number };
+  };
 };
 
 export type PresetPlan = {
@@ -200,4 +232,22 @@ export function selectPreset(
   }
 
   return presets[0] ?? null;
+}
+
+export function selectTarget(
+  targets: Target[],
+  currentTargetId: string | null,
+): Target | null {
+  if (targets.length === 0) {
+    return null;
+  }
+
+  if (currentTargetId) {
+    const selected = targets.find((target) => target.id === currentTargetId);
+    if (selected) {
+      return selected;
+    }
+  }
+
+  return targets[0] ?? null;
 }

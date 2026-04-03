@@ -24,7 +24,13 @@ Check server status:
 bun run apps/cli/src/index.ts status
 ```
 
-You can still verify the server endpoints directly:
+Inspect configured targets:
+
+```bash
+bun run apps/cli/src/index.ts target list
+```
+
+You can still verify the public server endpoints directly:
 
 ```bash
 curl http://127.0.0.1:3000/api/health

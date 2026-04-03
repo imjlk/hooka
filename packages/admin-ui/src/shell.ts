@@ -1,6 +1,22 @@
 export function renderShell(): string {
   return `
     <main class="shell">
+      <section class="panel auth-panel">
+        <div class="panel-head">
+          <h2>Admin Access</h2>
+          <span class="pill">auth</span>
+        </div>
+        <div class="toolbar auth-toolbar">
+          <label class="field">
+            <span>Admin Token</span>
+            <input id="admin-token" type="password" placeholder="Paste HOOKA_ADMIN_TOKEN" />
+          </label>
+          <button type="button" id="admin-token-save" class="action-button">Save Token</button>
+          <button type="button" id="admin-token-clear" class="action-button">Clear Token</button>
+        </div>
+        <p id="auth-status" class="muted">Enter the admin token to unlock protected APIs and live updates.</p>
+      </section>
+
       <section class="hero">
         <div>
           <p class="eyebrow">Hooka / Control Plane</p>
@@ -54,6 +70,26 @@ export function renderShell(): string {
         </article>
       </section>
 
+      <section class="grid">
+        <article class="panel">
+          <div class="panel-head">
+            <h2>Targets</h2>
+            <span class="pill">policy</span>
+          </div>
+          <div id="target-list" class="stack task-list"></div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-head">
+            <h2>Target Detail</h2>
+            <span class="pill">guardrails</span>
+          </div>
+          <div id="target-detail" class="detail-panel">
+            <p class="muted">Choose a target to inspect policy, defaults, and readiness rules.</p>
+          </div>
+        </article>
+      </section>
+
       <section class="panel">
         <div class="panel-head">
           <h2>Task Availability</h2>
@@ -76,6 +112,7 @@ export function renderShell(): string {
               <option value="running">running</option>
               <option value="succeeded">succeeded</option>
               <option value="failed">failed</option>
+              <option value="dead-lettered">dead-lettered</option>
               <option value="skipped">skipped</option>
             </select>
           </label>

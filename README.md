@@ -49,12 +49,14 @@ bun run apps/cli/src/index.ts init --yes --preset cf-pages
 bun run apps/cli/src/index.ts dev
 bun run apps/cli/src/index.ts status
 bun run apps/cli/src/index.ts config
+bun run apps/cli/src/index.ts target list
 bun run apps/cli/src/index.ts task list
 bun run apps/cli/src/index.ts capability list
 bun run apps/cli/src/index.ts image plan --preset cf-pages
 bun run apps/cli/src/index.ts image plan --preset wp-wrangler
 bun run apps/cli/src/index.ts task enqueue deploy.shared-volume.wrangler --project staging-site --source-path /shared-source/simply-static
 bun run apps/cli/src/index.ts run list
+bun run apps/cli/src/index.ts run watch <run-id>
 bun run apps/cli/src/index.ts run retry <run-id>
 bun run bake:generate
 bun run test:e2e:docker
@@ -87,6 +89,9 @@ GitHub Actions now cover both verification and GHCR publishing:
 - Both server and worker register graceful shutdown handlers so Docker stop does not keep claiming new work during exit.
 - Runtime entrypoints now load typed env-backed defaults through `@hooka/config` instead of parsing env inline in each app.
 - Long-running services emit structured JSON logs through `@hooka/logger` for startup, shutdown, readiness, and loop/runtime failures.
+- Admin and read APIs are protected by `HOOKA_ADMIN_TOKEN`, while webhook ingress continues to use HMAC signatures.
+- The worker applies retry backoff, dead-lettering, preflight validation, and heartbeat updates before and after task execution.
+- Optional targets in `.hooka/targets.json` provide policy-backed execution paths for shared-volume deploys and other reusable flows.
 - `server` and `worker` share the same `HOOKA_DB_PATH`.
 - Producers such as WordPress share an artifact/source volume with the `worker`, not the server.
 
@@ -99,20 +104,22 @@ Recommended container tags:
 - `ghcr.io/imjlk/hooka:wp-ops`
 - `ghcr.io/imjlk/hooka:wp-wrangler`
 
-If the GitHub repository stays private, the GHCR package is private too. In that
-case your deployment platform needs GHCR credentials before it can pull Hooka
-images. If you want anonymous pulls, change the package visibility to public in
-GitHub Packages after the first publish.
+`ghcr.io/imjlk/hooka` is currently published for public pull.
 
 Recommended defaults:
 
 ```bash
 HOOKA_DB_PATH=/data/hooka.sqlite
 HOOKA_MANIFEST_PATH=/app/.hooka/installed-capabilities.json
+HOOKA_TARGETS_PATH=/app/.hooka/targets.json
 HOOKA_WEBHOOK_SECRET=change-me
+HOOKA_ADMIN_TOKEN=change-me
 HOOKA_PORT=3000
 HOOKA_POLL_INTERVAL_MS=2000
 HOOKA_RUN_LEASE_MS=900000
+HOOKA_RUN_MAX_ATTEMPTS=3
+HOOKA_RETRY_BASE_DELAY_MS=5000
+HOOKA_WORKER_HEARTBEAT_MS=10000
 ```
 
 Recommended shared source mount:
@@ -136,6 +143,8 @@ Manifest resolution precedence:
 3. Otherwise Hooka reads a generated repo-local manifest at `.hooka/installed-capabilities.json`.
 
 The tracked file under [`docker/manifests/installed-capabilities.example.json`](/Users/imjlk/repos/imjlk/hooka/docker/manifests/installed-capabilities.example.json) is now example-only and should not be used as a writable runtime target.
+
+Targets resolve from `.hooka/targets.json` by default, or from `HOOKA_TARGETS_PATH` when set.
 
 ## Preset Catalog
 
@@ -162,11 +171,16 @@ Planned presets are documented but not published in registry APIs or GHCR releas
 
 - `GET /api/health` returns a lightweight liveness response for the server role.
 - `GET /api/ready` returns readiness for deployment platforms and fails when the SQLite store is not ready.
-- `POST /api/runs` enqueues a task run.
-- `POST /api/webhooks/task` verifies an HMAC-signed generic webhook and enqueues any registered task.
+- `POST /api/runs` enqueues a task run. This route requires the admin bearer token.
+- `POST /api/runs/:id/retry` retries a terminal run by enqueueing a new run.
+- `POST /api/webhooks/task` verifies an HMAC-signed generic or target-based webhook and enqueues any registered task.
 - `POST /api/webhooks/wordpress/simply-static` remains as a compatibility alias for the first producer example.
 - `GET /api/runs` returns recent runs.
 - `GET /api/runs/:id` returns run detail and event history.
+- `GET /api/targets` and `GET /api/targets/:id` expose configured targets.
+- `GET /api/events/stream` emits SSE updates for run events and worker heartbeats.
+- All admin/read APIs except `/api/health` and `/api/ready` require `Authorization: Bearer <HOOKA_ADMIN_TOKEN>`.
+- API routes are protected by in-memory rate limiting by default.
 
 Generic webhook body:
 
@@ -183,6 +197,19 @@ Generic webhook body:
 }
 ```
 
+Target-based webhook body:
+
+```json
+{
+  "targetId": "cf-pages-default",
+  "overrides": {
+    "branch": "main"
+  },
+  "eventId": "evt_002",
+  "source": "deployment.system"
+}
+```
+
 ## Local flow
 
 ```bash
@@ -196,6 +223,10 @@ bun run apps/cli/src/index.ts dev
 
 ```bash
 bun run apps/cli/src/index.ts status
+```
+
+```bash
+bun run apps/cli/src/index.ts target list
 ```
 
 ```bash
@@ -223,6 +254,13 @@ Hooka's default model is `signed webhook -> queue -> worker -> wrangler CLI`. Wo
 
 `hooka doctor` now reports both missing capabilities and missing env required by the currently installed capabilities.
 
+## Retry and DLQ
+
+- Hooka retries retryable failures with exponential backoff.
+- Non-retryable validation, policy, and auth failures stay terminal.
+- Retryable failures that exceed `maxAttempts` become `dead-lettered`.
+- Lease-expired runs also consume retry budget and can end up dead-lettered.
+
 ## Dev UI
 
 - `bun run dev:ui` starts a Bun HMR server for the admin UI.
@@ -236,24 +274,15 @@ Hooka's default model is `signed webhook -> queue -> worker -> wrangler CLI`. Wo
 
 - `docker-compose.yml` is the local container smoke path.
 - It builds repo-local images from `docker/Dockerfile` instead of pulling GHCR tags.
-- It reads values from `.env`, keeps the SQLite path under `/data`, keeps the manifest under `/app/.hooka`, and bind-mounts `./.hooka/shared-source` to `/shared-source`.
+- It reads values from `.env`, keeps the SQLite path under `/data`, mounts `./.hooka` at `/app/.hooka` for manifests and targets, and bind-mounts `./.hooka/shared-source` to `/shared-source`.
 
 ```bash
 docker compose up --build
 ```
 
-## Next Security Tranche
-
-The current ops-hardening pass intentionally stopped short of broader security controls. The next security-focused tranche is expected to cover:
-
-- webhook rate limiting
-- admin UI authentication/protection
-- broader HTTP security policy and CORS decisions
-- richer runtime error taxonomy and codes
-
 ## Private GHCR Pulls
 
-For private packages, log in before pulling:
+If you ever move the package back to private, log in before pulling:
 
 ```bash
 echo "$GHCR_TOKEN" | docker login ghcr.io -u imjlk --password-stdin

@@ -1,8 +1,13 @@
 import {
   enqueueRunRequestSchema,
   genericTaskWebhookSchema,
+  incomingTaskWebhookSchema,
 } from "@hooka/contracts";
-import type { EnqueueRunRequest, GenericTaskWebhook } from "@hooka/contracts";
+import type {
+  EnqueueRunRequest,
+  GenericTaskWebhook,
+  IncomingTaskWebhook,
+} from "@hooka/contracts";
 import { createHmac, timingSafeEqual } from "node:crypto";
 
 const allowedClockSkewSeconds = 300;
@@ -70,7 +75,11 @@ export function verifyHookaHmacSignature(input: {
   };
 }
 
-export function parseGenericTaskWebhook(rawBody: string) {
+export function parseIncomingTaskWebhook(rawBody: string): IncomingTaskWebhook {
+  return incomingTaskWebhookSchema.parse(JSON.parse(rawBody));
+}
+
+export function parseGenericTaskWebhook(rawBody: string): GenericTaskWebhook {
   return genericTaskWebhookSchema.parse(JSON.parse(rawBody));
 }
 
