@@ -157,8 +157,12 @@ async function resolvePublishedPort(containerName: string): Promise<number> {
 
 async function waitForHealth(port: number): Promise<void> {
   await waitFor(async () => {
-    const response = await fetch(`http://127.0.0.1:${port}/api/health`);
-    return response.ok;
+    try {
+      const response = await fetch(`http://127.0.0.1:${port}/api/health`);
+      return response.ok;
+    } catch {
+      return false;
+    }
   }, 30_000);
 }
 
