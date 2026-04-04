@@ -1,6 +1,6 @@
 # Deploying Hooka on Coolify
 
-Hooka `1.0.0-rc.1` supports a minimal Coolify deployment with two services:
+Hooka `1.0.0` supports a minimal Coolify deployment with two services:
 
 - `hookaserver`
 - `hookaworker`
@@ -43,7 +43,7 @@ Worker:
 ```yaml
 services:
   hookaserver:
-    image: ghcr.io/imjlk/hooka:1.0.0-rc.1-webhook-server
+    image: ghcr.io/imjlk/hooka:1.0.0-webhook-server
     restart: unless-stopped
     environment:
       - SERVICE_URL_HOOKASERVER_3000
@@ -58,7 +58,7 @@ services:
       - ./.hooka:/app/.hooka
 
   hookaworker:
-    image: ghcr.io/imjlk/hooka:1.0.0-rc.1-cf-pages
+    image: ghcr.io/imjlk/hooka:1.0.0-cf-pages
     restart: unless-stopped
     environment:
       - HOOKA_DB_PATH=/data/hooka.sqlite
