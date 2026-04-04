@@ -20,9 +20,10 @@ test("registry validates without duplicate definitions", () => {
   });
 });
 
-test("cf-pages, cf-cache, and wp-wrangler presets cover the active worker taxonomy", () => {
+test("active presets cover cloudflare, rclone, and wordpress worker taxonomy", () => {
   const cfPagesPlan = getPresetPlan("cf-pages");
   const cfCachePlan = getPresetPlan("cf-cache");
+  const rcloneSyncPlan = getPresetPlan("rclone-sync");
   const wpWranglerPlan = getPresetPlan("wp-wrangler");
 
   expect(cfPagesPlan?.coveredTasks).toContain("deploy.shared-volume.wrangler");
@@ -30,6 +31,11 @@ test("cf-pages, cf-cache, and wp-wrangler presets cover the active worker taxono
   expect(cfPagesPlan?.missingCapabilitiesByTask).toEqual({});
   expect(cfCachePlan?.coveredTasks).toContain("cloudflare.cache.purge.urls");
   expect(cfCachePlan?.capabilities).toEqual(["cloudflare-api"]);
+  expect(rcloneSyncPlan?.coveredTasks).toContain("rclone.copy.directory");
+  expect(rcloneSyncPlan?.capabilities).toEqual(["rclone"]);
+  expect(recommendPresetForTasks(["rclone.copy.directory"])?.id).toBe(
+    "rclone-sync",
+  );
   expect(recommendPresetForTasks(["deploy.shared-volume.wrangler"])?.id).toBe(
     "cf-pages",
   );
@@ -53,6 +59,7 @@ test("registry resolves task and preset aliases to canonical definitions", () =>
     "cf-pages",
     "cf-cache",
     "wp-ops",
+    "rclone-sync",
     "wp-wrangler",
   ]);
   expect(listWebhookAdapters().map((adapter) => adapter.id)).toEqual([
@@ -66,6 +73,8 @@ test("planned presets stay out of active registry output", () => {
   for (const preset of listPlannedWorkerPresets()) {
     expect(activeIds.has(preset.id)).toBe(false);
   }
+
+  expect(activeIds.has("rclone-sync")).toBe(true);
 });
 
 test("registry reports missing env for installed wrangler capability", () => {
@@ -78,6 +87,18 @@ test("registry reports missing env for installed wrangler capability", () => {
       capabilityId: "wrangler",
       match: "allOf",
       missingNames: ["CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID"],
+    }),
+  ]);
+});
+
+test("registry reports missing env for installed rclone capability", () => {
+  const missing = findMissingCapabilityEnv(["rclone"], {});
+
+  expect(missing).toEqual([
+    expect.objectContaining({
+      capabilityId: "rclone",
+      match: "anyOf",
+      missingNames: ["RCLONE_CONFIG", "RCLONE_CONFIG_FILE"],
     }),
   ]);
 });

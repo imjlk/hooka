@@ -74,6 +74,18 @@ export const wpOpsPreset = definePreset({
   taskPacks: ["@hooka/pack-wordpress"],
 });
 
+export const rcloneSyncPreset = definePreset({
+  id: "rclone-sync",
+  title: "rclone Sync",
+  description:
+    "Lean worker image for copying worker-visible artifacts to configured rclone remote destinations.",
+  tier: "lean",
+  imageTag: "rclone-sync",
+  publicWorkerTag: "rclone-sync",
+  capabilities: ["rclone"],
+  taskPacks: ["@hooka/pack-rclone"],
+});
+
 export const wpWranglerPreset = definePreset({
   id: "wp-wrangler",
   aliases: ["webhook-wrangler"],
@@ -97,6 +109,7 @@ export const activeWorkerPresets = [
   cfPagesPreset,
   cfCachePreset,
   wpOpsPreset,
+  rcloneSyncPreset,
   wpWranglerPreset,
 ] satisfies PresetDefinition[];
 
@@ -128,13 +141,6 @@ export const plannedWorkerPresets = [
     description: "Lean worker for database dump and backup flows.",
     tier: "lean",
     publicWorkerTag: "wp-backup-db",
-  },
-  {
-    id: "rclone-sync",
-    title: "rclone Sync",
-    description: "Lean worker for remote object and cloud storage sync flows.",
-    tier: "lean",
-    publicWorkerTag: "rclone-sync",
   },
   {
     id: "wp-cache-safe",

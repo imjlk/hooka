@@ -156,6 +156,13 @@
         "zod": "^4.3.6",
       },
     },
+    "packages/pack-rclone": {
+      "name": "@hooka/pack-rclone",
+      "dependencies": {
+        "@hooka/task-sdk": "workspace:*",
+        "zod": "^4.3.6",
+      },
+    },
     "packages/pack-wordpress": {
       "name": "@hooka/pack-wordpress",
       "dependencies": {
@@ -300,6 +307,8 @@
     "@hooka/pack-cloudflare": ["@hooka/pack-cloudflare@workspace:packages/pack-cloudflare"],
 
     "@hooka/pack-cloudflare-cache": ["@hooka/pack-cloudflare-cache@workspace:packages/pack-cloudflare-cache"],
+
+    "@hooka/pack-rclone": ["@hooka/pack-rclone@workspace:packages/pack-rclone"],
 
     "@hooka/pack-wordpress": ["@hooka/pack-wordpress@workspace:packages/pack-wordpress"],
 

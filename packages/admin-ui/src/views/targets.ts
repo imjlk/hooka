@@ -71,6 +71,7 @@ export function renderTargetDetail(
           <div class="stack">
             ${target.policy.allowedProjects.map((project) => `<span class="chip">${escapeHtml(project)}</span>`).join("") || '<span class="chip">projects:any</span>'}
             ${target.policy.allowedSourceRoots.map((root) => `<span class="chip">${escapeHtml(root)}</span>`).join("") || '<span class="chip">source:any</span>'}
+            ${target.policy.allowedDestinationPrefixes.map((destination) => `<span class="chip">${escapeHtml(destination)}</span>`).join("") || '<span class="chip">destination:any</span>'}
             ${target.policy.allowedBranches.map((branch) => `<span class="chip">${escapeHtml(branch)}</span>`).join("") || '<span class="chip">branch:any</span>'}
           </div>
         </div>

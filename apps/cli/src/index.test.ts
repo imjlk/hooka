@@ -55,6 +55,32 @@ test("image plan exposes the active cf-cache preset contract", async () => {
   ]);
 });
 
+test("image plan exposes the active rclone-sync preset contract", async () => {
+  const result = await runCli(["image", "plan", "--preset", "rclone-sync"]);
+
+  expect(result.exitCode).toBe(0);
+  const plan = JSON.parse(result.stdout) as {
+    presetId: string;
+    tier?: string;
+    publicWorkerTag?: string;
+    capabilities: string[];
+    requiredEnv: Array<{ capabilityId: string; match: string }>;
+    coveredTasks: string[];
+  };
+
+  expect(plan.presetId).toBe("rclone-sync");
+  expect(plan.tier).toBe("lean");
+  expect(plan.publicWorkerTag).toBe("rclone-sync");
+  expect(plan.capabilities).toEqual(["rclone"]);
+  expect(plan.coveredTasks).toContain("rclone.copy.directory");
+  expect(plan.requiredEnv).toEqual([
+    expect.objectContaining({
+      capabilityId: "rclone",
+      match: "anyOf",
+    }),
+  ]);
+});
+
 test("doctor reports missing env for installed wrangler capability", async () => {
   const result = await runCli(["doctor", "--json"], {
     HOOKA_INSTALLED_CAPABILITIES: "wrangler",
@@ -334,6 +360,7 @@ test("target list and show read the configured targets file", async () => {
           policy: {
             allowedProjects: ["main-site"],
             allowedSourceRoots: ["/shared-source"],
+            allowedDestinationPrefixes: [],
             allowedBranches: ["main"],
             allowedOverrideFields: [],
             requiredEnv: [],
@@ -414,6 +441,7 @@ test("target create, update, and delete mutate the configured targets file", asy
       policy: {
         allowedProjects: ["main-site"],
         allowedSourceRoots: ["/shared-source"],
+        allowedDestinationPrefixes: [],
         allowedBranches: ["main"],
         allowedOverrideFields: [],
         requiredEnv: [],
@@ -438,6 +466,7 @@ test("target create, update, and delete mutate the configured targets file", asy
       policy: {
         allowedProjects: ["main-site"],
         allowedSourceRoots: ["/shared-source"],
+        allowedDestinationPrefixes: [],
         allowedBranches: ["main"],
         allowedOverrideFields: ["branch"],
         requiredEnv: [],
@@ -517,6 +546,43 @@ test("init scaffolds .env, manifest, and shared source for the selected preset",
   expect(
     await directoryExists(join(tempDir, ".hooka/shared-source/simply-static")),
   ).toBe(true);
+});
+
+test("init scaffolds rclone-sync with a default rclone target", async () => {
+  const tempDir = await createTempDir("hooka-cli-init-rclone");
+
+  const result = await runCli(
+    ["init", "--yes", "--preset", "rclone-sync"],
+    {},
+    tempDir,
+  );
+
+  expect(result.exitCode).toBe(0);
+  expect(await Bun.file(join(tempDir, ".env")).text()).toContain(
+    "HOOKA_INSTALLED_CAPABILITIES=rclone",
+  );
+
+  const targets = (await Bun.file(
+    join(tempDir, ".hooka/targets.json"),
+  ).json()) as {
+    targets: Array<{
+      id: string;
+      taskId: string;
+      presetId?: string;
+      policy: {
+        allowedDestinationPrefixes: string[];
+      };
+    }>;
+  };
+
+  expect(targets.targets[0]).toMatchObject({
+    id: "rclone-sync-default",
+    taskId: "rclone.copy.directory",
+    presetId: "rclone-sync",
+    policy: {
+      allowedDestinationPrefixes: ["change-me:bucket/path"],
+    },
+  });
 });
 
 test("audit list fetches and filters remote audit events", async () => {

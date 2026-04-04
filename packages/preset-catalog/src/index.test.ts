@@ -12,11 +12,12 @@ test("active worker presets only include registry-backed entries", () => {
     "cf-pages",
     "cf-cache",
     "wp-ops",
+    "rclone-sync",
     "wp-wrangler",
   ]);
   expect(
     listPlannedWorkerPresets().some((preset) => preset.id === "rclone-sync"),
-  ).toBe(true);
+  ).toBe(false);
 });
 
 test("catalog bake output stays in sync with the checked-in bake file", async () => {

@@ -158,6 +158,7 @@ test("renderTargetDetail returns the selected target and policy output", () => {
     policy: {
       allowedProjects: ["main-site"],
       allowedSourceRoots: ["/shared-source"],
+      allowedDestinationPrefixes: [],
       allowedBranches: ["main"],
       allowedOverrideFields: [],
       artifactReadiness: { mode: "none" },

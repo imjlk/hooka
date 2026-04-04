@@ -18,6 +18,7 @@ export const targetArtifactReadinessSchema = z.discriminatedUnion("mode", [
 export const targetPolicySchema = z.object({
   allowedProjects: z.array(z.string().min(1)).default([]),
   allowedSourceRoots: z.array(z.string().min(1)).default([]),
+  allowedDestinationPrefixes: z.array(z.string().min(1)).default([]),
   allowedBranches: z.array(z.string().min(1)).default([]),
   allowedOverrideFields: z.array(z.string().min(1)).default([]),
   requiredEnv: z
@@ -40,6 +41,7 @@ export const targetSchema = z.object({
   policy: targetPolicySchema.default(() => ({
     allowedProjects: [],
     allowedSourceRoots: [],
+    allowedDestinationPrefixes: [],
     allowedBranches: [],
     allowedOverrideFields: [],
     requiredEnv: [],

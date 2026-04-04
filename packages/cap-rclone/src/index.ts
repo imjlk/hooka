@@ -5,6 +5,14 @@ export const rcloneCapability = defineCapability({
   title: "rclone",
   description: "Object storage sync and backup support through rclone.",
   binaries: ["rclone"],
+  requiredEnv: [
+    {
+      match: "anyOf",
+      names: ["RCLONE_CONFIG", "RCLONE_CONFIG_FILE"],
+      description: "Any rclone configuration source.",
+      secret: true,
+    },
+  ],
   healthcheck: {
     command: "rclone",
     args: ["version"],

@@ -24,6 +24,7 @@ COPY packages/executor-process/package.json packages/executor-process/package.js
 COPY packages/logger/package.json packages/logger/package.json
 COPY packages/pack-cloudflare-cache/package.json packages/pack-cloudflare-cache/package.json
 COPY packages/pack-cloudflare/package.json packages/pack-cloudflare/package.json
+COPY packages/pack-rclone/package.json packages/pack-rclone/package.json
 COPY packages/pack-wordpress-cloudflare/package.json packages/pack-wordpress-cloudflare/package.json
 COPY packages/pack-wordpress/package.json packages/pack-wordpress/package.json
 COPY packages/preset-catalog/package.json packages/preset-catalog/package.json

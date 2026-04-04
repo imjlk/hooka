@@ -1,0 +1,19 @@
+{
+  "name": "@hooka/pack-rclone",
+  "private": true,
+  "type": "module",
+  "exports": "./src/index.ts",
+  "hooka": {
+    "registry": {
+      "kind": "task-pack",
+      "export": "rcloneTaskPack"
+    }
+  },
+  "scripts": {
+    "build": "bun build ./src/index.ts --outdir ./dist --target bun"
+  },
+  "dependencies": {
+    "@hooka/task-sdk": "workspace:*",
+    "zod": "^4.3.6"
+  }
+}

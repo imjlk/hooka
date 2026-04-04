@@ -7,6 +7,7 @@ import {
   deleteTarget,
   listTargetScaffoldTemplates,
   loadTargets,
+  validateTargetPolicyInput,
   updateTarget,
 } from "./index";
 
@@ -14,6 +15,7 @@ test("target scaffolds produce valid built-in templates", () => {
   expect(listTargetScaffoldTemplates().map((template) => template.id)).toEqual([
     "shared-volume-pages",
     "cache-purge-urls",
+    "rclone-copy-remote",
     "export-verify",
     "generic",
   ]);
@@ -32,6 +34,14 @@ test("target scaffolds produce valid built-in templates", () => {
     id: "cf-cache-default",
     taskId: "cloudflare.cache.purge.urls",
     presetId: "cf-cache",
+  });
+  expect(createTargetScaffold("rclone-copy-remote")).toMatchObject({
+    id: "rclone-copy-default",
+    taskId: "rclone.copy.directory",
+    presetId: "rclone-sync",
+    policy: {
+      allowedDestinationPrefixes: ["change-me:bucket/path"],
+    },
   });
   expect(createTargetScaffold("export-verify")).toMatchObject({
     id: "wp-export-verify",
@@ -71,6 +81,7 @@ test("target CRUD writes atomically and reloads from disk", async () => {
     policy: {
       allowedProjects: ["main-site"],
       allowedSourceRoots: ["/shared-source"],
+      allowedDestinationPrefixes: [],
       allowedBranches: ["main"],
       allowedOverrideFields: [],
       requiredEnv: [],
@@ -95,6 +106,7 @@ test("target CRUD writes atomically and reloads from disk", async () => {
     policy: {
       allowedProjects: ["main-site"],
       allowedSourceRoots: ["/shared-source"],
+      allowedDestinationPrefixes: [],
       allowedBranches: ["main"],
       allowedOverrideFields: ["branch"],
       requiredEnv: [],
@@ -130,6 +142,7 @@ test("target CRUD rejects duplicate ids and missing targets", async () => {
     policy: {
       allowedProjects: [],
       allowedSourceRoots: [],
+      allowedDestinationPrefixes: [],
       allowedBranches: [],
       allowedOverrideFields: [],
       requiredEnv: [],
@@ -153,4 +166,26 @@ test("target CRUD rejects duplicate ids and missing targets", async () => {
       id: "missing",
     }),
   ).rejects.toThrow("Target not found: missing");
+});
+
+test("target policy validation accepts allowed destination prefixes and rejects others", () => {
+  const target = createTargetScaffold("rclone-copy-remote");
+
+  expect(
+    validateTargetPolicyInput(target, {
+      sourcePath: "/shared-source/build",
+      destination: "change-me:bucket/path/site",
+    }),
+  ).toEqual([]);
+
+  expect(
+    validateTargetPolicyInput(target, {
+      sourcePath: "/shared-source/build",
+      destination: "other-remote:bucket/site",
+    }),
+  ).toEqual([
+    expect.objectContaining({
+      code: "target_destination_disallowed",
+    }),
+  ]);
 });

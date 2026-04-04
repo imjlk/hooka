@@ -17,6 +17,7 @@ const targetWriteLocks = new Map<string, Promise<void>>();
 export const targetScaffoldTemplateIds = [
   "shared-volume-pages",
   "cache-purge-urls",
+  "rclone-copy-remote",
   "export-verify",
   "generic",
 ] as const;
@@ -69,6 +70,12 @@ export function listTargetScaffoldTemplates(): TargetScaffoldTemplate[] {
       title: "Cache Purge URLs",
       description:
         "Safe Cloudflare cache purge target with a fixed zone and webhook-provided URLs.",
+    },
+    {
+      id: "rclone-copy-remote",
+      title: "rclone Copy Remote",
+      description:
+        "Copy a worker-visible local directory to a configured rclone remote destination.",
     },
     {
       id: "export-verify",
@@ -266,6 +273,7 @@ export function validateTargetPolicyInput(
   const project = asTrimmedString(input["project"]);
   const sourcePath = asTrimmedString(input["sourcePath"]);
   const branch = asTrimmedString(input["branch"]);
+  const destination = asTrimmedString(input["destination"]);
 
   if (
     target.policy.allowedProjects.length > 0 &&
@@ -310,6 +318,26 @@ export function validateTargetPolicyInput(
           retryable: false,
         });
       }
+    }
+  }
+
+  if (target.policy.allowedDestinationPrefixes.length > 0) {
+    if (!destination) {
+      issues.push({
+        code: "target_destination_missing",
+        message: `Target ${target.id} requires a destination inside an allowed prefix.`,
+        retryable: false,
+      });
+    } else if (
+      !target.policy.allowedDestinationPrefixes.some((prefix) =>
+        destination.startsWith(prefix),
+      )
+    ) {
+      issues.push({
+        code: "target_destination_disallowed",
+        message: `Target ${target.id} does not allow destination ${destination}.`,
+        retryable: false,
+      });
     }
   }
 
@@ -449,6 +477,33 @@ function getBaseTargetScaffold(templateId: TargetScaffoldTemplateId): Target {
           },
         },
       });
+    case "rclone-copy-remote":
+      return targetSchema.parse({
+        id: "rclone-copy-default",
+        title: "rclone Remote Copy",
+        description:
+          "Copy a worker-visible local artifact directory to a configured rclone remote destination.",
+        taskId: "rclone.copy.directory",
+        presetId: "rclone-sync",
+        source: "target.rclone-copy",
+        maxAttempts: 3,
+        defaultInput: {
+          sourcePath: "/shared-source/simply-static",
+          destination: "change-me:bucket/path",
+        },
+        policy: {
+          allowedProjects: [],
+          allowedSourceRoots: ["/shared-source"],
+          allowedDestinationPrefixes: ["change-me:bucket/path"],
+          allowedBranches: [],
+          allowedOverrideFields: [],
+          requiredEnv: [],
+          artifactReadiness: {
+            mode: "quiet-period",
+            quietPeriodMs: 3_000,
+          },
+        },
+      });
     case "export-verify":
       return targetSchema.parse({
         id: "wp-export-verify",
@@ -466,6 +521,7 @@ function getBaseTargetScaffold(templateId: TargetScaffoldTemplateId): Target {
         policy: {
           allowedProjects: [],
           allowedSourceRoots: ["/shared-source"],
+          allowedDestinationPrefixes: [],
           allowedBranches: [],
           allowedOverrideFields: ["pattern"],
           requiredEnv: [],
@@ -491,6 +547,7 @@ function getBaseTargetScaffold(templateId: TargetScaffoldTemplateId): Target {
         policy: {
           allowedProjects: ["change-me"],
           allowedSourceRoots: ["/shared-source"],
+          allowedDestinationPrefixes: [],
           allowedBranches: ["main"],
           allowedOverrideFields: [],
           requiredEnv: [],

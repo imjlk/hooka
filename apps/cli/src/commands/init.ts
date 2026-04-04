@@ -2,6 +2,7 @@ import { defineCommand, option } from "@bunli/core";
 import { ensureDir, ensureParentDir } from "@hooka/bun-utils";
 import { getDefaultManifestPath, getDefaultTargetsPath } from "@hooka/config";
 import { getPreset, getPresetPlan, listPresets } from "@hooka/registry";
+import { createTargetScaffold } from "@hooka/targets";
 import { join } from "node:path";
 import { z } from "zod";
 import {
@@ -109,9 +110,7 @@ export function createInitCommand() {
       console.log("- hooka dev");
       console.log("- hooka status");
       console.log("- hooka target list");
-      console.log(
-        `- hooka webhook test --task-id deploy.shared-volume.wrangler --payload-json '{"kind":"pages-deploy","project":"staging-site","sourcePath":"${sharedSourcePath}"}'`,
-      );
+      console.log(`- ${buildInitWebhookExample(preset.id, sharedSourcePath)}`);
       console.log("- docker compose up --build");
     },
   });
@@ -180,6 +179,7 @@ function createDefaultTargetsForPreset(
         policy: {
           allowedProjects: ["change-me"],
           allowedSourceRoots: [join(process.cwd(), ".hooka/shared-source")],
+          allowedDestinationPrefixes: [],
           allowedBranches: ["main"],
           allowedOverrideFields: [],
           requiredEnv: [],
@@ -191,5 +191,38 @@ function createDefaultTargetsForPreset(
     ];
   }
 
+  if (presetId === "rclone-sync") {
+    const scaffold = createTargetScaffold("rclone-copy-remote", {
+      id: `${presetId}-default`,
+      title: `${presetId} default copy`,
+      source: "target.local",
+    });
+
+    return [
+      {
+        ...scaffold,
+        defaultInput: {
+          sourcePath: sharedSourcePath,
+          destination: "change-me:bucket/path",
+        },
+        policy: {
+          ...scaffold.policy,
+          allowedSourceRoots: [join(process.cwd(), ".hooka/shared-source")],
+        },
+      },
+    ];
+  }
+
   return [];
+}
+
+function buildInitWebhookExample(
+  presetId: string,
+  sharedSourcePath: string,
+): string {
+  if (presetId === "rclone-sync") {
+    return `hooka webhook test --task-id rclone.copy.directory --payload-json '{"sourcePath":"${sharedSourcePath}","destination":"change-me:bucket/path"}'`;
+  }
+
+  return `hooka webhook test --task-id deploy.shared-volume.wrangler --payload-json '{"kind":"pages-deploy","project":"staging-site","sourcePath":"${sharedSourcePath}"}'`;
 }

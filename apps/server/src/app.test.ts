@@ -251,6 +251,7 @@ test("target webhook resolves configured targets and stores target metadata", as
         policy: {
           allowedProjects: ["main-site"],
           allowedSourceRoots: ["/shared-source"],
+          allowedDestinationPrefixes: [],
           allowedBranches: ["main"],
           allowedOverrideFields: ["branch"],
           requiredEnv: [],
@@ -310,6 +311,7 @@ test("target CRUD APIs mutate the configured targets file and emit audit events"
     policy: {
       allowedProjects: ["main-site"],
       allowedSourceRoots: ["/shared-source"],
+      allowedDestinationPrefixes: [],
       allowedBranches: ["main"],
       allowedOverrideFields: [],
       requiredEnv: [],
@@ -423,6 +425,7 @@ test("target write errors map to conflict and not found responses", async () => 
         policy: {
           allowedProjects: [],
           allowedSourceRoots: [],
+          allowedDestinationPrefixes: [],
           allowedBranches: [],
           allowedOverrideFields: [],
           requiredEnv: [],
@@ -451,6 +454,7 @@ test("target write errors map to conflict and not found responses", async () => 
         policy: {
           allowedProjects: [],
           allowedSourceRoots: [],
+          allowedDestinationPrefixes: [],
           allowedBranches: [],
           allowedOverrideFields: [],
           requiredEnv: [],
@@ -635,6 +639,7 @@ test("registry APIs expose canonical task and preset ids", async () => {
     "cf-pages",
     "cf-cache",
     "wp-ops",
+    "rclone-sync",
     "wp-wrangler",
   ]);
   expect(presets.map((preset) => preset.id)).not.toContain("webhook-wrangler");
@@ -644,6 +649,7 @@ test("registry APIs expose canonical task and preset ids", async () => {
   );
   expect(summary.presets.map((preset) => preset.id)).toContain("cf-pages");
   expect(summary.presets.map((preset) => preset.id)).toContain("cf-cache");
+  expect(summary.presets.map((preset) => preset.id)).toContain("rclone-sync");
   expect(summary.presets.map((preset) => preset.id)).toContain("wp-ops");
   expect(summary.presets.map((preset) => preset.id)).toContain("wp-wrangler");
 

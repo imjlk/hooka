@@ -65,6 +65,7 @@ bun run apps/cli/src/index.ts task list
 bun run apps/cli/src/index.ts capability list
 bun run apps/cli/src/index.ts image plan --preset cf-pages
 bun run apps/cli/src/index.ts image plan --preset wp-wrangler
+bun run apps/cli/src/index.ts image plan --preset rclone-sync
 bun run apps/cli/src/index.ts task enqueue deploy.shared-volume.wrangler --project staging-site --source-path /shared-source/simply-static
 bun run apps/cli/src/index.ts run list
 bun run apps/cli/src/index.ts run watch <run-id>
@@ -115,6 +116,7 @@ Recommended container tags:
 - `ghcr.io/imjlk/hooka:core`
 - `ghcr.io/imjlk/hooka:cf-pages`
 - `ghcr.io/imjlk/hooka:cf-cache`
+- `ghcr.io/imjlk/hooka:rclone-sync`
 - `ghcr.io/imjlk/hooka:wp-ops`
 - `ghcr.io/imjlk/hooka:wp-wrangler`
 
@@ -123,6 +125,7 @@ Immutable release tags follow the same catalog, for example:
 - `ghcr.io/imjlk/hooka:1.0.0-webhook-server`
 - `ghcr.io/imjlk/hooka:1.0.0-cf-pages`
 - `ghcr.io/imjlk/hooka:1.0.0-cf-cache`
+- `ghcr.io/imjlk/hooka:1.0.0-rclone-sync`
 - `ghcr.io/imjlk/hooka:1.0.0-wp-ops`
 - `ghcr.io/imjlk/hooka:1.0.0-wp-wrangler`
 
@@ -176,6 +179,7 @@ Built-in target scaffold templates:
 
 - `shared-volume-pages`
 - `cache-purge-urls`
+- `rclone-copy-remote`
 - `export-verify`
 - `generic`
 
@@ -186,6 +190,7 @@ Active registry-backed worker presets:
 - `core` — minimal worker runtime with no extra task toolchains
 - `cf-pages` — shared-volume and direct-upload Cloudflare Pages deploys
 - `cf-cache` — safe URL-based Cloudflare cache purge worker
+- `rclone-sync` — worker-visible local directory copy to configured rclone remote destinations
 - `wp-ops` — `wp-cli` evaluation and export verification
 - `wp-wrangler` — `wp-ops` plus `cf-pages`
 
@@ -197,7 +202,7 @@ Migration aliases:
 
 Planned presets are documented but not published in registry APIs or GHCR release targets yet:
 
-- Lean: `http`, `coolify-deploy`, `wp-content-export`, `wp-backup-db`, `rclone-sync`
+- Lean: `http`, `coolify-deploy`, `wp-content-export`, `wp-backup-db`
 - Combo: `wp-cache-safe`, `wp-backup-rclone`, `wp-migrate`, `site-bun-build-cf-pages`, `cf-r2-publisher`, `cf-images`, `smoke-http`, `site-bun-build-coolify`, `wp-multisite`, `git-mirror`, `notify`
 
 ## APIs
@@ -285,6 +290,7 @@ Hooka's default model is `signed webhook -> queue -> worker -> wrangler CLI`. Wo
 - `webhook-server` serves the webhook ingress, admin UI, and run APIs. It only needs `/data`, `HOOKA_WEBHOOK_SECRET`, and optionally `HOOKA_INSTALLED_CAPABILITIES` so the UI mirrors the paired worker role.
 - `cf-pages` is the lean worker for `deploy.shared-volume.wrangler` and `cloudflare.pages.deploy`. It needs `/data`, `/shared-source`, `CLOUDFLARE_API_TOKEN`, and `CLOUDFLARE_ACCOUNT_ID`.
 - `cf-cache` is the lean worker for `cloudflare.cache.purge.urls`. It needs `CLOUDFLARE_API_TOKEN`, and the task receives `zoneId` plus a URL list payload.
+- `rclone-sync` is the lean worker for `rclone.copy.directory`. It needs `RCLONE_CONFIG` or `RCLONE_CONFIG_FILE`, and the task copies a local directory to a configured remote destination.
 - `wp-ops` is the lean worker for `wordpress.wpcli.eval` and `wordpress.export.verify`.
 - `wp-wrangler` is the combo worker that merges `wp-ops` and `cf-pages`.
 

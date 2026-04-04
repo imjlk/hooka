@@ -195,6 +195,7 @@ test("selectTarget falls back to the first target when current is invalid", () =
       policy: {
         allowedProjects: [],
         allowedSourceRoots: [],
+        allowedDestinationPrefixes: [],
         allowedBranches: [],
         allowedOverrideFields: [],
         artifactReadiness: { mode: "none" },
@@ -210,6 +211,7 @@ test("selectTarget falls back to the first target when current is invalid", () =
       policy: {
         allowedProjects: [],
         allowedSourceRoots: [],
+        allowedDestinationPrefixes: [],
         allowedBranches: [],
         allowedOverrideFields: [],
         artifactReadiness: { mode: "none" },

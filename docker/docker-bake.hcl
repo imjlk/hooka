@@ -62,6 +62,18 @@ target "wp-ops" {
   tags = ["${REGISTRY}:wp-ops"]
 }
 
+target "rclone-sync" {
+  inherits = ["base"]
+  target = "worker-preset"
+  args = {
+    HOOKA_FEATURES = "rclone"
+    HOOKA_IMAGE_LABEL = "hooka:rclone-sync"
+    HOOKA_RUNTIME_ROLE = "worker:rclone-sync"
+    HOOKA_INSTALLED_CAPABILITIES = "rclone"
+  }
+  tags = ["${REGISTRY}:rclone-sync"]
+}
+
 target "wp-wrangler" {
   inherits = ["base"]
   target = "worker-preset"
@@ -75,5 +87,5 @@ target "wp-wrangler" {
 }
 
 group "release" {
-  targets = ["webhook-server", "core", "cf-pages", "cf-cache", "wp-ops", "wp-wrangler"]
+  targets = ["webhook-server", "core", "cf-pages", "cf-cache", "wp-ops", "rclone-sync", "wp-wrangler"]
 }

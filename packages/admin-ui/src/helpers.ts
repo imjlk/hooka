@@ -103,6 +103,7 @@ export type Target = {
   policy: {
     allowedProjects: string[];
     allowedSourceRoots: string[];
+    allowedDestinationPrefixes: string[];
     allowedBranches: string[];
     allowedOverrideFields: string[];
     requiredEnv?: Array<{
@@ -298,6 +299,7 @@ export function createTargetScaffold(
   templateId:
     | "shared-volume-pages"
     | "cache-purge-urls"
+    | "rclone-copy-remote"
     | "export-verify"
     | "generic" = "generic",
   overrides: TargetScaffoldOverrides = {},

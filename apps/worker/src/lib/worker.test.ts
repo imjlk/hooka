@@ -222,6 +222,7 @@ test("worker writes audit events for target policy preflight rejections", async 
     targetPolicy: {
       allowedProjects: ["main-site"],
       allowedSourceRoots: ["/shared-source"],
+      allowedDestinationPrefixes: [],
       allowedBranches: ["main"],
       allowedOverrideFields: [],
       requiredEnv: [],
