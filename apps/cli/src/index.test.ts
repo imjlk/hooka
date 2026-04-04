@@ -138,6 +138,7 @@ test("doctor honors HOOKA_MANIFEST_PATH for the default manifest lookup", async 
 });
 
 test("status aggregates health, readiness, summary, and recent runs", async () => {
+  const workerSeenAt = new Date(Date.now() - 1_000).toISOString();
   const server = Bun.serve({
     port: 0,
     fetch(request) {
@@ -171,7 +172,7 @@ test("status aggregates health, readiness, summary, and recent runs", async () =
               workerId: "worker-a",
               runtimeRole: "worker:cf-pages",
               installedCapabilities: ["wrangler"],
-              lastSeenAt: "2026-04-03T00:00:04.000Z",
+              lastSeenAt: workerSeenAt,
               currentRunId: null,
             },
           ],
@@ -223,6 +224,10 @@ test("status aggregates health, readiness, summary, and recent runs", async () =
     expect(result.exitCode).toBe(0);
 
     const report = JSON.parse(result.stdout) as {
+      workers: Array<{
+        workerId: string;
+        freshness: string;
+      }>;
       ready: {
         ok: boolean;
       };
@@ -238,6 +243,7 @@ test("status aggregates health, readiness, summary, and recent runs", async () =
     };
 
     expect(report.ready.ok).toBe(true);
+    expect(report.workers[0]?.freshness).toBe("healthy");
     expect(report.summary.body.installedCapabilities).toEqual(["wrangler"]);
     expect(report.summary.body.workers[0]?.workerId).toBe("worker-a");
     expect(report.recentRuns.body[0]?.id).toBe("run_1");
@@ -360,6 +366,30 @@ test("target list and show read the configured targets file", async () => {
   ]);
   expect(JSON.parse(showResult.stdout)).toMatchObject({
     id: "pages-main",
+  });
+});
+
+test("target scaffold emits built-in template JSON with overrides", async () => {
+  const result = await runCli([
+    "target",
+    "scaffold",
+    "--template",
+    "shared-volume-pages",
+    "--id",
+    "pages-preview",
+    "--title",
+    "Pages Preview",
+    "--source",
+    "target.preview",
+  ]);
+
+  expect(result.exitCode).toBe(0);
+  expect(JSON.parse(result.stdout)).toMatchObject({
+    id: "pages-preview",
+    title: "Pages Preview",
+    source: "target.preview",
+    taskId: "deploy.shared-volume.wrangler",
+    presetId: "cf-pages",
   });
 });
 
@@ -487,6 +517,72 @@ test("init scaffolds .env, manifest, and shared source for the selected preset",
   expect(
     await directoryExists(join(tempDir, ".hooka/shared-source/simply-static")),
   ).toBe(true);
+});
+
+test("audit list fetches and filters remote audit events", async () => {
+  const server = Bun.serve({
+    port: 0,
+    fetch(request) {
+      const url = new URL(request.url);
+
+      if (url.pathname === "/api/audit-events") {
+        expect(request.headers.get("authorization")).toBe("Bearer admin-token");
+        expect(url.searchParams.get("category")).toBe("security");
+        expect(url.searchParams.get("outcome")).toBe("rejected");
+        expect(url.searchParams.get("limit")).toBe("5");
+
+        return Response.json([
+          {
+            sequence: 4,
+            createdAt: "2026-04-04T00:00:00.000Z",
+            category: "security",
+            action: "admin_auth_rejected",
+            outcome: "rejected",
+            subjectType: "request",
+            subjectId: null,
+            clientIp: "203.0.113.10",
+            requestPath: "/api/summary",
+            message: "Missing or invalid admin token.",
+            context: {
+              retryAfterSeconds: 60,
+            },
+          },
+        ]);
+      }
+
+      return new Response("not found", {
+        status: 404,
+      });
+    },
+  });
+
+  try {
+    const result = await runCli([
+      "audit",
+      "list",
+      "--url",
+      `http://127.0.0.1:${server.port}`,
+      "--token",
+      "admin-token",
+      "--category",
+      "security",
+      "--outcome",
+      "rejected",
+      "--limit",
+      "5",
+      "--json",
+    ]);
+
+    expect(result.exitCode).toBe(0);
+    expect(JSON.parse(result.stdout)).toEqual([
+      expect.objectContaining({
+        action: "admin_auth_rejected",
+        category: "security",
+      }),
+    ]);
+  } finally {
+    server.stop(true);
+  }
 });
 
 test("run retry re-enqueues a completed run with cli.retry as the source", async () => {

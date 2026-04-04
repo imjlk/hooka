@@ -14,6 +14,28 @@ import { rename } from "node:fs/promises";
 import { join, normalize } from "node:path/posix";
 
 const targetWriteLocks = new Map<string, Promise<void>>();
+export const targetScaffoldTemplateIds = [
+  "shared-volume-pages",
+  "cache-purge-urls",
+  "export-verify",
+  "generic",
+] as const;
+
+export type TargetScaffoldTemplateId =
+  (typeof targetScaffoldTemplateIds)[number];
+
+export interface TargetScaffoldTemplate {
+  id: TargetScaffoldTemplateId;
+  title: string;
+  description: string;
+}
+
+export interface TargetScaffoldOverrides {
+  id?: string;
+  title?: string;
+  presetId?: string;
+  source?: string;
+}
 
 export interface TargetOverrideViolation {
   field: string;
@@ -32,6 +54,52 @@ export interface TargetPreflightIssue {
   code: string;
   message: string;
   retryable: boolean;
+}
+
+export function listTargetScaffoldTemplates(): TargetScaffoldTemplate[] {
+  return [
+    {
+      id: "shared-volume-pages",
+      title: "Shared-volume Pages",
+      description:
+        "Cloudflare Pages deploys from /shared-source with branch-only style overrides.",
+    },
+    {
+      id: "cache-purge-urls",
+      title: "Cache Purge URLs",
+      description:
+        "Safe Cloudflare cache purge target with a fixed zone and webhook-provided URLs.",
+    },
+    {
+      id: "export-verify",
+      title: "Export Verify",
+      description:
+        "Verify Simply Static export output inside the shared source volume before deploy.",
+    },
+    {
+      id: "generic",
+      title: "Generic",
+      description: "Blank target skeleton with current schema defaults.",
+    },
+  ];
+}
+
+export function createTargetScaffold(
+  templateId: TargetScaffoldTemplateId = "generic",
+  overrides: TargetScaffoldOverrides = {},
+): Target {
+  const baseTarget = getBaseTargetScaffold(templateId);
+
+  return targetSchema.parse({
+    ...baseTarget,
+    id: overrides.id ?? baseTarget.id,
+    title: overrides.title ?? baseTarget.title,
+    presetId:
+      overrides.presetId === undefined
+        ? baseTarget.presetId
+        : overrides.presetId,
+    source: overrides.source ?? baseTarget.source,
+  });
 }
 
 export async function loadTargets(targetsPath: string): Promise<Target[]> {
@@ -318,6 +386,120 @@ export async function validateArtifactReadiness(
   }
 
   return [];
+}
+
+function getBaseTargetScaffold(templateId: TargetScaffoldTemplateId): Target {
+  switch (templateId) {
+    case "shared-volume-pages":
+      return targetSchema.parse({
+        id: "cf-pages-default",
+        title: "Cloudflare Pages Deploy",
+        description: "Deploy a shared-volume Pages bundle through wrangler.",
+        taskId: "deploy.shared-volume.wrangler",
+        presetId: "cf-pages",
+        source: "target.cloudflare-pages",
+        maxAttempts: 3,
+        defaultInput: {
+          kind: "pages-deploy",
+          project: "change-me",
+          sourcePath: "/shared-source/simply-static",
+          branch: "main",
+        },
+        policy: {
+          allowedProjects: ["change-me"],
+          allowedSourceRoots: ["/shared-source"],
+          allowedBranches: ["main"],
+          allowedOverrideFields: [
+            "branch",
+            "commitSha",
+            "commitMessage",
+            "commitDirty",
+            "skipCaching",
+            "noBundle",
+            "uploadSourceMaps",
+          ],
+          requiredEnv: [],
+          artifactReadiness: {
+            mode: "quiet-period",
+            quietPeriodMs: 3_000,
+          },
+        },
+      });
+    case "cache-purge-urls":
+      return targetSchema.parse({
+        id: "cf-cache-default",
+        title: "Cloudflare Cache Purge",
+        description: "Purge one or more URLs in a fixed Cloudflare zone.",
+        taskId: "cloudflare.cache.purge.urls",
+        presetId: "cf-cache",
+        source: "target.cloudflare-cache",
+        maxAttempts: 3,
+        defaultInput: {
+          zoneId: "change-me",
+          urls: "https://example.com/",
+        },
+        policy: {
+          allowedProjects: [],
+          allowedSourceRoots: [],
+          allowedBranches: [],
+          allowedOverrideFields: ["urls"],
+          requiredEnv: [],
+          artifactReadiness: {
+            mode: "none",
+          },
+        },
+      });
+    case "export-verify":
+      return targetSchema.parse({
+        id: "wp-export-verify",
+        title: "Verify Export Output",
+        description:
+          "Verify generated export output inside the shared source volume.",
+        taskId: "wordpress.export.verify",
+        presetId: "wp-ops",
+        source: "target.wordpress-export",
+        maxAttempts: 3,
+        defaultInput: {
+          exportDir: "/shared-source/simply-static",
+          pattern: "**/*.html",
+        },
+        policy: {
+          allowedProjects: [],
+          allowedSourceRoots: ["/shared-source"],
+          allowedBranches: [],
+          allowedOverrideFields: ["pattern"],
+          requiredEnv: [],
+          artifactReadiness: {
+            mode: "none",
+          },
+        },
+      });
+    default:
+      return targetSchema.parse({
+        id: "new-target",
+        title: "New Target",
+        description: "Describe the deployment policy for this target.",
+        taskId: "deploy.shared-volume.wrangler",
+        source: "target.local",
+        maxAttempts: 3,
+        defaultInput: {
+          kind: "pages-deploy",
+          project: "change-me",
+          sourcePath: "/shared-source/change-me",
+          branch: "main",
+        },
+        policy: {
+          allowedProjects: ["change-me"],
+          allowedSourceRoots: ["/shared-source"],
+          allowedBranches: ["main"],
+          allowedOverrideFields: [],
+          requiredEnv: [],
+          artifactReadiness: {
+            mode: "none",
+          },
+        },
+      });
+  }
 }
 
 function validateRequiredEnv(

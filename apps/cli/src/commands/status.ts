@@ -1,5 +1,11 @@
 import { defineCommand, option } from "@bunli/core";
-import { createServerConfig } from "@hooka/config";
+import {
+  createServerConfig,
+  createWorkerConfig,
+  getWorkerFreshness,
+  getWorkerFreshnessThresholdMs,
+  getWorkerLastSeenAgeMs,
+} from "@hooka/config";
 import type { RegistrySummary, RunSummary } from "@hooka/contracts";
 import { z } from "zod";
 import { booleanFlagSchema, resolveBooleanFlag } from "../lib/shared";
@@ -17,6 +23,9 @@ export interface StatusReport {
     workerId: string;
     runtimeRole: string;
     lastSeenAt: string;
+    lastSeenAgeMs: number;
+    freshness: "healthy" | "stale";
+    freshnessThresholdMs: number;
     currentRunId: string | null;
   }>;
   health: EndpointStatus<{
@@ -34,6 +43,7 @@ export interface StatusReport {
 
 export function createStatusCommand() {
   const defaultUrl = `http://127.0.0.1:${createServerConfig().port}`;
+  const heartbeatIntervalMs = createWorkerConfig().heartbeatIntervalMs;
 
   return defineCommand({
     name: "status",
@@ -56,6 +66,7 @@ export function createStatusCommand() {
       const report = await collectStatusReport(
         flags.url,
         flags.token ?? Bun.env["HOOKA_ADMIN_TOKEN"],
+        heartbeatIntervalMs,
       );
 
       if (json) {
@@ -77,7 +88,7 @@ export function createStatusCommand() {
             `Registry Summary: ${report.summary.body.counts.tasks} tasks, ${report.summary.body.counts.capabilities} capabilities, ${report.summary.body.counts.presets} presets`,
           );
           console.log(
-            `Workers: ${report.workers.length > 0 ? report.workers.map((worker) => `${worker.workerId}@${worker.runtimeRole} (${worker.lastSeenAt})`).join(", ") : "(none)"}`,
+            `Workers: ${report.workers.length > 0 ? report.workers.map((worker) => `${worker.workerId}@${worker.runtimeRole} ${worker.freshness} (${formatRelativeAge(worker.lastSeenAgeMs)} at ${worker.lastSeenAt})`).join(", ") : "(none)"}`,
           );
         } else {
           console.log(
@@ -113,6 +124,7 @@ export function createStatusCommand() {
 export async function collectStatusReport(
   baseUrl: string,
   adminToken?: string,
+  heartbeatIntervalMs = createWorkerConfig().heartbeatIntervalMs,
 ): Promise<StatusReport> {
   const url = baseUrl.replace(/\/$/, "");
   const authHeader =
@@ -135,9 +147,26 @@ export async function collectStatusReport(
     fetchEndpoint<RunSummary[]>(`${url}/api/runs?limit=5`, authHeader),
   ]);
 
+  const nowMs = Date.now();
+  const freshnessThresholdMs =
+    getWorkerFreshnessThresholdMs(heartbeatIntervalMs);
+
   return {
     url,
-    workers: summary.body?.workers ?? [],
+    workers:
+      summary.body?.workers.map((worker) => ({
+        workerId: worker.workerId,
+        runtimeRole: worker.runtimeRole,
+        lastSeenAt: worker.lastSeenAt,
+        lastSeenAgeMs: getWorkerLastSeenAgeMs(worker.lastSeenAt, nowMs),
+        freshness: getWorkerFreshness(
+          worker.lastSeenAt,
+          heartbeatIntervalMs,
+          nowMs,
+        ),
+        freshnessThresholdMs,
+        currentRunId: worker.currentRunId,
+      })) ?? [],
     health,
     ready,
     summary,
@@ -208,4 +237,35 @@ function formatEndpointStatus<T>(
   }
 
   return `ok (${endpoint.status}) ${extra(endpoint.body)}`;
+}
+
+function formatRelativeAge(ageMs: number): string {
+  if (!Number.isFinite(ageMs)) {
+    return "unknown age";
+  }
+
+  if (ageMs < 1_000) {
+    return "just now";
+  }
+
+  const seconds = Math.floor(ageMs / 1_000);
+
+  if (seconds < 60) {
+    return `${seconds}s ago`;
+  }
+
+  const minutes = Math.floor(seconds / 60);
+
+  if (minutes < 60) {
+    return `${minutes}m ago`;
+  }
+
+  const hours = Math.floor(minutes / 60);
+
+  if (hours < 24) {
+    return `${hours}h ago`;
+  }
+
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
 }

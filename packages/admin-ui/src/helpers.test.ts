@@ -2,6 +2,8 @@ import { expect, test } from "bun:test";
 import {
   buildRunQuery,
   createTargetScaffold,
+  describeTargetEditorValidation,
+  describeWorkerHealth,
   deriveRunFilterOptions,
   formatCapabilityEnvRows,
   parseTargetEditorValue,
@@ -9,6 +11,7 @@ import {
   selectPreset,
   selectTarget,
   serializeTargetEditorValue,
+  summarizeAuditContext,
   type Capability,
   type PresetWithPlan,
   type RunSummary,
@@ -220,21 +223,48 @@ test("selectTarget falls back to the first target when current is invalid", () =
 });
 
 test("target editor helpers scaffold, serialize, and validate target JSON", () => {
-  const scaffold = createTargetScaffold();
+  const scaffold = createTargetScaffold("shared-volume-pages");
   const serialized = serializeTargetEditorValue(scaffold);
   const parsed = parseTargetEditorValue(serialized);
+  const validation = describeTargetEditorValidation(serialized);
 
-  expect(scaffold.id).toBe("new-target");
-  expect(serialized).toContain('"taskId": "deploy.shared-volume.wrangler"');
+  expect(scaffold.id).toBe("cf-pages-default");
+  expect(serialized).toContain('"presetId": "cf-pages"');
   expect(parsed).toEqual({
     ok: true,
     target: expect.objectContaining({
-      id: "new-target",
+      id: "cf-pages-default",
       taskId: "deploy.shared-volume.wrangler",
     }),
+  });
+  expect(validation).toEqual({
+    ok: true,
+    message: "Valid target cf-pages-default for deploy.shared-volume.wrangler.",
   });
   expect(parseTargetEditorValue("{")).toEqual({
     ok: false,
     error: expect.any(String),
   });
+});
+
+test("worker and audit helpers summarize freshness and context", () => {
+  const workerHealth = describeWorkerHealth(
+    {
+      workerId: "worker-a",
+      runtimeRole: "worker:cf-pages",
+      installedCapabilities: ["wrangler"],
+      lastSeenAt: new Date(Date.now() - 1_000).toISOString(),
+      currentRunId: null,
+    },
+    5_000,
+  );
+
+  expect(workerHealth.freshness).toBe("healthy");
+  expect(workerHealth.lastSeenLabel).toContain("ago");
+  expect(
+    summarizeAuditContext({
+      event: "target_created",
+      targetId: "pages-main",
+    }),
+  ).toContain("target_created");
 });

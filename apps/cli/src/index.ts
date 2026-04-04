@@ -1,4 +1,5 @@
 import { createCLI } from "@bunli/core";
+import { createAuditCommandGroup } from "./commands/audit";
 import { createCapabilityCommandGroup } from "./commands/capability";
 import { createConfigCommand } from "./commands/config";
 import { createDevCommand } from "./commands/dev";
@@ -24,6 +25,7 @@ const cli = await createCLI({
 
 cli.command(createTaskCommandGroup(cliDefaults));
 cli.command(createCapabilityCommandGroup());
+cli.command(createAuditCommandGroup());
 cli.command(createImageCommandGroup(cliDefaults));
 cli.command(createRunCommandGroup(cliDefaults));
 cli.command(createStatusCommand());

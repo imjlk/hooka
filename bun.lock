@@ -61,6 +61,7 @@
       "dependencies": {
         "@hooka/config": "workspace:*",
         "@hooka/contracts": "workspace:*",
+        "@hooka/targets": "workspace:*",
       },
     },
     "packages/bun-utils": {

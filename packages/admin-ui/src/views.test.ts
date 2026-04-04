@@ -2,7 +2,10 @@ import { expect, test } from "bun:test";
 import { renderAuditList } from "./views/audit";
 import { renderPresetDetail } from "./views/presets";
 import { renderRunDetail } from "./views/runs";
-import { renderSummaryCards } from "./views/summary";
+import {
+  renderInstalledCapabilities,
+  renderSummaryCards,
+} from "./views/summary";
 import { renderTargetDetail } from "./views/targets";
 import type {
   AuditEvent,
@@ -29,6 +32,32 @@ test("renderSummaryCards includes the core metric labels", () => {
   expect(html).toContain("Tasks");
   expect(html).toContain("Capabilities");
   expect(html).toContain("Presets");
+});
+
+test("renderInstalledCapabilities includes worker freshness badges", () => {
+  const html = renderInstalledCapabilities({
+    generatedAt: "2026-03-29T00:00:00.000Z",
+    counts: {
+      tasks: 4,
+      capabilities: 3,
+      presets: 2,
+    },
+    installedCapabilities: [],
+    workers: [
+      {
+        workerId: "worker-a",
+        runtimeRole: "worker:cf-pages",
+        installedCapabilities: ["wrangler"],
+        lastSeenAt: new Date(Date.now() - 2_000).toISOString(),
+        currentRunId: null,
+      },
+    ],
+    tasks: [],
+    presets: [],
+  } satisfies Summary);
+
+  expect(html).toContain("healthy");
+  expect(html).toContain("worker-a");
 });
 
 test("renderPresetDetail includes required env and covered task chips", () => {
@@ -155,6 +184,9 @@ test("renderAuditList includes audit metadata and message", () => {
       clientIp: "203.0.113.10",
       requestPath: "/api/summary",
       message: "Missing or invalid admin token.",
+      context: {
+        retryAfterSeconds: 60,
+      },
     },
   ];
 
@@ -162,5 +194,7 @@ test("renderAuditList includes audit metadata and message", () => {
 
   expect(html).toContain("admin_auth_rejected");
   expect(html).toContain("203.0.113.10");
+  expect(html).toContain("/api/summary");
   expect(html).toContain("Missing or invalid admin token.");
+  expect(html).toContain("retryAfterSeconds");
 });

@@ -1,4 +1,13 @@
+import { listTargetScaffoldTemplates } from "@hooka/targets";
+
 export function renderShell(): string {
+  const targetTemplateOptions = listTargetScaffoldTemplates()
+    .map(
+      (template) =>
+        `<option value="${template.id}"${template.id === "generic" ? " selected" : ""}>${template.title}</option>`,
+    )
+    .join("");
+
   return `
     <main class="shell">
       <section class="panel auth-panel">
@@ -96,11 +105,18 @@ export function renderShell(): string {
           <span class="pill">crud</span>
         </div>
         <div class="toolbar">
-          <button type="button" id="target-create-scaffold" class="action-button">New Target</button>
+          <label class="field">
+            <span>Template</span>
+            <select id="target-template">
+              ${targetTemplateOptions}
+            </select>
+          </label>
+          <button type="button" id="target-generate-scaffold" class="action-button">Generate</button>
           <button type="button" id="target-save" class="action-button">Save Target</button>
           <button type="button" id="target-delete" class="action-button">Delete Target</button>
         </div>
         <p id="target-editor-status" class="muted">Select a target or start from a scaffold.</p>
+        <p id="target-editor-validation" class="muted">Target editor validation will appear here.</p>
         <label class="field field-block">
           <span>Target JSON</span>
           <textarea id="target-editor" rows="18" spellcheck="false"></textarea>
@@ -173,6 +189,24 @@ export function renderShell(): string {
               <option value="security">security</option>
               <option value="policy">policy</option>
               <option value="targets">targets</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Outcome</span>
+            <select id="audit-filter-outcome">
+              <option value="">All</option>
+              <option value="rejected">rejected</option>
+              <option value="created">created</option>
+              <option value="updated">updated</option>
+              <option value="deleted">deleted</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Limit</span>
+            <select id="audit-filter-limit">
+              <option value="10">10</option>
+              <option value="20" selected>20</option>
+              <option value="50">50</option>
             </select>
           </label>
         </div>

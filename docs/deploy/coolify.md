@@ -86,6 +86,8 @@ volumes:
 - read/admin APIs use `Authorization: Bearer <HOOKA_ADMIN_TOKEN>`
 - the admin UI shell is static, but it cannot read protected data without the admin token
 - set `HOOKA_TRUST_PROXY=true` when Hooka is behind Coolify's public reverse proxy so rate limiting uses the forwarded client IP
+- target scaffolds can be generated locally with `hooka target scaffold --template shared-volume-pages`
+- audit events are available through the admin UI and `hooka audit list`
 
 ## Shared-volume deploys
 

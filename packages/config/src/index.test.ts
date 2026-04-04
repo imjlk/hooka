@@ -13,6 +13,9 @@ import {
   defaultTargetsRelativePath,
   defaultWebhookRateLimit,
   defaultWorkerHeartbeatIntervalMs,
+  getWorkerFreshness,
+  getWorkerFreshnessThresholdMs,
+  getWorkerLastSeenAgeMs,
   getServerStartupIssues,
   resolveManifestSource,
 } from "./index";
@@ -130,4 +133,14 @@ test("server startup validation requires a webhook secret", () => {
   expect(() => assertServerStartupConfig(config)).toThrow(
     "HOOKA_WEBHOOK_SECRET is required. HOOKA_ADMIN_TOKEN is required.",
   );
+});
+
+test("worker freshness helpers derive age and threshold state", () => {
+  const now = Date.parse("2026-04-04T12:00:00.000Z");
+  const lastSeenAt = "2026-04-04T11:59:55.000Z";
+
+  expect(getWorkerFreshnessThresholdMs(10_000)).toBe(20_000);
+  expect(getWorkerLastSeenAgeMs(lastSeenAt, now)).toBe(5_000);
+  expect(getWorkerFreshness(lastSeenAt, 10_000, now)).toBe("healthy");
+  expect(getWorkerFreshness(lastSeenAt, 2_000, now)).toBe("stale");
 });

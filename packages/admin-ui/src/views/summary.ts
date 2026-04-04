@@ -1,5 +1,5 @@
 import type { Capability, Summary } from "../helpers";
-import { formatCapabilityEnvRows } from "../helpers";
+import { describeWorkerHealth, formatCapabilityEnvRows } from "../helpers";
 import { escapeHtml, metricCard } from "../dom";
 
 export function renderSummaryCards(summary: Summary): string {
@@ -31,11 +31,17 @@ export function renderInstalledCapabilities(summary: Summary): string {
   const workerRows =
     summary.workers.length > 0
       ? summary.workers
-          .map(
-            (worker) => `
+          .map((worker) => {
+            const health = describeWorkerHealth(worker);
+
+            return `
               <div class="detail-card compact-card">
                 <strong>${escapeHtml(worker.workerId)}</strong>
                 <p>${escapeHtml(worker.runtimeRole)}</p>
+                <div class="stack">
+                  <span class="chip ${health.freshness}">${escapeHtml(health.freshness)}</span>
+                  <span class="chip">${escapeHtml(health.lastSeenLabel)}</span>
+                </div>
                 <p>Last seen: ${escapeHtml(worker.lastSeenAt)}</p>
                 ${
                   worker.currentRunId
@@ -43,8 +49,8 @@ export function renderInstalledCapabilities(summary: Summary): string {
                     : `<p class="muted">No run in flight.</p>`
                 }
               </div>
-            `,
-          )
+            `;
+          })
           .join("")
       : `<p class="muted">No worker heartbeat recorded yet.</p>`;
 

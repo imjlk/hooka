@@ -4,7 +4,8 @@
   "type": "module",
   "dependencies": {
     "@hooka/config": "workspace:*",
-    "@hooka/contracts": "workspace:*"
+    "@hooka/contracts": "workspace:*",
+    "@hooka/targets": "workspace:*"
   },
   "scripts": {
     "build": "bun build ./src/index.html --outdir ./dist",

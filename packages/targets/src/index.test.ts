@@ -1,7 +1,57 @@
 import { expect, test } from "bun:test";
 import { createTempDir } from "@hooka/bun-utils";
 import { join } from "node:path";
-import { createTarget, deleteTarget, loadTargets, updateTarget } from "./index";
+import {
+  createTarget,
+  createTargetScaffold,
+  deleteTarget,
+  listTargetScaffoldTemplates,
+  loadTargets,
+  updateTarget,
+} from "./index";
+
+test("target scaffolds produce valid built-in templates", () => {
+  expect(listTargetScaffoldTemplates().map((template) => template.id)).toEqual([
+    "shared-volume-pages",
+    "cache-purge-urls",
+    "export-verify",
+    "generic",
+  ]);
+
+  expect(createTargetScaffold("shared-volume-pages")).toMatchObject({
+    id: "cf-pages-default",
+    taskId: "deploy.shared-volume.wrangler",
+    presetId: "cf-pages",
+    policy: {
+      artifactReadiness: {
+        mode: "quiet-period",
+      },
+    },
+  });
+  expect(createTargetScaffold("cache-purge-urls")).toMatchObject({
+    id: "cf-cache-default",
+    taskId: "cloudflare.cache.purge.urls",
+    presetId: "cf-cache",
+  });
+  expect(createTargetScaffold("export-verify")).toMatchObject({
+    id: "wp-export-verify",
+    taskId: "wordpress.export.verify",
+    presetId: "wp-ops",
+  });
+  expect(
+    createTargetScaffold("generic", {
+      id: "custom-target",
+      title: "Custom Target",
+      presetId: "cf-pages",
+      source: "target.custom",
+    }),
+  ).toMatchObject({
+    id: "custom-target",
+    title: "Custom Target",
+    presetId: "cf-pages",
+    source: "target.custom",
+  });
+});
 
 test("target CRUD writes atomically and reloads from disk", async () => {
   const tempDir = await createTempDir("hooka-targets");

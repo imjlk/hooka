@@ -1,4 +1,12 @@
+import {
+  defaultWorkerHeartbeatIntervalMs,
+  getWorkerFreshness,
+} from "@hooka/config";
 import { targetSchema } from "@hooka/contracts";
+import {
+  createTargetScaffold as createSharedTargetScaffold,
+  type TargetScaffoldOverrides,
+} from "@hooka/targets";
 
 export type Summary = {
   generatedAt: string;
@@ -163,7 +171,14 @@ export type RunFilters = {
 
 export type AuditFilters = {
   category?: AuditEvent["category"];
+  outcome?: AuditEvent["outcome"];
   limit?: number;
+};
+
+export type WorkerHealth = {
+  freshness: "healthy" | "stale";
+  lastSeenAgeMs: number;
+  lastSeenLabel: string;
 };
 
 export function buildRunQuery(filters: RunFilters): string {
@@ -279,31 +294,15 @@ export function selectTarget(
   return targets[0] ?? null;
 }
 
-export function createTargetScaffold(): Target {
-  return {
-    id: "new-target",
-    title: "New Target",
-    description: "Describe the deployment policy for this target.",
-    taskId: "deploy.shared-volume.wrangler",
-    source: "target.local",
-    maxAttempts: 3,
-    defaultInput: {
-      kind: "pages-deploy",
-      project: "change-me",
-      sourcePath: "/shared-source/change-me",
-      branch: "main",
-    },
-    policy: {
-      allowedProjects: ["change-me"],
-      allowedSourceRoots: ["/shared-source"],
-      allowedBranches: ["main"],
-      allowedOverrideFields: [],
-      requiredEnv: [],
-      artifactReadiness: {
-        mode: "none",
-      },
-    },
-  };
+export function createTargetScaffold(
+  templateId:
+    | "shared-volume-pages"
+    | "cache-purge-urls"
+    | "export-verify"
+    | "generic" = "generic",
+  overrides: TargetScaffoldOverrides = {},
+): Target {
+  return createSharedTargetScaffold(templateId, overrides);
 }
 
 export function serializeTargetEditorValue(target: Target): string {
@@ -344,4 +343,91 @@ export function parseTargetEditorValue(input: string):
       error: error instanceof Error ? error.message : String(error),
     };
   }
+}
+
+export function describeTargetEditorValidation(input: string): {
+  ok: boolean;
+  message: string;
+} {
+  const parsed = parseTargetEditorValue(input);
+
+  if (!parsed.ok) {
+    return {
+      ok: false,
+      message: parsed.error,
+    };
+  }
+
+  return {
+    ok: true,
+    message: `Valid target ${parsed.target.id} for ${parsed.target.taskId}.`,
+  };
+}
+
+export function describeWorkerHealth(
+  worker: Summary["workers"][number],
+  heartbeatIntervalMs = defaultWorkerHeartbeatIntervalMs,
+  nowMs = Date.now(),
+): WorkerHealth {
+  const parsed = Date.parse(worker.lastSeenAt);
+  const lastSeenAgeMs = Number.isNaN(parsed)
+    ? Number.POSITIVE_INFINITY
+    : Math.max(0, nowMs - parsed);
+
+  return {
+    freshness: getWorkerFreshness(
+      worker.lastSeenAt,
+      heartbeatIntervalMs,
+      nowMs,
+    ),
+    lastSeenAgeMs,
+    lastSeenLabel: formatRelativeAge(lastSeenAgeMs),
+  };
+}
+
+export function formatRelativeAge(ageMs: number): string {
+  if (!Number.isFinite(ageMs)) {
+    return "unknown age";
+  }
+
+  if (ageMs < 1_000) {
+    return "just now";
+  }
+
+  const seconds = Math.floor(ageMs / 1_000);
+
+  if (seconds < 60) {
+    return `${seconds}s ago`;
+  }
+
+  const minutes = Math.floor(seconds / 60);
+
+  if (minutes < 60) {
+    return `${minutes}m ago`;
+  }
+
+  const hours = Math.floor(minutes / 60);
+
+  if (hours < 24) {
+    return `${hours}h ago`;
+  }
+
+  return `${Math.floor(hours / 24)}d ago`;
+}
+
+export function summarizeAuditContext(context: unknown): string | null {
+  if (context === undefined) {
+    return null;
+  }
+
+  const serialized =
+    typeof context === "string" ? context : JSON.stringify(context);
+
+  if (!serialized || serialized.length === 0) {
+    return null;
+  }
+
+  return serialized.length > 160
+    ? `${serialized.slice(0, 157)}...`
+    : serialized;
 }

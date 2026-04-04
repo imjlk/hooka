@@ -251,6 +251,10 @@ h2 {
   margin: 8px 0 0;
 }
 
+.audit-meta {
+  margin-bottom: 10px;
+}
+
 .run-row {
   width: 100%;
   border: 0;
@@ -278,6 +282,16 @@ h2 {
 }
 
 .blocked {
+  background: rgba(139, 58, 45, 0.15);
+  color: var(--warn);
+}
+
+.healthy {
+  background: rgba(47, 93, 80, 0.16);
+  color: var(--ok);
+}
+
+.stale {
   background: rgba(139, 58, 45, 0.15);
   color: var(--warn);
 }

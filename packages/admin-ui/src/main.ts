@@ -12,6 +12,7 @@ import type {
 import {
   buildRunQuery,
   createTargetScaffold,
+  describeTargetEditorValidation,
   parseTargetEditorValue,
   selectActiveRunId,
   serializeTargetEditorValue,
@@ -56,7 +57,9 @@ const state: {
   activeTargetId: null,
   adminToken: localStorage.getItem(adminTokenStorageKey) ?? "",
   auditEvents: [],
-  auditFilters: {},
+  auditFilters: {
+    limit: 20,
+  },
   capabilities: [],
   eventSource: null,
   filters: {
@@ -124,10 +127,15 @@ document.addEventListener("click", (event) => {
     return;
   }
 
-  if (target.id === "target-create-scaffold") {
+  if (target.id === "target-generate-scaffold") {
+    const template = (getElement("target-template") as HTMLSelectElement)
+      .value as Parameters<typeof createTargetScaffold>[0];
     state.activeTargetId = null;
-    applyTargetEditorValue(serializeTargetEditorValue(createTargetScaffold()));
-    setTargetEditorStatus("New target scaffold ready. Save to create it.");
+    applyTargetEditorValue(
+      serializeTargetEditorValue(createTargetScaffold(template)),
+    );
+    setTargetEditorStatus(`New ${template} scaffold ready. Save to create it.`);
+    applyTargetValidation();
     syncSelectedRows("[data-target-id]", state.activeTargetId);
     return;
   }
@@ -163,6 +171,14 @@ document.addEventListener("click", (event) => {
   }
 });
 
+document.addEventListener("input", (event) => {
+  const target = event.target;
+
+  if (target instanceof HTMLTextAreaElement && target.id === "target-editor") {
+    applyTargetValidation();
+  }
+});
+
 document.addEventListener("change", (event) => {
   const target = event.target;
 
@@ -188,6 +204,20 @@ document.addEventListener("change", (event) => {
   if (target.id === "audit-filter-category") {
     state.auditFilters.category =
       (target.value as AuditEvent["category"]) || undefined;
+    void loadAuditEvents();
+    return;
+  }
+
+  if (target.id === "audit-filter-outcome") {
+    state.auditFilters.outcome =
+      (target.value as AuditEvent["outcome"]) || undefined;
+    void loadAuditEvents();
+    return;
+  }
+
+  if (target.id === "audit-filter-limit") {
+    state.auditFilters.limit =
+      target.value.length > 0 ? Number(target.value) : undefined;
     void loadAuditEvents();
   }
 });
@@ -288,6 +318,7 @@ function renderTargetPanels(): void {
   applyTargetEditorValue(
     serializeTargetEditorValue(detail.target ?? createTargetScaffold()),
   );
+  applyTargetValidation();
   setTargetEditorStatus(
     detail.target
       ? `Editing target ${detail.target.id}.`
@@ -297,8 +328,12 @@ function renderTargetPanels(): void {
 
 function renderAuditPanel(): void {
   getElement("audit-list").innerHTML = renderAuditList(state.auditEvents);
-  const filter = getElement("audit-filter-category") as HTMLSelectElement;
-  filter.value = state.auditFilters.category ?? "";
+  const category = getElement("audit-filter-category") as HTMLSelectElement;
+  const outcome = getElement("audit-filter-outcome") as HTMLSelectElement;
+  const limit = getElement("audit-filter-limit") as HTMLSelectElement;
+  category.value = state.auditFilters.category ?? "";
+  outcome.value = state.auditFilters.outcome ?? "";
+  limit.value = String(state.auditFilters.limit ?? 20);
 }
 
 function renderTaskPanel(): void {
@@ -523,6 +558,10 @@ function buildAuditEventsPath(filters: AuditFilters): string {
     params.set("category", filters.category);
   }
 
+  if (filters.outcome) {
+    params.set("outcome", filters.outcome);
+  }
+
   const query = params.toString();
   return query.length > 0 ? `/api/audit-events?${query}` : "/api/audit-events";
 }
@@ -551,4 +590,11 @@ function readTargetEditorValue(): string {
 
 function setTargetEditorStatus(message: string): void {
   getElement("target-editor-status").textContent = message;
+}
+
+function applyTargetValidation(): void {
+  const validation = describeTargetEditorValidation(readTargetEditorValue());
+  const element = getElement("target-editor-validation");
+  element.textContent = validation.message;
+  element.className = validation.ok ? "muted" : "detail-error";
 }

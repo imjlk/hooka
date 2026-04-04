@@ -7,6 +7,7 @@ export type ManifestSourceKind =
   | "env-inline"
   | "manifest-explicit"
   | "manifest-default";
+export type WorkerFreshness = "healthy" | "stale";
 
 export const defaultManifestRelativePath = ".hooka/installed-capabilities.json";
 export const defaultTargetsRelativePath = ".hooka/targets.json";
@@ -144,6 +145,36 @@ export function getDefaultWorkerId(
   env: EnvRecord = Bun.env as EnvRecord,
 ): string {
   return env["HOOKA_WORKER_ID"] ?? env["HOSTNAME"] ?? "hooka-worker";
+}
+
+export function getWorkerFreshnessThresholdMs(
+  heartbeatIntervalMs = defaultWorkerHeartbeatIntervalMs,
+): number {
+  return heartbeatIntervalMs * 2;
+}
+
+export function getWorkerLastSeenAgeMs(
+  lastSeenAt: string,
+  nowMs = Date.now(),
+): number {
+  const parsed = Date.parse(lastSeenAt);
+
+  if (Number.isNaN(parsed)) {
+    return Number.POSITIVE_INFINITY;
+  }
+
+  return Math.max(0, nowMs - parsed);
+}
+
+export function getWorkerFreshness(
+  lastSeenAt: string,
+  heartbeatIntervalMs = defaultWorkerHeartbeatIntervalMs,
+  nowMs = Date.now(),
+): WorkerFreshness {
+  return getWorkerLastSeenAgeMs(lastSeenAt, nowMs) <=
+    getWorkerFreshnessThresholdMs(heartbeatIntervalMs)
+    ? "healthy"
+    : "stale";
 }
 
 export function createServerConfig(

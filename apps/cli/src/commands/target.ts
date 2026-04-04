@@ -1,8 +1,11 @@
 import { defineCommand, defineGroup, option } from "@bunli/core";
 import type { Target } from "@hooka/contracts";
 import {
+  createTargetScaffold,
   createTarget,
   deleteTarget,
+  listTargetScaffoldTemplates,
+  targetScaffoldTemplateIds,
   loadTargets,
   updateTarget,
 } from "@hooka/targets";
@@ -15,6 +18,39 @@ export function createTargetCommandGroup(defaults: CliDefaults) {
     name: "target",
     description: "Inspect target policies and defaults.",
     commands: [
+      defineCommand({
+        name: "scaffold",
+        description: "Print a built-in target scaffold as JSON.",
+        options: {
+          template: option(z.enum(targetScaffoldTemplateIds), {
+            description: `Scaffold template id (${listTargetScaffoldTemplates()
+              .map((template) => template.id)
+              .join(", ")}).`,
+          }),
+          id: option(z.string().optional(), {
+            description: "Override the scaffold target id.",
+          }),
+          title: option(z.string().optional(), {
+            description: "Override the scaffold title.",
+          }),
+          preset: option(z.string().optional(), {
+            description: "Override the scaffold preset id.",
+          }),
+          source: option(z.string().optional(), {
+            description: "Override the scaffold source field.",
+          }),
+        },
+        handler: async ({ flags }) => {
+          const scaffold = createTargetScaffold(flags.template, {
+            id: flags.id,
+            title: flags.title,
+            presetId: flags.preset,
+            source: flags.source,
+          });
+
+          console.log(JSON.stringify(scaffold, null, 2));
+        },
+      }),
       defineCommand({
         name: "list",
         description: "List configured targets.",
