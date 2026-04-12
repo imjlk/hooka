@@ -24,6 +24,10 @@ export interface RunTaskOptions {
   env?: Record<string, string | undefined>;
 }
 
+export type InstalledCapabilitiesLoader = (
+  manifestPath?: string,
+) => Promise<InstalledCapabilitiesManifest>;
+
 export function getMissingCapabilities(
   task: HookaTask,
   installedCapabilities: string[],
@@ -53,6 +57,34 @@ export async function loadInstalledCapabilities(
 
   const raw = await file.json();
   return installedCapabilitiesManifestSchema.parse(raw);
+}
+
+export function createInstalledCapabilitiesLoader(
+  cacheTtlMs = 0,
+): InstalledCapabilitiesLoader {
+  const cache = new Map<
+    string,
+    { expiresAt: number; manifest: InstalledCapabilitiesManifest }
+  >();
+
+  return async (manifestPath = getDefaultManifestPath()) => {
+    if (cacheTtlMs > 0) {
+      const now = Date.now();
+      const cached = cache.get(manifestPath);
+      if (cached && cached.expiresAt > now) {
+        return cached.manifest;
+      }
+
+      const manifest = await loadInstalledCapabilities(manifestPath);
+      cache.set(manifestPath, {
+        expiresAt: now + cacheTtlMs,
+        manifest,
+      });
+      return manifest;
+    }
+
+    return loadInstalledCapabilities(manifestPath);
+  };
 }
 
 function parseInstalledCapabilitiesOverride(): InstalledCapabilitiesManifest | null {

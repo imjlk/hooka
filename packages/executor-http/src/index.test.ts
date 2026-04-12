@@ -129,3 +129,49 @@ test("runHttpTask reports non-2xx responses as failed results", async () => {
     stdout: "bad gateway",
   });
 });
+
+test("runHttpTask reports timeout failures as retryable", async () => {
+  globalThis.fetch = ((input: string | URL | Request, init?: RequestInit) =>
+    new Promise((_resolve, reject) => {
+      void input;
+      const signal = init?.signal;
+      signal?.addEventListener("abort", () => {
+        reject(signal.reason);
+      });
+    })) as unknown as typeof fetch;
+
+  const timeoutTask = defineTask({
+    id: httpTask.id,
+    title: httpTask.title,
+    input: httpTask.input,
+    requires: httpTask.requires,
+    executor: {
+      kind: "http",
+      method: "POST",
+      timeoutMs: 5,
+      url: ({ input }) => `https://example.com/deploy/${input.project}`,
+      headers: ({ env }) => ({
+        authorization: `Bearer ${env["API_TOKEN"] ?? ""}`,
+      }),
+      body: ({ input }) => ({
+        project: input.project,
+      }),
+    },
+  });
+
+  const result = await runHttpTask(
+    timeoutTask,
+    {
+      project: "site-a",
+    },
+    false,
+  );
+
+  expect(result).toMatchObject({
+    ok: false,
+    status: "failed",
+    retryable: true,
+    errorCode: "http_timeout",
+    summary: "HTTP execution for test.http.task timed out after 5ms.",
+  });
+});

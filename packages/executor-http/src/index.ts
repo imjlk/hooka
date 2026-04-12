@@ -6,6 +6,8 @@ export interface RunHttpTaskOptions {
   env?: Record<string, string | undefined>;
 }
 
+export const defaultHttpTaskTimeoutMs = 30_000;
+
 export async function runHttpTask<TSchema extends TaskInputSchema>(
   task: HookaTask<TSchema>,
   input: z.output<TSchema>,
@@ -27,6 +29,7 @@ export async function runHttpTask<TSchema extends TaskInputSchema>(
   const url = executor.url(context);
   const headers = executor.headers?.(context) ?? {};
   const body = executor.body?.(context);
+  const timeoutMs = executor.timeoutMs ?? defaultHttpTaskTimeoutMs;
 
   if (dryRun) {
     return {
@@ -42,6 +45,7 @@ export async function runHttpTask<TSchema extends TaskInputSchema>(
 
   try {
     const response = await fetch(url, {
+      signal: AbortSignal.timeout(timeoutMs),
       method: executor.method,
       headers: {
         "content-type": "application/json",
@@ -62,14 +66,20 @@ export async function runHttpTask<TSchema extends TaskInputSchema>(
       stdout: text,
     };
   } catch (error) {
+    const timedOut =
+      error instanceof Error &&
+      (error.name === "TimeoutError" || error.name === "AbortError");
+
     return {
       taskId: task.id,
       ok: false,
       status: "failed",
       retryable: true,
-      errorCode: "http_request_failed",
+      errorCode: timedOut ? "http_timeout" : "http_request_failed",
       stderr: error instanceof Error ? error.message : String(error),
-      summary: `HTTP execution for ${task.id} failed.`,
+      summary: timedOut
+        ? `HTTP execution for ${task.id} timed out after ${timeoutMs}ms.`
+        : `HTTP execution for ${task.id} failed.`,
       durationMs: performance.now() - startedAt,
     };
   }

@@ -40,6 +40,9 @@ export interface ProcessNextRunOptions {
 export interface WorkerLoopOptions extends ProcessNextRunOptions {
   heartbeatIntervalMs?: number;
   logger?: Logger;
+  retentionAuditDays?: number;
+  retentionRunDays?: number;
+  retentionSweepIntervalHours?: number;
   shutdownSignal?: WorkerShutdownSignal;
   sleep?: (ms: number) => Promise<void>;
   pollIntervalMs?: number;
@@ -108,8 +111,14 @@ export async function startWorkerLoop(
   const pollIntervalMs = options.pollIntervalMs ?? defaultWorkerPollIntervalMs;
   const heartbeatIntervalMs =
     options.heartbeatIntervalMs ?? defaultWorkerHeartbeatIntervalMs;
+  const retentionRunDays = options.retentionRunDays ?? 30;
+  const retentionAuditDays = options.retentionAuditDays ?? 90;
+  const retentionSweepIntervalMs =
+    (options.retentionSweepIntervalHours ?? 24) * 60 * 60 * 1000;
   const sleepFn = options.sleep ?? sleep;
+  let consecutiveErrors = 0;
   let lastHeartbeatAt = 0;
+  let lastRetentionSweepAt = 0;
 
   while (!options.shutdownSignal?.isShutdownRequested()) {
     try {
@@ -124,7 +133,31 @@ export async function startWorkerLoop(
         lastHeartbeatAt = now;
       }
 
+      if (now - lastRetentionSweepAt >= retentionSweepIntervalMs) {
+        const cleanupResult = options.runStore.cleanupRetention({
+          runFinishedBefore: new Date(
+            now - retentionRunDays * 24 * 60 * 60 * 1000,
+          ).toISOString(),
+          auditCreatedBefore: new Date(
+            now - retentionAuditDays * 24 * 60 * 60 * 1000,
+          ).toISOString(),
+        });
+        lastRetentionSweepAt = now;
+
+        if (
+          cleanupResult.deletedRuns > 0 ||
+          cleanupResult.deletedRunEvents > 0 ||
+          cleanupResult.deletedAuditEvents > 0
+        ) {
+          options.logger?.info(
+            "Worker retention sweep completed",
+            cleanupResult,
+          );
+        }
+      }
+
       const processed = await processNextRun(options);
+      consecutiveErrors = 0;
 
       if (!processed && !options.shutdownSignal?.isShutdownRequested()) {
         await sleepFn(pollIntervalMs);
@@ -138,7 +171,10 @@ export async function startWorkerLoop(
         });
       }
       if (!options.shutdownSignal?.isShutdownRequested()) {
-        await sleepFn(pollIntervalMs);
+        consecutiveErrors += 1;
+        await sleepFn(
+          Math.min(1_000 * 2 ** Math.max(0, consecutiveErrors - 1), 30_000),
+        );
       }
     }
   }

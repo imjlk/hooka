@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { defineTask } from "@hooka/task-sdk";
 import { z } from "zod";
 import {
+  createInstalledCapabilitiesLoader,
   getDefaultManifestPath,
   loadInstalledCapabilities,
   runTask,
@@ -103,4 +104,38 @@ test("internal executor failures return failed task results", async () => {
   expect(result.status).toBe("failed");
   expect(result.summary).toBe("boom");
   expect(result.stderr).toBe("boom");
+});
+
+test("createInstalledCapabilitiesLoader caches manifests within the ttl", async () => {
+  const tempDir = join(
+    Bun.env["TMPDIR"] ?? "/tmp",
+    `hooka-runner-cache-${Date.now()}-${crypto.randomUUID()}`,
+  );
+  const manifestPath = getDefaultManifestPath(tempDir, {});
+
+  await Bun.$`mkdir -p ${join(tempDir, ".hooka")}`.quiet();
+  await Bun.write(
+    manifestPath,
+    JSON.stringify({
+      image: "hooka:test",
+      generatedAt: "2026-04-12T00:00:00.000Z",
+      installed: ["wrangler"],
+    }),
+  );
+
+  const loadCached = createInstalledCapabilitiesLoader(60_000);
+  const first = await loadCached(manifestPath);
+
+  await Bun.write(
+    manifestPath,
+    JSON.stringify({
+      image: "hooka:test",
+      generatedAt: "2026-04-12T00:00:01.000Z",
+      installed: ["wrangler", "wpcli"],
+    }),
+  );
+
+  const second = await loadCached(manifestPath);
+  expect(first.installed).toEqual(["wrangler"]);
+  expect(second.installed).toEqual(["wrangler"]);
 });

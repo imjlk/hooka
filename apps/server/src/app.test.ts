@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test";
 import { createTempDir, ensureDir } from "@hooka/bun-utils";
 import { createRunStore } from "@hooka/run-store";
-import { join } from "node:path";
 import { createHmac } from "node:crypto";
+import { join } from "node:path";
 import { createHookaFetchHandler } from "./app";
 
 async function createTestServerApp(
@@ -10,7 +10,11 @@ async function createTestServerApp(
     targets?: unknown[];
     trustProxy?: boolean;
     apiRateLimit?: number;
+    globalApiRateLimit?: number;
     webhookRateLimit?: number;
+    globalWebhookRateLimit?: number;
+    maxBodyBytes?: number;
+    corsOrigins?: string[];
   } = {},
 ) {
   const tempDir = await createTempDir("hooka-server-test");
@@ -44,7 +48,11 @@ async function createTestServerApp(
       adminToken: "admin-token",
       apiRateLimit: input.apiRateLimit ?? 120,
       capabilityManifestPath: manifestPath,
+      corsOrigins: input.corsOrigins ?? [],
       defaultMaxAttempts: 3,
+      globalApiRateLimit: input.globalApiRateLimit ?? 1_200,
+      globalWebhookRateLimit: input.globalWebhookRateLimit ?? 600,
+      maxBodyBytes: input.maxBodyBytes ?? 1_048_576,
       rateLimitWindowMs: 60_000,
       runStore,
       targetsPath,
@@ -111,6 +119,38 @@ test("admin API routes reject missing bearer tokens", async () => {
   app.runStore.close();
 });
 
+test("API routes reject payloads larger than the configured limit", async () => {
+  const app = await createTestServerApp({
+    maxBodyBytes: 32,
+  });
+  const response = await app.fetch(
+    new Request("http://hooka.local/api/runs", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...createAdminHeaders(),
+      },
+      body: JSON.stringify({
+        taskId: "deploy.shared-volume.wrangler",
+        input: {
+          kind: "pages-deploy",
+          project: "staging-site",
+          sourcePath: "/shared-source/simply-static",
+        },
+      }),
+    }),
+  );
+  const body = await response.json();
+
+  expect(response.status).toBe(413);
+  expect(body).toMatchObject({
+    ok: false,
+    error: "Payload too large.",
+  });
+
+  app.runStore.close();
+});
+
 test("health and readiness endpoints report server availability", async () => {
   const app = await createTestServerApp();
 
@@ -123,6 +163,60 @@ test("health and readiness endpoints report server availability", async () => {
   expect(readyResponse.status).toBe(200);
   expect((await healthResponse.json()).ok).toBe(true);
   expect((await readyResponse.json()).ok).toBe(true);
+
+  app.runStore.close();
+});
+
+test("openapi endpoint is public and exposes the machine-readable API spec", async () => {
+  const app = await createTestServerApp();
+  const response = await app.fetch(
+    new Request("http://hooka.local/api/openapi.json"),
+  );
+  const body = await response.json();
+
+  expect(response.status).toBe(200);
+  expect(body.openapi).toBe("3.1.0");
+  expect(body.paths["/api/events/ticket"]).toBeDefined();
+  expect(body.paths["/api/openapi.json"]).toBeDefined();
+
+  app.runStore.close();
+});
+
+test("event streams require a one-time ticket instead of the admin token query param", async () => {
+  const app = await createTestServerApp();
+
+  const ticketResponse = await app.fetch(
+    new Request("http://hooka.local/api/events/ticket", {
+      method: "POST",
+      headers: createAdminHeaders(),
+    }),
+  );
+  const { ticket } = (await ticketResponse.json()) as { ticket: string };
+  expect(ticketResponse.status).toBe(200);
+
+  const streamResponse = await app.fetch(
+    new Request(`http://hooka.local/api/events/stream?ticket=${ticket}`),
+  );
+  expect(streamResponse.status).toBe(200);
+  expect(streamResponse.headers.get("content-type")).toContain(
+    "text/event-stream",
+  );
+
+  const reader = streamResponse.body?.getReader();
+  const chunk = await reader?.read();
+  const text = chunk?.value ? new TextDecoder().decode(chunk.value) : "";
+  expect(text).toContain("event: ready");
+  await reader?.cancel();
+
+  const reusedResponse = await app.fetch(
+    new Request(`http://hooka.local/api/events/stream?ticket=${ticket}`),
+  );
+  expect(reusedResponse.status).toBe(401);
+
+  const queryTokenResponse = await app.fetch(
+    new Request("http://hooka.local/api/events/stream?token=admin-token"),
+  );
+  expect(queryTokenResponse.status).toBe(401);
 
   app.runStore.close();
 });
@@ -141,6 +235,118 @@ test("readiness endpoint returns 503 when the database is unavailable", async ()
     service: "hooka-server",
     error: "Database not ready.",
   });
+});
+
+test("unexpected server errors are masked from clients", async () => {
+  const app = await createTestServerApp();
+  const original = app.runStore.queryRuns.bind(app.runStore);
+  app.runStore.queryRuns = (() => {
+    throw new Error("top secret stack detail");
+  }) as typeof app.runStore.queryRuns;
+
+  const response = await app.fetch(
+    new Request("http://hooka.local/api/runs", {
+      headers: createAdminHeaders(),
+    }),
+  );
+  const body = await response.json();
+
+  expect(response.status).toBe(500);
+  expect(body).toMatchObject({
+    ok: false,
+    error: "Internal server error",
+  });
+
+  app.runStore.queryRuns = original;
+  app.runStore.close();
+});
+
+test("allowed CORS origins receive preflight and response headers", async () => {
+  const app = await createTestServerApp({
+    corsOrigins: ["https://admin.example.com"],
+  });
+
+  const preflight = await app.fetch(
+    new Request("http://hooka.local/api/runs", {
+      method: "OPTIONS",
+      headers: {
+        origin: "https://admin.example.com",
+        "access-control-request-method": "POST",
+      },
+    }),
+  );
+  expect(preflight.status).toBe(204);
+  expect(preflight.headers.get("access-control-allow-origin")).toBe(
+    "https://admin.example.com",
+  );
+
+  const response = await app.fetch(
+    new Request("http://hooka.local/api/summary", {
+      headers: {
+        ...createAdminHeaders(),
+        origin: "https://admin.example.com",
+      },
+    }),
+  );
+  expect(response.status).toBe(200);
+  expect(response.headers.get("access-control-allow-origin")).toBe(
+    "https://admin.example.com",
+  );
+  expect(response.headers.get("content-security-policy")).toContain(
+    "default-src 'self'",
+  );
+
+  app.runStore.close();
+});
+
+test("global API rate limits reject distributed request bursts", async () => {
+  const app = await createTestServerApp({
+    apiRateLimit: 10,
+    globalApiRateLimit: 2,
+  });
+
+  const first = await app.fetch(
+    new Request("http://hooka.local/api/summary", {
+      headers: {
+        ...createAdminHeaders(),
+        "x-real-ip": "198.51.100.1",
+        "user-agent": "agent-a",
+      },
+    }),
+  );
+  const second = await app.fetch(
+    new Request("http://hooka.local/api/summary", {
+      headers: {
+        ...createAdminHeaders(),
+        "x-real-ip": "198.51.100.2",
+        "user-agent": "agent-b",
+      },
+    }),
+  );
+  const third = await app.fetch(
+    new Request("http://hooka.local/api/summary", {
+      headers: {
+        ...createAdminHeaders(),
+        "x-real-ip": "198.51.100.3",
+        "user-agent": "agent-c",
+      },
+    }),
+  );
+
+  expect(first.status).toBe(200);
+  expect(second.status).toBe(200);
+  expect(third.status).toBe(429);
+
+  const auditEvents = app.runStore.listAuditEvents({ limit: 5 });
+  expect(auditEvents[0]).toMatchObject({
+    action: "rate_limit_rejected",
+    outcome: "rejected",
+  });
+  expect(auditEvents[0]?.context).toMatchObject({
+    scope: "global",
+  });
+
+  app.runStore.close();
 });
 
 test("signed simply static webhook is idempotent by event id", async () => {

@@ -8,6 +8,7 @@ import type {
   TargetPolicy,
   WorkerHeartbeat,
 } from "@hooka/contracts";
+import { auditEventSchema } from "@hooka/contracts";
 
 export interface RunRow {
   id: string;
@@ -122,17 +123,17 @@ export function toWorkerHeartbeat(row: WorkerHeartbeatRow): WorkerHeartbeat {
 }
 
 export function toAuditEvent(row: AuditEventRow): AuditEvent {
-  return {
+  return auditEventSchema.parse({
     sequence: row.sequence,
     createdAt: row.created_at,
-    category: row.category as AuditEventCategory,
+    category: row.category,
     action: row.action,
-    outcome: row.outcome as AuditEventOutcome,
+    outcome: row.outcome,
     subjectType: row.subject_type,
     subjectId: row.subject_id,
     clientIp: row.client_ip,
     requestPath: row.request_path,
     message: row.message,
     context: row.context_json ? JSON.parse(row.context_json) : undefined,
-  };
+  });
 }

@@ -46,6 +46,7 @@ const state: {
   auditFilters: AuditFilters;
   capabilities: Capability[];
   eventSource: EventSource | null;
+  eventSourceReconnectTimer: ReturnType<typeof setTimeout> | null;
   filters: RunFilters;
   presets: PresetWithPlan[];
   runs: RunSummary[];
@@ -62,6 +63,7 @@ const state: {
   },
   capabilities: [],
   eventSource: null,
+  eventSourceReconnectTimer: null,
   filters: {
     limit: 8,
   },
@@ -155,7 +157,7 @@ document.addEventListener("click", (event) => {
     state.adminToken = input.value.trim();
     localStorage.setItem(adminTokenStorageKey, state.adminToken);
     setAuthStatus();
-    connectEventStream();
+    void connectEventStream();
     void hydrate();
     return;
   }
@@ -165,7 +167,7 @@ document.addEventListener("click", (event) => {
     localStorage.removeItem(adminTokenStorageKey);
     applyAdminTokenValue();
     setAuthStatus();
-    connectEventStream();
+    void connectEventStream();
     void hydrate();
     return;
   }
@@ -223,7 +225,7 @@ document.addEventListener("change", (event) => {
 });
 
 void hydrate();
-connectEventStream();
+void connectEventStream();
 
 async function hydrate(): Promise<void> {
   try {
@@ -528,7 +530,12 @@ async function fetchJson<T>(input: string, init: RequestInit = {}): Promise<T> {
   return (await response.json()) as T;
 }
 
-function connectEventStream(): void {
+async function connectEventStream(): Promise<void> {
+  if (state.eventSourceReconnectTimer) {
+    clearTimeout(state.eventSourceReconnectTimer);
+    state.eventSourceReconnectTimer = null;
+  }
+
   state.eventSource?.close();
   state.eventSource = null;
 
@@ -536,15 +543,37 @@ function connectEventStream(): void {
     return;
   }
 
-  const token = encodeURIComponent(state.adminToken);
-  const stream = new EventSource(`/api/events/stream?token=${token}`);
-  stream.addEventListener("update", () => {
-    void hydrate();
-  });
-  stream.onerror = () => {
-    setAuthStatus("Live updates disconnected. Check admin token or refresh.");
-  };
-  state.eventSource = stream;
+  try {
+    const ticketResponse = await fetchJson<{
+      ticket: string;
+      expiresAt: string;
+    }>("/api/events/ticket", {
+      method: "POST",
+    });
+    const ticket = encodeURIComponent(ticketResponse.ticket);
+    const stream = new EventSource(`/api/events/stream?ticket=${ticket}`);
+    stream.addEventListener("update", () => {
+      void hydrate();
+    });
+    stream.onerror = () => {
+      stream.close();
+      state.eventSource = null;
+      setAuthStatus("Live updates disconnected. Retrying with a fresh ticket.");
+
+      if (!state.adminToken || state.eventSourceReconnectTimer) {
+        return;
+      }
+
+      state.eventSourceReconnectTimer = setTimeout(() => {
+        state.eventSourceReconnectTimer = null;
+        void connectEventStream();
+      }, 2_000);
+    };
+    state.eventSource = stream;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    setAuthStatus(`Live updates unavailable: ${message}`);
+  }
 }
 
 function buildAuditEventsPath(filters: AuditFilters): string {

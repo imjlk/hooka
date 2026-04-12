@@ -14,6 +14,11 @@ import { rename } from "node:fs/promises";
 import { join, normalize } from "node:path/posix";
 
 const targetWriteLocks = new Map<string, Promise<void>>();
+
+export class TargetNotFoundError extends Error {}
+export class TargetConflictError extends Error {}
+export class TargetValidationError extends Error {}
+
 export const targetScaffoldTemplateIds = [
   "shared-volume-pages",
   "cache-purge-urls",
@@ -144,7 +149,7 @@ export async function createTarget(
     const parsed = targetSchema.parse(target);
 
     if (file.targets.some((candidate) => candidate.id === parsed.id)) {
-      throw new Error(`Target already exists: ${parsed.id}`);
+      throw new TargetConflictError(`Target already exists: ${parsed.id}`);
     }
 
     const nextTargets = [...file.targets, parsed];
@@ -163,7 +168,7 @@ export async function updateTarget(
     const parsed = targetSchema.parse(target);
 
     if (parsed.id !== targetId) {
-      throw new Error(
+      throw new TargetValidationError(
         `Target id mismatch: path id ${targetId} does not match body id ${parsed.id}.`,
       );
     }
@@ -173,7 +178,7 @@ export async function updateTarget(
     );
 
     if (index < 0) {
-      throw new Error(`Target not found: ${targetId}`);
+      throw new TargetNotFoundError(`Target not found: ${targetId}`);
     }
 
     const nextTargets = [...file.targets];
@@ -192,7 +197,7 @@ export async function deleteTarget(
     const nextTargets = file.targets.filter((target) => target.id !== targetId);
 
     if (nextTargets.length === file.targets.length) {
-      throw new Error(`Target not found: ${targetId}`);
+      throw new TargetNotFoundError(`Target not found: ${targetId}`);
     }
 
     await writeTargetsFile(targetsPath, nextTargets);

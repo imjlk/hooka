@@ -25,6 +25,12 @@ export interface ConfigReport {
   rateLimitWindowMs: number;
   apiRateLimit: number;
   webhookRateLimit: number;
+  globalApiRateLimit: number;
+  globalWebhookRateLimit: number;
+  corsOrigins: string[];
+  maxBodyBytes: number;
+  retentionRunDays: number;
+  retentionAuditDays: number;
   uiPort: number;
   uiApiOrigin: string;
   statusUrl: string;
@@ -70,6 +76,12 @@ export async function collectConfigReport(
     rateLimitWindowMs: serverConfig.rateLimitWindowMs,
     apiRateLimit: serverConfig.apiRateLimit,
     webhookRateLimit: serverConfig.webhookRateLimit,
+    globalApiRateLimit: serverConfig.globalApiRateLimit,
+    globalWebhookRateLimit: serverConfig.globalWebhookRateLimit,
+    corsOrigins: serverConfig.corsOrigins,
+    maxBodyBytes: serverConfig.maxBodyBytes,
+    retentionRunDays: cliConfig.retentionRunDays,
+    retentionAuditDays: cliConfig.retentionAuditDays,
     uiPort: uiConfig.uiPort,
     uiApiOrigin: uiConfig.apiOrigin,
     statusUrl: `http://127.0.0.1:${serverConfig.port}`,
@@ -112,7 +124,14 @@ export function createConfigCommand() {
       console.log(`Targets: ${report.targets.join(", ") || "(none)"}`);
       console.log(`Trust Proxy: ${report.trustProxy ? "enabled" : "disabled"}`);
       console.log(
-        `Rate Limits: api=${report.apiRateLimit}, webhook=${report.webhookRateLimit}, window=${report.rateLimitWindowMs}ms`,
+        `Rate Limits: api=${report.apiRateLimit}, webhook=${report.webhookRateLimit}, globalApi=${report.globalApiRateLimit}, globalWebhook=${report.globalWebhookRateLimit}, window=${report.rateLimitWindowMs}ms`,
+      );
+      console.log(
+        `CORS Origins: ${report.corsOrigins.join(", ") || "(same-origin only)"}`,
+      );
+      console.log(`Max Body Bytes: ${report.maxBodyBytes}`);
+      console.log(
+        `Retention: runs=${report.retentionRunDays}d, audit=${report.retentionAuditDays}d`,
       );
       console.log(
         `UI: http://127.0.0.1:${report.uiPort} -> ${report.uiApiOrigin}`,

@@ -3,6 +3,7 @@ import type {
   EnqueueRunRequest,
   GenericTaskWebhook,
   IncomingTaskWebhook,
+  InstalledCapabilitiesManifest,
   TargetPolicy,
 } from "@hooka/contracts";
 import {
@@ -30,6 +31,9 @@ import {
   deleteTarget,
   loadTargets,
   resolveTargetWebhook,
+  TargetConflictError,
+  TargetNotFoundError,
+  TargetValidationError,
   updateTarget,
 } from "@hooka/targets";
 import { extname, resolve } from "node:path";
@@ -44,13 +48,21 @@ import {
   parseIncomingTaskWebhook,
   verifyHookaHmacSignature,
 } from "./lib/webhooks";
+import { createOpenApiDocument } from "./lib/openapi";
 
 export interface HookaServerAppOptions {
   adminToken?: string;
   apiRateLimit: number;
   capabilityManifestPath: string;
+  corsOrigins: string[];
   defaultMaxAttempts: number;
+  globalApiRateLimit: number;
+  globalWebhookRateLimit: number;
   logger?: Logger;
+  loadCapabilities?: (
+    manifestPath?: string,
+  ) => Promise<InstalledCapabilitiesManifest>;
+  maxBodyBytes: number;
   rateLimitWindowMs: number;
   runStore: RunStore;
   targetsPath: string;
@@ -61,6 +73,7 @@ export interface HookaServerAppOptions {
 }
 
 class NotFoundError extends Error {}
+class PayloadTooLargeError extends Error {}
 
 type RouteHandler = (
   request: Request,
@@ -74,7 +87,6 @@ interface EnqueueMetadata {
 }
 
 export function createHookaFetchHandler(options: HookaServerAppOptions) {
-  const exactRoutes = createExactRoutes(options);
   const apiRateLimiter = new InMemoryRateLimiter({
     limit: options.apiRateLimit,
     windowMs: options.rateLimitWindowMs,
@@ -83,25 +95,54 @@ export function createHookaFetchHandler(options: HookaServerAppOptions) {
     limit: options.webhookRateLimit,
     windowMs: options.rateLimitWindowMs,
   });
+  const globalApiRateLimiter = new InMemoryRateLimiter({
+    limit: options.globalApiRateLimit,
+    windowMs: options.rateLimitWindowMs,
+  });
+  const globalWebhookRateLimiter = new InMemoryRateLimiter({
+    limit: options.globalWebhookRateLimit,
+    windowMs: options.rateLimitWindowMs,
+  });
+  const eventStreamTickets = new Map<string, number>();
+  const exactRoutes = createExactRoutes(options, eventStreamTickets);
 
   return async function fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
+    const respond = (response: Response): Response => {
+      return applyCorsHeaders(
+        request,
+        url.pathname,
+        response,
+        options.corsOrigins,
+      );
+    };
 
     try {
+      const corsPreflight = createCorsPreflightResponse(
+        request,
+        url.pathname,
+        options.corsOrigins,
+      );
+      if (corsPreflight) {
+        return respond(corsPreflight);
+      }
+
       if (url.pathname.startsWith("/api/")) {
         const rateLimitResponse = checkRateLimit(
           options,
           request,
           apiRateLimiter,
           webhookRateLimiter,
+          globalApiRateLimiter,
+          globalWebhookRateLimiter,
         );
         if (rateLimitResponse) {
-          return rateLimitResponse;
+          return respond(rateLimitResponse);
         }
 
         const authResponse = requireAdminAuth(options, request, url.pathname);
         if (authResponse) {
-          return authResponse;
+          return respond(authResponse);
         }
       }
 
@@ -109,12 +150,12 @@ export function createHookaFetchHandler(options: HookaServerAppOptions) {
         routeKey(request.method, url.pathname),
       );
       if (exactHandler) {
-        return await exactHandler(request, url);
+        return respond(await exactHandler(request, url));
       }
 
       const retryRunId = matchRunRetryRoute(request.method, url.pathname);
       if (retryRunId) {
-        return retryRun(options, retryRunId);
+        return respond(await retryRun(options, retryRunId));
       }
 
       const runId = matchRunIdRoute(request.method, url.pathname);
@@ -122,16 +163,18 @@ export function createHookaFetchHandler(options: HookaServerAppOptions) {
         const run = options.runStore.getRun(runId);
 
         if (!run) {
-          return json(
-            {
-              ok: false,
-              error: `Run not found: ${runId}`,
-            },
-            404,
+          return respond(
+            json(
+              {
+                ok: false,
+                error: `Run not found: ${runId}`,
+              },
+              404,
+            ),
           );
         }
 
-        return json(run);
+        return respond(json(run));
       }
 
       const targetDetailId = matchTargetDetailRoute(
@@ -139,7 +182,7 @@ export function createHookaFetchHandler(options: HookaServerAppOptions) {
         url.pathname,
       );
       if (targetDetailId) {
-        return handleTargetDetail(options, targetDetailId);
+        return respond(await handleTargetDetail(options, targetDetailId));
       }
 
       const targetUpdateId = matchTargetUpdateRoute(
@@ -147,7 +190,9 @@ export function createHookaFetchHandler(options: HookaServerAppOptions) {
         url.pathname,
       );
       if (targetUpdateId) {
-        return handleTargetUpdate(options, request, targetUpdateId);
+        return respond(
+          await handleTargetUpdate(options, request, targetUpdateId),
+        );
       }
 
       const targetDeleteId = matchTargetDeleteRoute(
@@ -155,13 +200,16 @@ export function createHookaFetchHandler(options: HookaServerAppOptions) {
         url.pathname,
       );
       if (targetDeleteId) {
-        return handleTargetDelete(options, request, targetDeleteId);
+        return respond(
+          await handleTargetDelete(options, request, targetDeleteId),
+        );
       }
 
-      return serveUi(url.pathname, options.uiDistDir);
+      return respond(await serveUi(url.pathname, options.uiDistDir));
     } catch (error) {
       if (
         !(error instanceof NotFoundError) &&
+        !(error instanceof PayloadTooLargeError) &&
         !(error instanceof ZodError) &&
         !(error instanceof SyntaxError)
       ) {
@@ -179,16 +227,26 @@ export function createHookaFetchHandler(options: HookaServerAppOptions) {
         }
       }
 
-      return json(
-        {
-          ok: false,
-          error: error instanceof Error ? error.message : String(error),
-        },
-        error instanceof NotFoundError
-          ? 404
-          : error instanceof ZodError || error instanceof SyntaxError
-            ? 400
-            : 500,
+      return respond(
+        json(
+          {
+            ok: false,
+            error:
+              error instanceof NotFoundError ||
+              error instanceof PayloadTooLargeError ||
+              error instanceof ZodError ||
+              error instanceof SyntaxError
+                ? error.message
+                : "Internal server error",
+          },
+          error instanceof NotFoundError
+            ? 404
+            : error instanceof PayloadTooLargeError
+              ? 413
+              : error instanceof ZodError || error instanceof SyntaxError
+                ? 400
+                : 500,
+        ),
       );
     }
   };
@@ -196,6 +254,7 @@ export function createHookaFetchHandler(options: HookaServerAppOptions) {
 
 function createExactRoutes(
   options: HookaServerAppOptions,
+  eventStreamTickets: Map<string, number>,
 ): Map<string, RouteHandler> {
   const routes = new Map<string, RouteHandler>([
     [
@@ -207,6 +266,7 @@ function createExactRoutes(
         }),
     ],
     [routeKey("GET", "/api/ready"), () => checkReadiness(options)],
+    [routeKey("GET", "/api/openapi.json"), () => json(createOpenApiDocument())],
     [routeKey("GET", "/api/tasks"), () => json(listTasks())],
     [routeKey("GET", "/api/capabilities"), () => json(listCapabilities())],
     [
@@ -222,9 +282,7 @@ function createExactRoutes(
     [
       routeKey("GET", "/api/summary"),
       async () => {
-        const manifest = await loadInstalledCapabilities(
-          options.capabilityManifestPath,
-        );
+        const manifest = await getInstalledCapabilities(options);
         return json(
           createRegistrySummary(
             manifest.installed,
@@ -255,7 +313,9 @@ function createExactRoutes(
     [
       routeKey("POST", "/api/runs"),
       async (request) => {
-        const payload = enqueueRunRequestSchema.parse(await request.json());
+        const payload = enqueueRunRequestSchema.parse(
+          await readJsonBody(request, options.maxBodyBytes),
+        );
         return handleGenericEnqueue(options, payload);
       },
     ],
@@ -269,13 +329,18 @@ function createExactRoutes(
       async (request) => handleTargetCreate(options, request),
     ],
     [
+      routeKey("POST", "/api/events/ticket"),
+      () => createEventStreamTicketResponse(eventStreamTickets),
+    ],
+    [
       routeKey("GET", "/api/events/stream"),
-      (request) => createEventStreamResponse(options, request),
+      (request, url) =>
+        createEventStreamResponse(options, request, url, eventStreamTickets),
     ],
     [
       routeKey("POST", "/api/webhooks/task"),
       async (request) => {
-        const rawBody = await request.text();
+        const rawBody = await readTextBody(request, options.maxBodyBytes);
         return handleSignedIncomingWebhook(options, request, rawBody);
       },
     ],
@@ -283,7 +348,7 @@ function createExactRoutes(
 
   for (const adapter of listWebhookAdapters()) {
     routes.set(routeKey("POST", adapter.routePath), async (request) => {
-      const rawBody = await request.text();
+      const rawBody = await readTextBody(request, options.maxBodyBytes);
       return handleCompatibilityWebhook(options, request, rawBody, adapter);
     });
   }
@@ -525,7 +590,9 @@ async function handleTargetCreate(
   options: HookaServerAppOptions,
   request: Request,
 ): Promise<Response> {
-  const target = targetSchema.parse(await request.json());
+  const target = targetSchema.parse(
+    await readJsonBody(request, options.maxBodyBytes),
+  );
 
   try {
     await createTarget(options.targetsPath, target);
@@ -558,7 +625,9 @@ async function handleTargetUpdate(
   request: Request,
   targetId: string,
 ): Promise<Response> {
-  const target = targetSchema.parse(await request.json());
+  const target = targetSchema.parse(
+    await readJsonBody(request, options.maxBodyBytes),
+  );
 
   try {
     await updateTarget(options.targetsPath, targetId, target);
@@ -647,9 +716,7 @@ async function retryRun(
     );
   }
 
-  const manifest = await loadInstalledCapabilities(
-    options.capabilityManifestPath,
-  );
+  const manifest = await getInstalledCapabilities(options);
   const queued = options.runStore.enqueueRun({
     taskId: run.taskId,
     input: run.payload,
@@ -673,9 +740,7 @@ async function enqueueRun(
     throw new NotFoundError(`Task not found: ${payload.taskId}`);
   }
 
-  const manifest = await loadInstalledCapabilities(
-    options.capabilityManifestPath,
-  );
+  const manifest = await getInstalledCapabilities(options);
   const parsedInput = task.input.parse(payload.input ?? {});
   const queued = options.runStore.enqueueRun({
     taskId: task.id,
@@ -694,16 +759,60 @@ async function enqueueRun(
   };
 }
 
+async function getInstalledCapabilities(
+  options: HookaServerAppOptions,
+): Promise<InstalledCapabilitiesManifest> {
+  return (options.loadCapabilities ?? loadInstalledCapabilities)(
+    options.capabilityManifestPath,
+  );
+}
+
 function createEventStreamResponse(
   options: HookaServerAppOptions,
   request: Request,
+  url: URL,
+  eventStreamTickets: Map<string, number>,
 ): Response {
+  const ticket = url.searchParams.get("ticket");
+  if (!consumeEventStreamTicket(eventStreamTickets, ticket)) {
+    appendAuditEvent(options, {
+      category: "security",
+      action: "event_stream_ticket_rejected",
+      outcome: "rejected",
+      subjectType: "request",
+      request,
+      message: "Missing or invalid event stream ticket.",
+    });
+    options.logger?.warn("Event stream ticket rejected", {
+      pathname: url.pathname,
+    });
+    return json(
+      {
+        ok: false,
+        error: "Missing or invalid event stream ticket.",
+      },
+      401,
+    );
+  }
+
   const encoder = new TextEncoder();
   let interval: ReturnType<typeof setInterval> | undefined;
+  let cleanedUp = false;
   let lastSequence = options.runStore.getLastRunEventSequence();
   let lastAuditSequence = options.runStore.getLastAuditEventSequence();
   let lastWorkerSeenAt =
     options.runStore.listWorkerHeartbeats()[0]?.lastSeenAt ?? null;
+
+  function cleanup(): void {
+    if (cleanedUp) {
+      return;
+    }
+
+    cleanedUp = true;
+    if (interval) {
+      clearInterval(interval);
+    }
+  }
 
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
@@ -741,16 +850,12 @@ function createEventStreamResponse(
       }, 1_000);
     },
     cancel() {
-      if (interval) {
-        clearInterval(interval);
-      }
+      cleanup();
     },
   });
 
   request.signal.addEventListener("abort", () => {
-    if (interval) {
-      clearInterval(interval);
-    }
+    cleanup();
   });
 
   return new Response(stream, {
@@ -759,6 +864,22 @@ function createEventStreamResponse(
       connection: "keep-alive",
       "content-type": "text/event-stream; charset=utf-8",
     }),
+  });
+}
+
+function createEventStreamTicketResponse(
+  eventStreamTickets: Map<string, number>,
+): Response {
+  const issuedAt = Date.now();
+  sweepExpiredEventStreamTickets(eventStreamTickets, issuedAt);
+
+  const ticket = crypto.randomUUID();
+  const expiresAt = issuedAt + 30_000;
+  eventStreamTickets.set(ticket, expiresAt);
+
+  return json({
+    ticket,
+    expiresAt: new Date(expiresAt).toISOString(),
   });
 }
 
@@ -771,6 +892,33 @@ function writeSseEvent(
   controller.enqueue(
     encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`),
   );
+}
+
+async function readJsonBody(
+  request: Request,
+  maxBodyBytes: number,
+): Promise<unknown> {
+  return JSON.parse(await readTextBody(request, maxBodyBytes));
+}
+
+async function readTextBody(
+  request: Request,
+  maxBodyBytes: number,
+): Promise<string> {
+  const contentLength = request.headers.get("content-length");
+  if (contentLength) {
+    const parsedLength = Number(contentLength);
+    if (Number.isFinite(parsedLength) && parsedLength > maxBodyBytes) {
+      throw new PayloadTooLargeError("Payload too large.");
+    }
+  }
+
+  const body = await request.text();
+  if (new TextEncoder().encode(body).byteLength > maxBodyBytes) {
+    throw new PayloadTooLargeError("Payload too large.");
+  }
+
+  return body;
 }
 
 function requireAdminAuth(
@@ -786,11 +934,11 @@ function requireAdminAuth(
     return null;
   }
 
-  if (
-    isAuthorizedAdminRequest(request, options.adminToken, {
-      allowQueryToken: pathname === "/api/events/stream",
-    })
-  ) {
+  if (pathname === "/api/events/stream") {
+    return null;
+  }
+
+  if (isAuthorizedAdminRequest(request, options.adminToken)) {
     return null;
   }
 
@@ -819,6 +967,8 @@ function checkRateLimit(
   request: Request,
   apiRateLimiter: InMemoryRateLimiter,
   webhookRateLimiter: InMemoryRateLimiter,
+  globalApiRateLimiter: InMemoryRateLimiter,
+  globalWebhookRateLimiter: InMemoryRateLimiter,
 ): Response | null {
   const pathname = new URL(request.url).pathname;
 
@@ -831,7 +981,13 @@ function checkRateLimit(
   });
   const rateLimiter =
     context.bucket === "webhook" ? webhookRateLimiter : apiRateLimiter;
-  const decision = rateLimiter.check(context.key);
+  const globalRateLimiter =
+    context.bucket === "webhook"
+      ? globalWebhookRateLimiter
+      : globalApiRateLimiter;
+  const clientDecision = rateLimiter.check(context.clientKey);
+  const globalDecision = globalRateLimiter.check(context.globalKey);
+  const decision = clientDecision.ok ? globalDecision : clientDecision;
 
   if (decision.ok) {
     return null;
@@ -842,12 +998,13 @@ function checkRateLimit(
     action: "rate_limit_rejected",
     outcome: "rejected",
     subjectType: context.bucket,
-    subjectId: context.key,
+    subjectId: decision.key,
     clientIp: context.clientIp,
     requestPath: context.pathname,
     message: "Rate limit exceeded.",
     context: {
       bucket: context.bucket,
+      scope: clientDecision.ok ? "global" : "client",
       retryAfterSeconds: decision.retryAfterSeconds,
     },
   });
@@ -856,6 +1013,7 @@ function checkRateLimit(
     clientIp: context.clientIp,
     bucket: context.bucket,
     key: decision.key,
+    scope: clientDecision.ok ? "global" : "client",
     retryAfterSeconds: decision.retryAfterSeconds,
   });
 
@@ -882,6 +1040,67 @@ function json(
       "content-type": "application/json; charset=utf-8",
       ...headersInit,
     }),
+  });
+}
+
+function createCorsPreflightResponse(
+  request: Request,
+  pathname: string,
+  corsOrigins: string[],
+): Response | null {
+  if (
+    request.method.toUpperCase() !== "OPTIONS" ||
+    !pathname.startsWith("/api/")
+  ) {
+    return null;
+  }
+
+  const origin = request.headers.get("origin");
+  if (!origin || !corsOrigins.includes(origin)) {
+    return json(
+      {
+        ok: false,
+        error: "CORS origin not allowed.",
+      },
+      403,
+    );
+  }
+
+  return new Response(null, {
+    status: 204,
+    headers: withSecurityHeaders({
+      "access-control-allow-origin": origin,
+      "access-control-allow-methods": "GET,POST,PUT,DELETE,OPTIONS",
+      "access-control-allow-headers": "authorization,content-type",
+      "access-control-max-age": "600",
+      vary: "origin",
+    }),
+  });
+}
+
+function applyCorsHeaders(
+  request: Request,
+  pathname: string,
+  response: Response,
+  corsOrigins: string[],
+): Response {
+  if (!pathname.startsWith("/api/")) {
+    return response;
+  }
+
+  const origin = request.headers.get("origin");
+  if (!origin || !corsOrigins.includes(origin)) {
+    return response;
+  }
+
+  const headers = new Headers(response.headers);
+  headers.set("access-control-allow-origin", origin);
+  headers.set("vary", "origin");
+
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
   });
 }
 
@@ -989,6 +1208,10 @@ function withSecurityHeaders(input: HeadersInit = {}): Headers {
   headers.set("x-content-type-options", "nosniff");
   headers.set("x-frame-options", "DENY");
   headers.set("referrer-policy", "no-referrer");
+  headers.set(
+    "content-security-policy",
+    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'",
+  );
   return headers;
 }
 
@@ -1034,12 +1257,44 @@ function handleTargetWriteError(error: unknown): Response {
       ok: false,
       error: message,
     },
-    message.startsWith("Target not found:")
+    error instanceof TargetNotFoundError
       ? 404
-      : message.startsWith("Target already exists:")
+      : error instanceof TargetConflictError
         ? 409
-        : message.startsWith("Target id mismatch:")
+        : error instanceof TargetValidationError
           ? 409
           : 400,
   );
+}
+
+function sweepExpiredEventStreamTickets(
+  eventStreamTickets: Map<string, number>,
+  nowMs: number,
+): void {
+  for (const [ticket, expiresAt] of eventStreamTickets.entries()) {
+    if (expiresAt <= nowMs) {
+      eventStreamTickets.delete(ticket);
+    }
+  }
+}
+
+function consumeEventStreamTicket(
+  eventStreamTickets: Map<string, number>,
+  ticket: string | null,
+  nowMs = Date.now(),
+): boolean {
+  sweepExpiredEventStreamTickets(eventStreamTickets, nowMs);
+
+  if (!ticket) {
+    return false;
+  }
+
+  const expiresAt = eventStreamTickets.get(ticket);
+  if (!expiresAt || expiresAt <= nowMs) {
+    eventStreamTickets.delete(ticket);
+    return false;
+  }
+
+  eventStreamTickets.delete(ticket);
+  return true;
 }

@@ -39,6 +39,12 @@ import type {
 import { initializeRunStoreSchema } from "./schema";
 
 export const defaultHookaDbPath = "/data/hooka.sqlite";
+const terminalRunStatuses = [
+  "succeeded",
+  "failed",
+  "dead-lettered",
+  "skipped",
+] as const;
 
 export class RunStore {
   readonly db: Database;
@@ -278,64 +284,70 @@ export class RunStore {
   }
 
   claimNextQueuedRun(workerId: string, leaseMs: number): ClaimedRun | null {
-    const now = this.timestamp();
-    const queued = this.db
-      .query(
-        `select id from runs
-         where status = 'queued'
-           and (next_retry_at is null or next_retry_at <= ?)
-         order by queued_at asc, created_at asc
-         limit 1`,
-      )
-      .get(now) as { id: string } | null;
+    return this.withBusyRetry(() => {
+      for (let attempt = 0; attempt < 10; attempt += 1) {
+        const now = this.timestamp();
+        const queued = this.db
+          .query(
+            `select id from runs
+             where status = 'queued'
+               and (next_retry_at is null or next_retry_at <= ?)
+             order by queued_at asc, created_at asc
+             limit 1`,
+          )
+          .get(now) as { id: string } | null;
 
-    if (!queued) {
+        if (!queued) {
+          return null;
+        }
+
+        const startedAt = this.timestamp();
+        const leaseExpiresAt = new Date(
+          this.now().getTime() + leaseMs,
+        ).toISOString();
+        const changes = this.db
+          .query(
+            `update runs
+             set status = 'running',
+                 worker_id = ?,
+                 started_at = ?,
+                 lease_expires_at = ?,
+                 next_retry_at = null
+             where id = ?
+               and status = 'queued'`,
+          )
+          .run(workerId, startedAt, leaseExpiresAt, queued.id).changes;
+
+        if (changes === 0) {
+          continue;
+        }
+
+        this.insertEvent(
+          queued.id,
+          "started",
+          `Worker ${workerId} started execution.`,
+          {
+            workerId,
+            leaseExpiresAt,
+          },
+        );
+
+        const claimed = this.requireRunRow(queued.id);
+        return {
+          id: claimed.id,
+          taskId: claimed.task_id,
+          targetId: claimed.target_id,
+          payload: JSON.parse(claimed.payload_json),
+          attemptCount: claimed.attempt_count,
+          maxAttempts: claimed.max_attempts,
+          targetPolicy: claimed.target_policy_json
+            ? JSON.parse(claimed.target_policy_json)
+            : null,
+        };
+      }
+
       return null;
-    }
-
-    const startedAt = this.timestamp();
-    const leaseExpiresAt = new Date(
-      this.now().getTime() + leaseMs,
-    ).toISOString();
-    const changes = this.db
-      .query(
-        `update runs
-         set status = 'running',
-             worker_id = ?,
-             started_at = ?,
-             lease_expires_at = ?,
-             next_retry_at = null
-         where id = ?
-           and status = 'queued'`,
-      )
-      .run(workerId, startedAt, leaseExpiresAt, queued.id).changes;
-
-    if (changes === 0) {
-      return this.claimNextQueuedRun(workerId, leaseMs);
-    }
-
-    this.insertEvent(
-      queued.id,
-      "started",
-      `Worker ${workerId} started execution.`,
-      {
-        workerId,
-        leaseExpiresAt,
-      },
-    );
-
-    const claimed = this.requireRunRow(queued.id);
-    return {
-      id: claimed.id,
-      taskId: claimed.task_id,
-      targetId: claimed.target_id,
-      payload: JSON.parse(claimed.payload_json),
-      attemptCount: claimed.attempt_count,
-      maxAttempts: claimed.max_attempts,
-      targetPolicy: claimed.target_policy_json
-        ? JSON.parse(claimed.target_policy_json)
-        : null,
-    };
+    });
   }
 
   finishRun(
@@ -494,8 +506,10 @@ export class RunStore {
     message: string,
     data?: unknown,
   ): RunEvent {
-    this.insertEvent(runId, type, message, data);
-    return this.requireEvent(runId);
+    return this.withBusyRetry(() => {
+      this.insertEvent(runId, type, message, data);
+      return this.requireEvent(runId);
+    });
   }
 
   upsertWorkerHeartbeat(input: {
@@ -505,30 +519,32 @@ export class RunStore {
     currentRunId?: string | null;
   }): WorkerHeartbeat {
     const lastSeenAt = this.timestamp();
-    this.db
-      .query(
-        `insert into worker_heartbeats (
-          worker_id,
-          runtime_role,
-          installed_capabilities_json,
-          last_seen_at,
-          current_run_id
-        ) values (?, ?, ?, ?, ?)
-        on conflict(worker_id) do update set
-          runtime_role = excluded.runtime_role,
-          installed_capabilities_json = excluded.installed_capabilities_json,
-          last_seen_at = excluded.last_seen_at,
-          current_run_id = excluded.current_run_id`,
-      )
-      .run(
-        input.workerId,
-        input.runtimeRole,
-        JSON.stringify(input.installedCapabilities),
-        lastSeenAt,
-        input.currentRunId ?? null,
-      );
+    return this.withBusyRetry(() => {
+      this.db
+        .query(
+          `insert into worker_heartbeats (
+            worker_id,
+            runtime_role,
+            installed_capabilities_json,
+            last_seen_at,
+            current_run_id
+          ) values (?, ?, ?, ?, ?)
+          on conflict(worker_id) do update set
+            runtime_role = excluded.runtime_role,
+            installed_capabilities_json = excluded.installed_capabilities_json,
+            last_seen_at = excluded.last_seen_at,
+            current_run_id = excluded.current_run_id`,
+        )
+        .run(
+          input.workerId,
+          input.runtimeRole,
+          JSON.stringify(input.installedCapabilities),
+          lastSeenAt,
+          input.currentRunId ?? null,
+        );
 
-    return this.requireWorkerHeartbeat(input.workerId);
+      return this.requireWorkerHeartbeat(input.workerId);
+    });
   }
 
   listWorkerHeartbeats(): WorkerHeartbeat[] {
@@ -553,35 +569,37 @@ export class RunStore {
     message: string;
     context?: unknown;
   }): AuditEvent {
-    this.db
-      .query(
-        `insert into audit_events (
-          created_at,
-          category,
-          action,
-          outcome,
-          subject_type,
-          subject_id,
-          client_ip,
-          request_path,
-          message,
-          context_json
-        ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .run(
-        this.timestamp(),
-        input.category,
-        input.action,
-        input.outcome,
-        input.subjectType,
-        input.subjectId ?? null,
-        input.clientIp ?? null,
-        input.requestPath ?? null,
-        input.message,
-        input.context === undefined ? null : JSON.stringify(input.context),
-      );
+    return this.withBusyRetry(() => {
+      const result = this.db
+        .query(
+          `insert into audit_events (
+            created_at,
+            category,
+            action,
+            outcome,
+            subject_type,
+            subject_id,
+            client_ip,
+            request_path,
+            message,
+            context_json
+          ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          this.timestamp(),
+          input.category,
+          input.action,
+          input.outcome,
+          input.subjectType,
+          input.subjectId ?? null,
+          input.clientIp ?? null,
+          input.requestPath ?? null,
+          input.message,
+          input.context === undefined ? null : JSON.stringify(input.context),
+        );
 
-    return this.requireAuditEvent();
+      return this.requireAuditEvent(Number(result.lastInsertRowid));
+    });
   }
 
   listAuditEvents(filters: AuditEventFilters = {}): AuditEvent[] {
@@ -633,6 +651,70 @@ export class RunStore {
       .get() as { value: number | null };
 
     return row.value ?? 0;
+  }
+
+  cleanupRetention(input: {
+    runFinishedBefore?: string;
+    auditCreatedBefore?: string;
+    vacuum?: boolean;
+  }): {
+    deletedRuns: number;
+    deletedRunEvents: number;
+    deletedAuditEvents: number;
+  } {
+    const result = this.withTransaction(() => {
+      let deletedRuns = 0;
+      let deletedRunEvents = 0;
+      let deletedAuditEvents = 0;
+
+      if (input.runFinishedBefore) {
+        deletedRunEvents = this.db
+          .query(
+            `delete from run_events
+             where run_id in (
+               select id from runs
+               where status in (${terminalRunStatuses.map(() => "?").join(", ")})
+                 and finished_at is not null
+                 and finished_at < ?
+             )`,
+          )
+          .run(...terminalRunStatuses, input.runFinishedBefore).changes;
+
+        deletedRuns = this.db
+          .query(
+            `delete from runs
+             where status in (${terminalRunStatuses.map(() => "?").join(", ")})
+               and finished_at is not null
+               and finished_at < ?`,
+          )
+          .run(...terminalRunStatuses, input.runFinishedBefore).changes;
+      }
+
+      if (input.auditCreatedBefore) {
+        deletedAuditEvents = this.db
+          .query(`delete from audit_events where created_at < ?`)
+          .run(input.auditCreatedBefore).changes;
+      }
+
+      return {
+        deletedRuns,
+        deletedRunEvents,
+        deletedAuditEvents,
+      };
+    });
+
+    if (
+      input.vacuum &&
+      (result.deletedRuns > 0 ||
+        result.deletedRunEvents > 0 ||
+        result.deletedAuditEvents > 0)
+    ) {
+      this.withBusyRetry(() => {
+        this.db.exec("vacuum");
+      });
+    }
+
+    return result;
   }
 
   listRunEventsSince(
@@ -752,17 +834,17 @@ export class RunStore {
     return toWorkerHeartbeat(row);
   }
 
-  private requireAuditEvent(): AuditEvent {
+  private requireAuditEvent(sequence: number): AuditEvent {
     const row = this.db
       .query(
         `select * from audit_events
-         order by sequence desc
+         where sequence = ?
          limit 1`,
       )
-      .get() as AuditEventRow | null;
+      .get(sequence) as AuditEventRow | null;
 
     if (!row) {
-      throw new Error("Audit event not found after write.");
+      throw new Error(`Audit event not found after write: ${sequence}`);
     }
 
     return toAuditEvent(row);
@@ -773,16 +855,45 @@ export class RunStore {
   }
 
   private withTransaction<T>(callback: () => T): T {
-    this.db.exec("begin immediate");
-    try {
-      const result = callback();
-      this.db.exec("commit");
-      return result;
-    } catch (error) {
-      this.db.exec("rollback");
-      throw error;
-    }
+    return this.withBusyRetry(() => {
+      this.db.exec("begin immediate");
+      try {
+        const result = callback();
+        if (result instanceof Promise) {
+          throw new Error("withTransaction callback must be synchronous.");
+        }
+        this.db.exec("commit");
+        return result;
+      } catch (error) {
+        this.db.exec("rollback");
+        throw error;
+      }
+    });
   }
+
+  private withBusyRetry<T>(callback: () => T): T {
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      try {
+        return callback();
+      } catch (error) {
+        if (!isSqliteBusyError(error) || attempt === 4) {
+          throw error;
+        }
+
+        sleepSync(25 * (attempt + 1));
+      }
+    }
+
+    throw new Error("Unreachable SQLite retry state.");
+  }
+}
+
+function isSqliteBusyError(error: unknown): boolean {
+  return error instanceof Error && error.message.includes("SQLITE_BUSY");
+}
+
+function sleepSync(ms: number): void {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
 
 export async function createRunStore(

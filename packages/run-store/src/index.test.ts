@@ -275,3 +275,107 @@ test("audit events are stored and filterable", async () => {
 
   runStore.close();
 });
+
+test("invalid audit event rows are rejected during mapping", async () => {
+  const runStore = await createRunStore({
+    dbPath: ":memory:",
+  });
+
+  runStore.db
+    .query(
+      `insert into audit_events (
+        created_at,
+        category,
+        action,
+        outcome,
+        subject_type,
+        subject_id,
+        client_ip,
+        request_path,
+        message,
+        context_json
+      ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+    .run(
+      new Date("2026-03-26T00:00:00.000Z").toISOString(),
+      "bogus",
+      "invalid_event",
+      "rejected",
+      "request",
+      null,
+      null,
+      null,
+      "Bad category.",
+      null,
+    );
+
+  expect(() => runStore.listAuditEvents({ limit: 10 })).toThrow();
+
+  runStore.close();
+});
+
+test("cleanupRetention prunes old terminal runs and audit events", async () => {
+  let now = new Date("2026-03-30T00:00:00.000Z");
+  const runStore = await createRunStore({
+    dbPath: ":memory:",
+    now: () => now,
+  });
+
+  const oldRun = runStore.enqueueRun({
+    taskId: "deploy.shared-volume.wrangler",
+    input: {
+      kind: "pages-deploy",
+      project: "old-site",
+      sourcePath: "/shared-source/old-site",
+    },
+    source: "test",
+    capabilitySnapshot: ["wrangler"],
+  });
+  runStore.finishRun(oldRun.response.runId, {
+    taskId: "deploy.shared-volume.wrangler",
+    ok: true,
+    status: "succeeded",
+    summary: "done",
+    durationMs: 1,
+  });
+
+  runStore.appendAuditEvent({
+    category: "security",
+    action: "admin_auth_rejected",
+    outcome: "rejected",
+    subjectType: "request",
+    message: "Old audit event",
+  });
+
+  now = new Date("2026-04-30T00:00:00.000Z");
+  const newRun = runStore.enqueueRun({
+    taskId: "deploy.shared-volume.wrangler",
+    input: {
+      kind: "pages-deploy",
+      project: "new-site",
+      sourcePath: "/shared-source/new-site",
+    },
+    source: "test",
+    capabilitySnapshot: ["wrangler"],
+  });
+  runStore.finishRun(newRun.response.runId, {
+    taskId: "deploy.shared-volume.wrangler",
+    ok: true,
+    status: "succeeded",
+    summary: "done",
+    durationMs: 1,
+  });
+
+  const result = runStore.cleanupRetention({
+    runFinishedBefore: "2026-04-01T00:00:00.000Z",
+    auditCreatedBefore: "2026-04-01T00:00:00.000Z",
+  });
+
+  expect(result.deletedRuns).toBe(1);
+  expect(result.deletedRunEvents).toBeGreaterThan(0);
+  expect(result.deletedAuditEvents).toBe(1);
+  expect(runStore.getRun(oldRun.response.runId)).toBeNull();
+  expect(runStore.getRun(newRun.response.runId)?.status).toBe("succeeded");
+
+  runStore.close();
+});

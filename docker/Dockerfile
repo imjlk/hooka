@@ -4,10 +4,10 @@ WORKDIR /app
 
 COPY package.json bun.lock bunfig.toml tsconfig.json ./
 
+# BEGIN WORKSPACE MANIFESTS
 COPY apps/cli/package.json apps/cli/package.json
 COPY apps/server/package.json apps/server/package.json
 COPY apps/worker/package.json apps/worker/package.json
-
 COPY packages/admin-ui/package.json packages/admin-ui/package.json
 COPY packages/bun-utils/package.json packages/bun-utils/package.json
 COPY packages/cap-cloudflare-api/package.json packages/cap-cloudflare-api/package.json
@@ -17,8 +17,8 @@ COPY packages/cap-rclone/package.json packages/cap-rclone/package.json
 COPY packages/cap-rsync/package.json packages/cap-rsync/package.json
 COPY packages/cap-wpcli/package.json packages/cap-wpcli/package.json
 COPY packages/cap-wrangler/package.json packages/cap-wrangler/package.json
-COPY packages/contracts/package.json packages/contracts/package.json
 COPY packages/config/package.json packages/config/package.json
+COPY packages/contracts/package.json packages/contracts/package.json
 COPY packages/executor-http/package.json packages/executor-http/package.json
 COPY packages/executor-process/package.json packages/executor-process/package.json
 COPY packages/logger/package.json packages/logger/package.json
@@ -32,8 +32,9 @@ COPY packages/registry/package.json packages/registry/package.json
 COPY packages/run-store/package.json packages/run-store/package.json
 COPY packages/runner-core/package.json packages/runner-core/package.json
 COPY packages/runtime-contracts/package.json packages/runtime-contracts/package.json
-COPY packages/task-sdk/package.json packages/task-sdk/package.json
 COPY packages/targets/package.json packages/targets/package.json
+COPY packages/task-sdk/package.json packages/task-sdk/package.json
+# END WORKSPACE MANIFESTS
 
 RUN bun install --frozen-lockfile
 
@@ -64,6 +65,8 @@ FROM runtime-base AS webhook-server
 
 RUN bun run image:install-features --features="core" --manifest=/app/.hooka/installed-capabilities.json --image=hooka:webhook-server
 RUN mkdir -p /data
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 CMD bun -e "const response = await fetch('http://127.0.0.1:3000/api/health'); if (!response.ok) process.exit(1);"
 
 ENV HOOKA_RUNTIME_ROLE=webhook-server
 

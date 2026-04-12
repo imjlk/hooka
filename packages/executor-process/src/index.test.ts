@@ -68,3 +68,46 @@ test("runProcessTask reports command failures from the injected runner", async (
     summary: "test.process.task exited with status 1.",
   });
 });
+
+test("runProcessTask reports timeout failures from the command runner", async () => {
+  const timeoutTask = defineTask({
+    id: processTask.id,
+    title: processTask.title,
+    input: processTask.input,
+    requires: processTask.requires,
+    executor: {
+      kind: "process",
+      command: "wrangler",
+      args: ({ input }) => ["pages", "deploy", input.exportDir],
+      timeoutMs: 25,
+    },
+  });
+
+  const result = await runProcessTask(
+    timeoutTask,
+    {
+      exportDir: "/shared-source/site",
+    },
+    false,
+    {
+      commandRunner: async ({ timeoutMs }) => {
+        expect(timeoutMs).toBe(25);
+
+        return {
+          stdout: "",
+          stderr: "",
+          exitCode: 1,
+          timedOut: true,
+        };
+      },
+    },
+  );
+
+  expect(result).toMatchObject({
+    ok: false,
+    status: "failed",
+    retryable: true,
+    errorCode: "process_timeout",
+    summary: "test.process.task timed out after 25ms.",
+  });
+});

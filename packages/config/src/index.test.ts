@@ -6,9 +6,15 @@ import {
   createServerConfig,
   createWorkerConfig,
   defaultApiRateLimit,
+  defaultGlobalApiRateLimit,
+  defaultGlobalWebhookRateLimit,
   defaultLocalDbRelativePath,
+  defaultMaxBodyBytes,
   defaultManifestRelativePath,
   defaultRateLimitWindowMs,
+  defaultRetentionAuditDays,
+  defaultRetentionRunDays,
+  defaultRetentionSweepIntervalHours,
   defaultRetryBaseDelayMs,
   defaultTargetsRelativePath,
   defaultWebhookRateLimit,
@@ -37,6 +43,10 @@ test("createServerConfig applies defaults and resolves cwd-based paths", () => {
     rateLimitWindowMs: defaultRateLimitWindowMs,
     apiRateLimit: defaultApiRateLimit,
     webhookRateLimit: defaultWebhookRateLimit,
+    globalApiRateLimit: defaultGlobalApiRateLimit,
+    globalWebhookRateLimit: defaultGlobalWebhookRateLimit,
+    corsOrigins: [],
+    maxBodyBytes: defaultMaxBodyBytes,
     capabilityManifestPath: `/repo/${defaultManifestRelativePath}`,
     targetsPath: `/repo/${defaultTargetsRelativePath}`,
     uiDistDir: "/repo/packages/admin-ui/dist",
@@ -67,6 +77,9 @@ test("createWorkerConfig uses env overrides and derived worker id", () => {
     maxAttempts: 3,
     retryBaseDelayMs: defaultRetryBaseDelayMs,
     heartbeatIntervalMs: defaultWorkerHeartbeatIntervalMs,
+    retentionRunDays: defaultRetentionRunDays,
+    retentionAuditDays: defaultRetentionAuditDays,
+    retentionSweepIntervalHours: defaultRetentionSweepIntervalHours,
   });
 });
 
@@ -80,6 +93,8 @@ test("createCliConfig resolves manifest and db defaults", () => {
     dbPath: `/repo/${defaultLocalDbRelativePath}`,
     manifestPath: `/repo/${defaultManifestRelativePath}`,
     targetsPath: `/repo/${defaultTargetsRelativePath}`,
+    retentionRunDays: defaultRetentionRunDays,
+    retentionAuditDays: defaultRetentionAuditDays,
   });
 });
 
@@ -143,4 +158,22 @@ test("worker freshness helpers derive age and threshold state", () => {
   expect(getWorkerLastSeenAgeMs(lastSeenAt, now)).toBe(5_000);
   expect(getWorkerFreshness(lastSeenAt, 10_000, now)).toBe("healthy");
   expect(getWorkerFreshness(lastSeenAt, 2_000, now)).toBe("stale");
+});
+
+test("createServerConfig falls back for invalid numeric env values", () => {
+  const config = createServerConfig({
+    cwd: "/repo",
+    env: {
+      HOOKA_PORT: "abc",
+      HOOKA_MAX_BODY_BYTES: "NaN",
+      HOOKA_CORS_ORIGINS: "https://admin.example.com, https://ops.example.com",
+    },
+  });
+
+  expect(config.port).toBe(3000);
+  expect(config.maxBodyBytes).toBe(defaultMaxBodyBytes);
+  expect(config.corsOrigins).toEqual([
+    "https://admin.example.com",
+    "https://ops.example.com",
+  ]);
 });

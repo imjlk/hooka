@@ -50,7 +50,9 @@ test("createServerRateLimitContext uses separate webhook and api buckets", () =>
 
   expect(webhook.bucket).toBe("webhook");
   expect(api.bucket).toBe("api");
-  expect(webhook.key).not.toBe(api.key);
+  expect(webhook.clientKey).not.toBe(api.clientKey);
+  expect(webhook.globalKey).toBe("webhook:global");
+  expect(api.globalKey).toBe("api:global");
 });
 
 test("in-memory rate limiter enforces its configured limit", () => {
@@ -65,4 +67,17 @@ test("in-memory rate limiter enforces its configured limit", () => {
 
   expect(rejected.ok).toBe(false);
   expect(rejected.retryAfterSeconds).toBeGreaterThan(0);
+});
+
+test("in-memory rate limiter sweeps expired keys during checks", () => {
+  const limiter = new InMemoryRateLimiter({
+    limit: 2,
+    windowMs: 10,
+  });
+
+  expect(limiter.check("client-a", 0).ok).toBe(true);
+  expect(limiter.requests.has("client-a")).toBe(true);
+
+  expect(limiter.check("client-b", 11).ok).toBe(true);
+  expect(limiter.requests.has("client-a")).toBe(false);
 });

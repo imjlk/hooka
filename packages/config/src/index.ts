@@ -21,8 +21,14 @@ export const defaultWorkerHeartbeatIntervalMs = 10_000;
 export const defaultRateLimitWindowMs = 60_000;
 export const defaultApiRateLimit = 120;
 export const defaultWebhookRateLimit = 60;
+export const defaultGlobalApiRateLimit = 1_200;
+export const defaultGlobalWebhookRateLimit = 600;
+export const defaultRetentionRunDays = 30;
+export const defaultRetentionAuditDays = 90;
+export const defaultRetentionSweepIntervalHours = 24;
 export const defaultUiPort = 4310;
 export const defaultUiApiOrigin = "http://127.0.0.1:3000";
+export const defaultMaxBodyBytes = 1_048_576;
 
 const serverConfigSchema = z.object({
   port: z.number().int().positive(),
@@ -35,6 +41,10 @@ const serverConfigSchema = z.object({
   rateLimitWindowMs: z.number().int().positive(),
   apiRateLimit: z.number().int().positive(),
   webhookRateLimit: z.number().int().positive(),
+  globalApiRateLimit: z.number().int().positive(),
+  globalWebhookRateLimit: z.number().int().positive(),
+  corsOrigins: z.array(z.string()),
+  maxBodyBytes: z.number().int().positive(),
   capabilityManifestPath: z.string().min(1),
   targetsPath: z.string().min(1),
   uiDistDir: z.string().min(1),
@@ -51,12 +61,17 @@ const workerConfigSchema = z.object({
   maxAttempts: z.number().int().positive(),
   retryBaseDelayMs: z.number().int().positive(),
   heartbeatIntervalMs: z.number().int().positive(),
+  retentionRunDays: z.number().int().positive(),
+  retentionAuditDays: z.number().int().positive(),
+  retentionSweepIntervalHours: z.number().int().positive(),
 });
 
 const cliConfigSchema = z.object({
   dbPath: z.string().min(1),
   manifestPath: z.string().min(1),
   targetsPath: z.string().min(1),
+  retentionRunDays: z.number().int().positive(),
+  retentionAuditDays: z.number().int().positive(),
 });
 
 const adminUiDevConfigSchema = z.object({
@@ -206,6 +221,19 @@ export function createServerConfig(
       env["HOOKA_RATE_LIMIT_WEBHOOK_LIMIT"],
       defaultWebhookRateLimit,
     ),
+    globalApiRateLimit: parseNumberEnv(
+      env["HOOKA_RATE_LIMIT_GLOBAL_API_LIMIT"],
+      defaultGlobalApiRateLimit,
+    ),
+    globalWebhookRateLimit: parseNumberEnv(
+      env["HOOKA_RATE_LIMIT_GLOBAL_WEBHOOK_LIMIT"],
+      defaultGlobalWebhookRateLimit,
+    ),
+    corsOrigins: parseCsvEnv(env["HOOKA_CORS_ORIGINS"]),
+    maxBodyBytes: parseNumberEnv(
+      env["HOOKA_MAX_BODY_BYTES"],
+      defaultMaxBodyBytes,
+    ),
     capabilityManifestPath: getDefaultManifestPath(cwd, env),
     targetsPath: getDefaultTargetsPath(cwd, env),
     uiDistDir: resolve(cwd, "packages/admin-ui/dist"),
@@ -241,6 +269,18 @@ export function createWorkerConfig(
       env["HOOKA_WORKER_HEARTBEAT_MS"],
       defaultWorkerHeartbeatIntervalMs,
     ),
+    retentionRunDays: parseNumberEnv(
+      env["HOOKA_RETENTION_RUN_DAYS"],
+      defaultRetentionRunDays,
+    ),
+    retentionAuditDays: parseNumberEnv(
+      env["HOOKA_RETENTION_AUDIT_DAYS"],
+      defaultRetentionAuditDays,
+    ),
+    retentionSweepIntervalHours: parseNumberEnv(
+      env["HOOKA_RETENTION_SWEEP_INTERVAL_HOURS"],
+      defaultRetentionSweepIntervalHours,
+    ),
   });
 }
 
@@ -254,6 +294,14 @@ export function createCliConfig(
     dbPath: env["HOOKA_DB_PATH"] ?? getDefaultLocalDbPath(cwd),
     manifestPath: getDefaultManifestPath(cwd, env),
     targetsPath: getDefaultTargetsPath(cwd, env),
+    retentionRunDays: parseNumberEnv(
+      env["HOOKA_RETENTION_RUN_DAYS"],
+      defaultRetentionRunDays,
+    ),
+    retentionAuditDays: parseNumberEnv(
+      env["HOOKA_RETENTION_AUDIT_DAYS"],
+      defaultRetentionAuditDays,
+    ),
   });
 }
 
@@ -273,7 +321,8 @@ function parseNumberEnv(raw: string | undefined, fallback: number): number {
     return fallback;
   }
 
-  return Number(raw);
+  const parsed = Number(raw);
+  return Number.isNaN(parsed) ? fallback : parsed;
 }
 
 function parseBooleanEnv(raw: string | undefined, fallback: boolean): boolean {
@@ -282,6 +331,17 @@ function parseBooleanEnv(raw: string | undefined, fallback: boolean): boolean {
   }
 
   return raw.trim().toLowerCase() === "true";
+}
+
+function parseCsvEnv(raw: string | undefined): string[] {
+  if (!raw || raw.trim().length === 0) {
+    return [];
+  }
+
+  return raw
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
 }
 
 export function getServerStartupIssues(config: ServerConfig): string[] {

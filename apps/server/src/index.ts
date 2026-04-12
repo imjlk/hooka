@@ -5,6 +5,7 @@ import {
 } from "@hooka/config";
 import { createLogger } from "@hooka/logger";
 import { createRunStore } from "@hooka/run-store";
+import { createInstalledCapabilitiesLoader } from "@hooka/runner-core";
 import { createHookaFetchHandler } from "./app";
 import { registerServerShutdownHandlers } from "./shutdown";
 
@@ -25,6 +26,7 @@ assertServerStartupConfig(config);
 const runStore = await createRunStore({
   dbPath: config.dbPath,
 });
+const loadCapabilities = createInstalledCapabilitiesLoader(1_000);
 
 const server = Bun.serve({
   port: config.port,
@@ -33,8 +35,13 @@ const server = Bun.serve({
     adminToken: config.adminToken,
     apiRateLimit: config.apiRateLimit,
     capabilityManifestPath: config.capabilityManifestPath,
+    corsOrigins: config.corsOrigins,
     defaultMaxAttempts: config.maxAttempts,
+    globalApiRateLimit: config.globalApiRateLimit,
+    globalWebhookRateLimit: config.globalWebhookRateLimit,
+    loadCapabilities,
     rateLimitWindowMs: config.rateLimitWindowMs,
+    maxBodyBytes: config.maxBodyBytes,
     runStore,
     targetsPath: config.targetsPath,
     trustProxy: config.trustProxy,
@@ -61,4 +68,8 @@ logger.info("Server started", {
   rateLimitWindowMs: config.rateLimitWindowMs,
   apiRateLimit: config.apiRateLimit,
   webhookRateLimit: config.webhookRateLimit,
+  globalApiRateLimit: config.globalApiRateLimit,
+  globalWebhookRateLimit: config.globalWebhookRateLimit,
+  corsOrigins: config.corsOrigins,
+  maxBodyBytes: config.maxBodyBytes,
 });

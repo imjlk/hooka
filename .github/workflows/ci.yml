@@ -31,6 +31,12 @@ jobs:
       - name: Ensure generated Docker bake file is committed
         run: git diff --exit-code -- docker/docker-bake.hcl
 
+      - name: Regenerate Dockerfile manifest block
+        run: bun run dockerfile:generate
+
+      - name: Ensure generated Dockerfile manifest block is committed
+        run: git diff --exit-code -- docker/Dockerfile
+
       - name: Lint
         run: bun run lint
 

@@ -14,7 +14,7 @@ export interface TaskOptionConfig {
 export function taskToBunliOptions(
   task: AnyTask,
   config: TaskOptionConfig = {},
-): Record<string, CLIOption<any>> {
+): Record<string, CLIOption<z.ZodTypeAny>> {
   const includeDryRun = config.includeDryRun ?? true;
 
   if (!(task.input instanceof z.ZodObject)) {

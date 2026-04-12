@@ -1,0 +1,11 @@
+.git
+.github
+.hooka
+node_modules
+coverage
+.cache
+dist
+*.sqlite
+*.db
+tmp
+*.log

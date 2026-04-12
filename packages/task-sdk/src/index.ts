@@ -23,6 +23,7 @@ export interface ProcessTaskExecutor<TInput> {
   kind: "process";
   command: string;
   args: (context: TaskRuntimeContext<TInput>) => string[];
+  timeoutMs?: number;
   cwd?: (context: TaskRuntimeContext<TInput>) => string;
   env?: (
     context: TaskRuntimeContext<TInput>,
@@ -32,6 +33,7 @@ export interface ProcessTaskExecutor<TInput> {
 export interface HttpTaskExecutor<TInput> {
   kind: "http";
   method: TaskExecutorMethod;
+  timeoutMs?: number;
   url: (context: TaskRuntimeContext<TInput>) => string;
   headers?: (context: TaskRuntimeContext<TInput>) => Record<string, string>;
   body?: (context: TaskRuntimeContext<TInput>) => unknown;

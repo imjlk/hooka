@@ -302,6 +302,7 @@ test("config reports resolved manifest precedence and installed capabilities", a
       HOOKA_ADMIN_TOKEN: "admin-token",
       HOOKA_UI_PORT: "4400",
       HOOKA_UI_API_ORIGIN: "http://127.0.0.1:3300",
+      HOOKA_CORS_ORIGINS: "https://admin.example.com",
     },
     tempDir,
   );
@@ -321,6 +322,12 @@ test("config reports resolved manifest precedence and installed capabilities", a
     rateLimitWindowMs: number;
     apiRateLimit: number;
     webhookRateLimit: number;
+    globalApiRateLimit: number;
+    globalWebhookRateLimit: number;
+    corsOrigins: string[];
+    maxBodyBytes: number;
+    retentionRunDays: number;
+    retentionAuditDays: number;
     uiPort: number;
     uiApiOrigin: string;
   };
@@ -336,6 +343,12 @@ test("config reports resolved manifest precedence and installed capabilities", a
   expect(report.rateLimitWindowMs).toBe(60000);
   expect(report.apiRateLimit).toBe(120);
   expect(report.webhookRateLimit).toBe(60);
+  expect(report.globalApiRateLimit).toBe(1200);
+  expect(report.globalWebhookRateLimit).toBe(600);
+  expect(report.corsOrigins).toEqual(["https://admin.example.com"]);
+  expect(report.maxBodyBytes).toBe(1048576);
+  expect(report.retentionRunDays).toBe(30);
+  expect(report.retentionAuditDays).toBe(90);
   expect(report.uiPort).toBe(4400);
   expect(report.uiApiOrigin).toBe("http://127.0.0.1:3300");
 });
@@ -694,6 +707,66 @@ test("run retry re-enqueues a completed run with cli.retry as the source", async
   expect(runs[0]?.source).toBe("cli.retry");
   expect(runs[0]?.taskId).toBe("deploy.shared-volume.wrangler");
   verifyStore.close();
+});
+
+test("cleanup prunes old terminal runs and audit events", async () => {
+  const tempDir = await createTempDir("hooka-cli-cleanup");
+  const dbPath = join(tempDir, "hooka.sqlite");
+  let now = new Date("2020-03-30T00:00:00.000Z");
+  const runStore = await createRunStore({
+    dbPath,
+    now: () => now,
+  });
+
+  const oldRun = runStore.enqueueRun({
+    taskId: "deploy.shared-volume.wrangler",
+    input: {
+      kind: "pages-deploy",
+      project: "cleanup-old",
+      sourcePath: "/shared-source/cleanup-old",
+    },
+    source: "webhook",
+    capabilitySnapshot: ["wrangler"],
+  });
+  runStore.finishRun(oldRun.response.runId, {
+    taskId: "deploy.shared-volume.wrangler",
+    ok: true,
+    status: "succeeded",
+    summary: "done",
+    durationMs: 1,
+  });
+  runStore.appendAuditEvent({
+    category: "security",
+    action: "admin_auth_rejected",
+    outcome: "rejected",
+    subjectType: "request",
+    message: "Old audit event.",
+  });
+
+  now = new Date("2020-04-30T00:00:00.000Z");
+  runStore.close();
+
+  const result = await runCli(
+    [
+      "cleanup",
+      "--db",
+      dbPath,
+      "--run-days",
+      "1",
+      "--audit-days",
+      "1",
+      "--json",
+    ],
+    {},
+    tempDir,
+  );
+
+  expect(result.exitCode).toBe(0);
+  expect(JSON.parse(result.stdout)).toEqual({
+    deletedRuns: 1,
+    deletedRunEvents: expect.any(Number),
+    deletedAuditEvents: 1,
+  });
 });
 
 test("run watch streams until a run reaches a terminal state", async () => {

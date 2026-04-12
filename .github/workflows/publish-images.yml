@@ -39,6 +39,12 @@ jobs:
       - name: Ensure generated Docker bake file is committed
         run: git diff --exit-code -- docker/docker-bake.hcl
 
+      - name: Regenerate Dockerfile manifest block
+        run: bun run dockerfile:generate
+
+      - name: Ensure generated Dockerfile manifest block is committed
+        run: git diff --exit-code -- docker/Dockerfile
+
       - name: Derive lowercase image repository
         id: image_repo
         run: echo "value=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"

@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 export interface RateLimitDecision {
   ok: boolean;
   key: string;
@@ -12,14 +14,17 @@ export interface InMemoryRateLimiterOptions {
 export interface ServerRateLimitContext {
   bucket: "api" | "webhook";
   clientIp: string;
-  key: string;
+  clientKey: string;
+  globalKey: string;
   pathname: string;
+  userAgentHash: string;
 }
 
 export class InMemoryRateLimiter {
   readonly limit: number;
   readonly windowMs: number;
   readonly requests = new Map<string, number[]>();
+  private lastSweepAt = 0;
 
   constructor(options: InMemoryRateLimiterOptions) {
     this.limit = options.limit;
@@ -27,6 +32,8 @@ export class InMemoryRateLimiter {
   }
 
   check(key: string, now = Date.now()): RateLimitDecision {
+    this.sweep(now);
+
     const recent = (this.requests.get(key) ?? []).filter(
       (value) => value > now - this.windowMs,
     );
@@ -51,6 +58,25 @@ export class InMemoryRateLimiter {
       key,
     };
   }
+
+  private sweep(now: number): void {
+    if (now - this.lastSweepAt < this.windowMs) {
+      return;
+    }
+
+    for (const [key, timestamps] of this.requests.entries()) {
+      const recent = timestamps.filter((value) => value > now - this.windowMs);
+
+      if (recent.length === 0) {
+        this.requests.delete(key);
+        continue;
+      }
+
+      this.requests.set(key, recent);
+    }
+
+    this.lastSweepAt = now;
+  }
 }
 
 export function createServerRateLimitContext(
@@ -63,12 +89,15 @@ export function createServerRateLimitContext(
   const pathname = url.pathname;
   const bucket = pathname.startsWith("/api/webhooks/") ? "webhook" : "api";
   const clientIp = resolveClientIp(request, input);
+  const userAgentHash = hashUserAgent(request.headers.get("user-agent"));
 
   return {
     bucket,
     clientIp,
-    key: `${clientIp}:${bucket}`,
+    clientKey: `${bucket}:${clientIp}:${userAgentHash}`,
+    globalKey: `${bucket}:global`,
     pathname,
+    userAgentHash,
   };
 }
 
@@ -90,4 +119,11 @@ export function resolveClientIp(
     request.headers.get("x-real-ip") ??
     "unknown"
   );
+}
+
+function hashUserAgent(userAgent: string | null): string {
+  return createHash("sha256")
+    .update(userAgent ?? "")
+    .digest("hex")
+    .slice(0, 12);
 }

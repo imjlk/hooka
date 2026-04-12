@@ -10,6 +10,8 @@ export interface CliDefaults {
   dbPath: string;
   manifestPath: string;
   targetsPath: string;
+  retentionRunDays: number;
+  retentionAuditDays: number;
 }
 
 export const cliDefaults: CliDefaults = createCliConfig();

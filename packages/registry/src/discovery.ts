@@ -4,8 +4,8 @@ import type {
   HookaTask,
   TaskPackDefinition,
 } from "@hooka/task-sdk";
-import { existsSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { resolveHookaProjectRoot } from "@hooka/config";
+import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 interface RegistryManifest {
@@ -145,28 +145,7 @@ export async function discoverRegistryArtifacts(
 }
 
 function resolveRegistryRootFromModule(moduleDir: string): string {
-  return resolveRegistryRoot(moduleDir);
-}
-
-function resolveRegistryRoot(startDir: string): string {
-  let current = resolve(startDir);
-
-  while (true) {
-    if (
-      existsSync(join(current, "package.json")) &&
-      existsSync(join(current, "packages"))
-    ) {
-      return current;
-    }
-
-    const parent = dirname(current);
-
-    if (parent === current) {
-      return startDir;
-    }
-
-    current = parent;
-  }
+  return resolveHookaProjectRoot(moduleDir);
 }
 
 function parseRegistryManifest(

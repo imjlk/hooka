@@ -255,3 +255,51 @@ test("worker writes audit events for target policy preflight rejections", async 
 
   runStore.close();
 });
+
+test("worker loop backs off after repeated errors", async () => {
+  const runStore = await createRunStore({
+    dbPath: ":memory:",
+  });
+  const shutdownSignal = createWorkerShutdownSignal({
+    info() {},
+    warn() {},
+    error() {},
+  });
+  const sleepCalls: number[] = [];
+
+  const original = runStore.requeueExpiredRuns.bind(runStore);
+  let failures = 0;
+  runStore.requeueExpiredRuns = (() => {
+    failures += 1;
+    if (failures >= 3) {
+      shutdownSignal.requestShutdown("test");
+    }
+    throw new Error("db busy");
+  }) as typeof runStore.requeueExpiredRuns;
+
+  await startWorkerLoop({
+    installedCapabilities: ["wrangler"],
+    logger: {
+      info() {},
+      warn() {},
+      error() {},
+    },
+    manifestPath: "/tmp/manifest.json",
+    pollIntervalMs: 5,
+    retentionSweepIntervalHours: 24,
+    runtimeRole: "worker:test",
+    runStore,
+    shutdownSignal,
+    sleep: async (ms) => {
+      sleepCalls.push(ms);
+    },
+    workerId: "worker-a",
+    leaseMs: 60_000,
+    retryBaseDelayMs: 1000,
+  });
+
+  expect(sleepCalls.slice(0, 2)).toEqual([1000, 2000]);
+
+  runStore.requeueExpiredRuns = original;
+  runStore.close();
+});

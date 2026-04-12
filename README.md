@@ -20,6 +20,7 @@ Release docs:
 - [Release notes](./docs/releases/1.0.0.md)
 - [Upgrade guide](./docs/upgrade/v1.md)
 - [Coolify deployment guide](./docs/deploy/coolify.md)
+- [Contributing guide](./CONTRIBUTING.md)
 
 ## Workspace layout
 
@@ -61,6 +62,7 @@ bun run apps/cli/src/index.ts target create --file ./target.json
 bun run apps/cli/src/index.ts target update cf-pages-default --file ./target.json
 bun run apps/cli/src/index.ts target delete cf-pages-default --yes
 bun run apps/cli/src/index.ts audit list
+bun run apps/cli/src/index.ts cleanup --json
 bun run apps/cli/src/index.ts task list
 bun run apps/cli/src/index.ts capability list
 bun run apps/cli/src/index.ts image plan --preset cf-pages
@@ -71,6 +73,7 @@ bun run apps/cli/src/index.ts run list
 bun run apps/cli/src/index.ts run watch <run-id>
 bun run apps/cli/src/index.ts run retry <run-id>
 bun run bake:generate
+bun run dockerfile:generate
 bun run test:e2e:docker
 bun run dev:server
 bun run dev:ui
@@ -84,6 +87,7 @@ Hooka's Docker delivery base is already in place:
 - `docker/Dockerfile` separates the shared `webhook-server` image from worker-only preset images.
 - `packages/preset-catalog/src/index.ts` is the source of truth for active worker tags, legacy aliases, and build arguments.
 - `scripts/generate-docker-bake.ts` regenerates `docker/docker-bake.hcl` from that catalog, so release targets are not hand-maintained.
+- `scripts/generate-dockerfile-manifests.ts` regenerates the Dockerfile package-manifest copy block.
 - `bun run test:e2e:docker` proves the Docker path end to end with `webhook-server + cf-pages`.
 
 GitHub Actions now cover both verification and GHCR publishing:
@@ -102,11 +106,13 @@ GitHub Actions now cover both verification and GHCR publishing:
 - Runtime entrypoints now load typed env-backed defaults through `@hooka/config` instead of parsing env inline in each app.
 - Long-running services emit structured JSON logs through `@hooka/logger` for startup, shutdown, readiness, and loop/runtime failures.
 - Admin and read APIs are protected by `HOOKA_ADMIN_TOKEN`, while webhook ingress continues to use HMAC signatures.
+- SSE uses `POST /api/events/ticket` plus a short-lived single-use ticket for `GET /api/events/stream`.
 - Target CRUD stays file-backed through `HOOKA_TARGETS_PATH`, but can now be managed through the admin API, CLI, and admin UI without hand-editing the JSON file.
 - Built-in target scaffolds cover shared-volume Pages deploys, cache purge targets, export verification, and a generic skeleton.
 - The worker applies retry backoff, dead-lettering, preflight validation, and heartbeat updates before and after task execution.
 - Optional targets in `.hooka/targets.json` provide policy-backed execution paths for shared-volume deploys and other reusable flows.
 - Audit events for auth failures, rate-limit rejections, policy rejections, and target mutations are stored in SQLite and surfaced in the admin UI and CLI.
+- Terminal runs and audit rows can be pruned with `hooka cleanup`, and workers can sweep old data automatically.
 - `server` and `worker` share the same `HOOKA_DB_PATH`.
 - Producers such as WordPress share an artifact/source volume with the `worker`, not the server.
 
@@ -153,9 +159,16 @@ HOOKA_RUN_MAX_ATTEMPTS=3
 HOOKA_RETRY_BASE_DELAY_MS=5000
 HOOKA_WORKER_HEARTBEAT_MS=10000
 HOOKA_TRUST_PROXY=false
+HOOKA_CORS_ORIGINS=
 HOOKA_RATE_LIMIT_WINDOW_MS=60000
 HOOKA_RATE_LIMIT_API_LIMIT=120
 HOOKA_RATE_LIMIT_WEBHOOK_LIMIT=60
+HOOKA_RATE_LIMIT_GLOBAL_API_LIMIT=1200
+HOOKA_RATE_LIMIT_GLOBAL_WEBHOOK_LIMIT=600
+HOOKA_MAX_BODY_BYTES=1048576
+HOOKA_RETENTION_RUN_DAYS=30
+HOOKA_RETENTION_AUDIT_DAYS=90
+HOOKA_RETENTION_SWEEP_INTERVAL_HOURS=24
 ```
 
 Recommended shared source mount:
@@ -225,9 +238,12 @@ Planned presets are documented but not published in registry APIs or GHCR releas
 - `GET /api/targets` and `GET /api/targets/:id` expose configured targets.
 - `POST /api/targets`, `PUT /api/targets/:id`, and `DELETE /api/targets/:id` manage file-backed targets.
 - `GET /api/audit-events` exposes recent security, policy, and target mutation events.
-- `GET /api/events/stream` emits SSE updates for run events and worker heartbeats.
+- `POST /api/events/ticket` issues a short-lived SSE ticket for authenticated clients.
+- `GET /api/events/stream` emits SSE updates for run events and worker heartbeats when called with a valid ticket.
+- `GET /api/openapi.json` exposes a machine-readable OpenAPI 3.1 document.
 - All admin/read APIs except `/api/health` and `/api/ready` require `Authorization: Bearer <HOOKA_ADMIN_TOKEN>`.
-- API routes are protected by in-memory rate limiting by default.
+- API routes are protected by in-memory per-client and global rate limiting by default.
+- Cross-origin API access is disabled by default and can be enabled with `HOOKA_CORS_ORIGINS`.
 - `HOOKA_TRUST_PROXY=true` should only be enabled when Hooka is behind a trusted reverse proxy that sets `X-Forwarded-For`.
 
 Generic webhook body:
