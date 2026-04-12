@@ -131,6 +131,13 @@ Immutable release tags follow the same catalog, for example:
 
 `ghcr.io/imjlk/hooka` is currently published for public pull.
 
+GHCR retention policy:
+
+- mutable tags from `main` stay as rolling latest pointers
+- stable immutable `1.x.y-*` tags stay as permanent rollback points
+- prerelease immutable tags such as `1.0.0-rc.1-*` are pruned after the matching stable release ships
+- cleanup only touches GHCR image aliases, not Git tags or release notes
+
 Recommended defaults:
 
 ```bash

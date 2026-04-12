@@ -104,3 +104,14 @@ jobs:
         run: |
           export HOOKA_IMAGE_VERSION="${HOOKA_IMAGE_VERSION#v}"
           bun run scripts/publish-versioned-tags.ts
+
+  cleanup-prereleases:
+    needs: publish-immutable
+    if: needs.publish-immutable.result == 'success' && startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-')
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/cleanup-ghcr-prereleases.yml
+    with:
+      release_version: ${{ github.ref_name }}
+      apply: true
