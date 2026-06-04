@@ -107,11 +107,13 @@ export function resolveClientIp(
     trustProxy: boolean;
   },
 ): string {
-  if (input.trustProxy) {
-    const forwardedFor = request.headers.get("x-forwarded-for");
-    if (forwardedFor) {
-      return forwardedFor.split(",")[0]?.trim() || "unknown";
-    }
+  if (!input.trustProxy) {
+    return "unknown";
+  }
+
+  const forwardedFor = request.headers.get("x-forwarded-for");
+  if (forwardedFor) {
+    return forwardedFor.split(",")[0]?.trim() || "unknown";
   }
 
   return (

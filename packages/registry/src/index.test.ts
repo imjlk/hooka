@@ -27,6 +27,7 @@ test("active presets cover cloudflare, rclone, and wordpress worker taxonomy", (
   const wpWranglerPlan = getPresetPlan("wp-wrangler");
 
   expect(cfPagesPlan?.coveredTasks).toContain("deploy.shared-volume.wrangler");
+  expect(cfPagesPlan?.coveredTasks).toContain("deploy.trailbase-pages.full");
   expect(cfPagesPlan?.coveredTasks).toContain("cloudflare.pages.deploy");
   expect(cfPagesPlan?.missingCapabilitiesByTask).toEqual({});
   expect(cfCachePlan?.coveredTasks).toContain("cloudflare.cache.purge.urls");
@@ -64,6 +65,7 @@ test("registry resolves task and preset aliases to canonical definitions", () =>
   ]);
   expect(listWebhookAdapters().map((adapter) => adapter.id)).toEqual([
     "wordpress.simply-static",
+    "trailbase.assets-drained",
   ]);
 });
 

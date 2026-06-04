@@ -1,6 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 
-function isMatchingSecret(
+export function isMatchingSecret(
   received: string | null | undefined,
   expected: string | undefined,
 ): boolean {
@@ -38,6 +38,19 @@ export function isAuthorizedAdminRequest(
   }
 
   return isMatchingSecret(readBearerToken(request), expectedToken);
+}
+
+export function isAuthorizedWebhookSecretRequest(
+  request: Request,
+  expectedSecret: string | undefined,
+): boolean {
+  return (
+    isMatchingSecret(readBearerToken(request), expectedSecret) ||
+    isMatchingSecret(
+      request.headers.get("x-hooka-webhook-secret"),
+      expectedSecret,
+    )
+  );
 }
 
 export function isPublicServerRoute(method: string, pathname: string): boolean {

@@ -160,19 +160,26 @@ test("worker freshness helpers derive age and threshold state", () => {
   expect(getWorkerFreshness(lastSeenAt, 2_000, now)).toBe("stale");
 });
 
-test("createServerConfig falls back for invalid numeric env values", () => {
-  const config = createServerConfig({
+test("createServerConfig rejects invalid numeric env values", () => {
+  expect(() =>
+    createServerConfig({
+      cwd: "/repo",
+      env: {
+        HOOKA_PORT: "abc",
+        HOOKA_MAX_BODY_BYTES: "NaN",
+      },
+    }),
+  ).toThrow("Invalid numeric value for HOOKA_PORT: abc");
+
+  const validConfig = createServerConfig({
     cwd: "/repo",
     env: {
-      HOOKA_PORT: "abc",
-      HOOKA_MAX_BODY_BYTES: "NaN",
       HOOKA_CORS_ORIGINS: "https://admin.example.com, https://ops.example.com",
     },
   });
 
-  expect(config.port).toBe(3000);
-  expect(config.maxBodyBytes).toBe(defaultMaxBodyBytes);
-  expect(config.corsOrigins).toEqual([
+  expect(validConfig.maxBodyBytes).toBe(defaultMaxBodyBytes);
+  expect(validConfig.corsOrigins).toEqual([
     "https://admin.example.com",
     "https://ops.example.com",
   ]);

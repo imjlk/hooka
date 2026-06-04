@@ -766,6 +766,7 @@ test("cleanup prunes old terminal runs and audit events", async () => {
     deletedRuns: 1,
     deletedRunEvents: expect.any(Number),
     deletedAuditEvents: 1,
+    deletedWorkerHeartbeats: 0,
   });
 });
 

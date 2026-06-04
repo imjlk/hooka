@@ -1,4 +1,5 @@
 import { defineCommand, option } from "@bunli/core";
+import { defaultRetentionSweepIntervalHours } from "@hooka/config";
 import { z } from "zod";
 import type { CliDefaults } from "../lib/shared";
 import {
@@ -8,11 +9,13 @@ import {
 } from "../lib/shared";
 
 const dayMs = 24 * 60 * 60 * 1000;
+const hourMs = 60 * 60 * 1000;
 
 export function createCleanupCommand(defaults: CliDefaults) {
   return defineCommand({
     name: "cleanup",
-    description: "Prune old run and audit data from the Hooka SQLite store.",
+    description:
+      "Prune old run, audit, and stale worker heartbeat data from the Hooka SQLite store.",
     options: {
       db: option(z.string().default(defaults.dbPath), {
         description: "Path to the Hooka SQLite database.",
@@ -27,6 +30,16 @@ export function createCleanupCommand(defaults: CliDefaults) {
         z.coerce.number().int().positive().default(defaults.retentionAuditDays),
         {
           description: "Delete audit events older than this many days.",
+        },
+      ),
+      workerHeartbeatHours: option(
+        z.coerce
+          .number()
+          .int()
+          .positive()
+          .default(defaultRetentionSweepIntervalHours),
+        {
+          description: "Delete worker heartbeats older than this many hours.",
         },
       ),
       vacuum: option(booleanFlagSchema, {
@@ -46,6 +59,9 @@ export function createCleanupCommand(defaults: CliDefaults) {
           auditCreatedBefore: new Date(
             now - flags.auditDays * dayMs,
           ).toISOString(),
+          workerHeartbeatSeenBefore: new Date(
+            now - flags.workerHeartbeatHours * hourMs,
+          ).toISOString(),
           vacuum: resolveBooleanFlag(flags.vacuum, "--vacuum"),
         });
       });
@@ -56,7 +72,7 @@ export function createCleanupCommand(defaults: CliDefaults) {
       }
 
       console.log(
-        `Deleted runs=${result.deletedRuns} runEvents=${result.deletedRunEvents} auditEvents=${result.deletedAuditEvents}`,
+        `Deleted runs=${result.deletedRuns} runEvents=${result.deletedRunEvents} auditEvents=${result.deletedAuditEvents} workerHeartbeats=${result.deletedWorkerHeartbeats}`,
       );
     },
   });

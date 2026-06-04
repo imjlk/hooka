@@ -8,6 +8,7 @@ import { createHookaFetchHandler } from "./app";
 async function createTestServerApp(
   input: {
     targets?: unknown[];
+    adminToken?: string | null;
     trustProxy?: boolean;
     apiRateLimit?: number;
     globalApiRateLimit?: number;
@@ -15,6 +16,7 @@ async function createTestServerApp(
     globalWebhookRateLimit?: number;
     maxBodyBytes?: number;
     corsOrigins?: string[];
+    webhookSecret?: string | null;
   } = {},
 ) {
   const tempDir = await createTempDir("hooka-server-test");
@@ -43,9 +45,16 @@ async function createTestServerApp(
     JSON.stringify({ targets: input.targets ?? [] }),
   );
 
+  const adminToken =
+    input.adminToken === null ? undefined : (input.adminToken ?? "admin-token");
+  const webhookSecret =
+    input.webhookSecret === null
+      ? undefined
+      : (input.webhookSecret ?? "secret");
+
   return {
     fetch: createHookaFetchHandler({
-      adminToken: "admin-token",
+      adminToken,
       apiRateLimit: input.apiRateLimit ?? 120,
       capabilityManifestPath: manifestPath,
       corsOrigins: input.corsOrigins ?? [],
@@ -59,7 +68,7 @@ async function createTestServerApp(
       trustProxy: input.trustProxy ?? false,
       uiDistDir,
       webhookRateLimit: input.webhookRateLimit ?? 60,
-      webhookSecret: "secret",
+      webhookSecret,
     }),
     runStore,
   };
@@ -69,6 +78,27 @@ function createAdminHeaders(): HeadersInit {
   return {
     authorization: "Bearer admin-token",
   };
+}
+
+function createSignedWebhookRequest(
+  url: string,
+  body: string,
+  secret = "secret",
+): Request {
+  const timestamp = String(Math.floor(Date.now() / 1000));
+  const signature = createHmac("sha256", secret)
+    .update(`${timestamp}.${body}`)
+    .digest("hex");
+
+  return new Request(url, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-hooka-timestamp": timestamp,
+      "x-hooka-signature": `sha256=${signature}`,
+    },
+    body,
+  });
 }
 
 test("generic enqueue API returns queued run metadata", async () => {
@@ -119,6 +149,24 @@ test("admin API routes reject missing bearer tokens", async () => {
   app.runStore.close();
 });
 
+test("admin routes surface server misconfiguration when the admin token is missing", async () => {
+  const app = await createTestServerApp({
+    adminToken: null,
+  });
+  const response = await app.fetch(
+    new Request("http://hooka.local/api/summary", {
+      headers: createAdminHeaders(),
+    }),
+  );
+  const body = await response.json();
+
+  expect(response.status).toBe(503);
+  expect(body.error).toContain("HOOKA_ADMIN_TOKEN");
+  expect(app.runStore.listAuditEvents({ limit: 5 })).toHaveLength(0);
+
+  app.runStore.close();
+});
+
 test("API routes reject payloads larger than the configured limit", async () => {
   const app = await createTestServerApp({
     maxBodyBytes: 32,
@@ -136,6 +184,44 @@ test("API routes reject payloads larger than the configured limit", async () => 
           kind: "pages-deploy",
           project: "staging-site",
           sourcePath: "/shared-source/simply-static",
+        },
+      }),
+    }),
+  );
+  const body = await response.json();
+
+  expect(response.status).toBe(413);
+  expect(body).toMatchObject({
+    ok: false,
+    error: "Payload too large.",
+  });
+
+  app.runStore.close();
+});
+
+test("API routes reject streamed payloads larger than the configured limit", async () => {
+  const app = await createTestServerApp({
+    maxBodyBytes: 32,
+  });
+  const oversizedBody = JSON.stringify({
+    taskId: "deploy.shared-volume.wrangler",
+    input: {
+      kind: "pages-deploy",
+      project: "streamed-site",
+      sourcePath: "/shared-source/streamed-site",
+    },
+  });
+  const response = await app.fetch(
+    new Request("http://hooka.local/api/runs", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...createAdminHeaders(),
+      },
+      body: new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode(oversizedBody));
+          controller.close();
         },
       }),
     }),
@@ -217,6 +303,38 @@ test("event streams require a one-time ticket instead of the admin token query p
     new Request("http://hooka.local/api/events/stream?token=admin-token"),
   );
   expect(queryTokenResponse.status).toBe(401);
+
+  app.runStore.close();
+});
+
+test("event stream ticket rejections record whether a ticket was reused", async () => {
+  const app = await createTestServerApp();
+  const ticketResponse = await app.fetch(
+    new Request("http://hooka.local/api/events/ticket", {
+      method: "POST",
+      headers: createAdminHeaders(),
+    }),
+  );
+  const { ticket } = (await ticketResponse.json()) as { ticket: string };
+
+  const streamResponse = await app.fetch(
+    new Request(`http://hooka.local/api/events/stream?ticket=${ticket}`),
+  );
+  await streamResponse.body?.cancel();
+
+  const reusedResponse = await app.fetch(
+    new Request(`http://hooka.local/api/events/stream?ticket=${ticket}`),
+  );
+  expect(reusedResponse.status).toBe(401);
+
+  const auditEvents = app.runStore.listAuditEvents({ limit: 5 });
+  expect(auditEvents[0]).toMatchObject({
+    action: "event_stream_ticket_rejected",
+    outcome: "rejected",
+  });
+  expect(auditEvents[0]?.context).toMatchObject({
+    reason: "reused",
+  });
 
   app.runStore.close();
 });
@@ -349,6 +467,68 @@ test("global API rate limits reject distributed request bursts", async () => {
   app.runStore.close();
 });
 
+test("proxy headers only affect rate limiting when trust proxy is enabled", async () => {
+  const untrusted = await createTestServerApp({
+    apiRateLimit: 1,
+    trustProxy: false,
+  });
+
+  const firstUntrusted = await untrusted.fetch(
+    new Request("http://hooka.local/api/summary", {
+      headers: {
+        ...createAdminHeaders(),
+        "x-forwarded-for": "198.51.100.10",
+        "user-agent": "shared-agent",
+      },
+    }),
+  );
+  const secondUntrusted = await untrusted.fetch(
+    new Request("http://hooka.local/api/summary", {
+      headers: {
+        ...createAdminHeaders(),
+        "x-forwarded-for": "198.51.100.11",
+        "user-agent": "shared-agent",
+      },
+    }),
+  );
+
+  expect(firstUntrusted.status).toBe(200);
+  expect(secondUntrusted.status).toBe(429);
+  expect(untrusted.runStore.listAuditEvents({ limit: 5 })[0]).toMatchObject({
+    clientIp: "unknown",
+  });
+
+  untrusted.runStore.close();
+
+  const trusted = await createTestServerApp({
+    apiRateLimit: 1,
+    trustProxy: true,
+  });
+  const firstTrusted = await trusted.fetch(
+    new Request("http://hooka.local/api/summary", {
+      headers: {
+        ...createAdminHeaders(),
+        "x-forwarded-for": "198.51.100.20",
+        "user-agent": "shared-agent",
+      },
+    }),
+  );
+  const secondTrusted = await trusted.fetch(
+    new Request("http://hooka.local/api/summary", {
+      headers: {
+        ...createAdminHeaders(),
+        "x-forwarded-for": "198.51.100.21",
+        "user-agent": "shared-agent",
+      },
+    }),
+  );
+
+  expect(firstTrusted.status).toBe(200);
+  expect(secondTrusted.status).toBe(200);
+
+  trusted.runStore.close();
+});
+
 test("signed simply static webhook is idempotent by event id", async () => {
   const app = await createTestServerApp();
   const payload = JSON.stringify({
@@ -435,6 +615,40 @@ test("wordpress alias normalizes to the generic runtime path", async () => {
   const runs = app.runStore.listRuns();
   expect(runs[0]?.taskId).toBe("deploy.shared-volume.wrangler");
   expect(runs[0]?.source).toBe("wordpress.webhook");
+
+  app.runStore.close();
+});
+
+test("trailbase assets webhook accepts internal bearer secret", async () => {
+  const app = await createTestServerApp();
+  const response = await app.fetch(
+    new Request("http://hooka.local/api/webhooks/trailbase/assets-drained", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: "Bearer secret",
+      },
+      body: JSON.stringify({
+        idempotencyKey:
+          "asset-drain:v2:latest:123:ready:10:failed:2:static:456:7",
+        project: "zero-three-three-assets",
+        branch: "production",
+        sourcePath: "/shared-source/trailbase/uploads",
+        readyCount: 10,
+        failedCount: 2,
+        latestAssetUpdatedAt: 123,
+        staticRevision: "456:7",
+      }),
+    }),
+  );
+
+  expect(response.status).toBe(202);
+  const runs = app.runStore.listRuns();
+  expect(runs[0]?.taskId).toBe("deploy.trailbase-pages.full");
+  expect(runs[0]?.source).toBe("zero-three-three.asset_generation_drained");
+  expect(runs[0]?.sourceEventId).toBe(
+    "asset-drain:v2:latest:123:ready:10:failed:2:static:456:7",
+  );
 
   app.runStore.close();
 });
@@ -614,6 +828,31 @@ test("webhook signature failures are audited", async () => {
     action: "webhook_signature_rejected",
     outcome: "rejected",
   });
+
+  app.runStore.close();
+});
+
+test("webhook routes surface server misconfiguration when the secret is missing", async () => {
+  const app = await createTestServerApp({
+    webhookSecret: null,
+  });
+  const payload = JSON.stringify({
+    taskId: "deploy.shared-volume.wrangler",
+    input: {
+      kind: "pages-deploy",
+      project: "staging-site",
+      sourcePath: "/shared-source/simply-static",
+    },
+    eventId: "evt_missing_secret",
+    source: "webhook",
+  });
+  const response = await app.fetch(
+    createSignedWebhookRequest("http://hooka.local/api/webhooks/task", payload),
+  );
+  const body = await response.json();
+
+  expect(response.status).toBe(503);
+  expect(body.error).toContain("HOOKA_WEBHOOK_SECRET");
 
   app.runStore.close();
 });
@@ -802,6 +1041,64 @@ test("run retry API re-enqueues terminal runs", async () => {
   expect(response.status).toBe(202);
   expect(body.taskId).toBe("deploy.shared-volume.wrangler");
   expect(app.runStore.listRuns(5)).toHaveLength(2);
+
+  app.runStore.close();
+});
+
+test("summary excludes stale worker heartbeats after retention cleanup", async () => {
+  const app = await createTestServerApp();
+
+  app.runStore.db
+    .query(
+      `insert into worker_heartbeats (
+        worker_id,
+        runtime_role,
+        installed_capabilities_json,
+        last_seen_at,
+        current_run_id
+      ) values (?, ?, ?, ?, ?)`,
+    )
+    .run(
+      "worker-old",
+      "worker:legacy",
+      JSON.stringify(["wrangler"]),
+      "2026-03-01T00:00:00.000Z",
+      null,
+    );
+  app.runStore.db
+    .query(
+      `insert into worker_heartbeats (
+        worker_id,
+        runtime_role,
+        installed_capabilities_json,
+        last_seen_at,
+        current_run_id
+      ) values (?, ?, ?, ?, ?)`,
+    )
+    .run(
+      "worker-new",
+      "worker:cf-pages",
+      JSON.stringify(["wrangler"]),
+      "2026-04-30T00:00:00.000Z",
+      null,
+    );
+
+  const cleanup = app.runStore.cleanupRetention({
+    workerHeartbeatSeenBefore: "2026-04-01T00:00:00.000Z",
+  });
+  const summaryResponse = await app.fetch(
+    new Request("http://hooka.local/api/summary", {
+      headers: createAdminHeaders(),
+    }),
+  );
+  const summary = await summaryResponse.json();
+
+  expect(cleanup.deletedWorkerHeartbeats).toBe(1);
+  expect(summary.workers).toEqual([
+    expect.objectContaining({
+      workerId: "worker-new",
+    }),
+  ]);
 
   app.runStore.close();
 });

@@ -8,7 +8,8 @@
       "kind": "task-pack",
       "export": "wordpressCloudflareTaskPack",
       "webhookAdapters": [
-        "wordpressSimplyStaticWebhookAdapter"
+        "wordpressSimplyStaticWebhookAdapter",
+        "trailbaseAssetsDrainedWebhookAdapter"
       ]
     }
   },

@@ -38,7 +38,11 @@ import {
 } from "@hooka/targets";
 import { extname, resolve } from "node:path";
 import { ZodError } from "zod";
-import { isAuthorizedAdminRequest, isPublicServerRoute } from "./lib/auth";
+import {
+  isAuthorizedAdminRequest,
+  isAuthorizedWebhookSecretRequest,
+  isPublicServerRoute,
+} from "./lib/auth";
 import {
   InMemoryRateLimiter,
   createServerRateLimitContext,
@@ -86,6 +90,24 @@ interface EnqueueMetadata {
   targetPolicy?: TargetPolicy;
 }
 
+interface EventStreamTicketEntry {
+  consumed: boolean;
+  expiresAt: number;
+}
+
+type EventStreamTicketRejectionReason =
+  | "expired"
+  | "missing"
+  | "reused"
+  | "unknown";
+
+type EventStreamTicketCheck =
+  | { ok: true }
+  | {
+      ok: false;
+      reason: EventStreamTicketRejectionReason;
+    };
+
 export function createHookaFetchHandler(options: HookaServerAppOptions) {
   const apiRateLimiter = new InMemoryRateLimiter({
     limit: options.apiRateLimit,
@@ -103,7 +125,7 @@ export function createHookaFetchHandler(options: HookaServerAppOptions) {
     limit: options.globalWebhookRateLimit,
     windowMs: options.rateLimitWindowMs,
   });
-  const eventStreamTickets = new Map<string, number>();
+  const eventStreamTickets = new Map<string, EventStreamTicketEntry>();
   const exactRoutes = createExactRoutes(options, eventStreamTickets);
 
   return async function fetch(request: Request): Promise<Response> {
@@ -254,7 +276,7 @@ export function createHookaFetchHandler(options: HookaServerAppOptions) {
 
 function createExactRoutes(
   options: HookaServerAppOptions,
-  eventStreamTickets: Map<string, number>,
+  eventStreamTickets: Map<string, EventStreamTicketEntry>,
 ): Map<string, RouteHandler> {
   const routes = new Map<string, RouteHandler>([
     [
@@ -467,13 +489,11 @@ function verifySignedWebhook(
     options.logger?.error("Webhook secret is not configured", {
       pathname,
     });
-    return json(
-      {
-        ok: false,
-        error: "HOOKA_WEBHOOK_SECRET is not configured.",
-      },
-      500,
-    );
+    return createMisconfiguredServerResponse("HOOKA_WEBHOOK_SECRET");
+  }
+
+  if (isAuthorizedWebhookSecretRequest(request, options.webhookSecret)) {
+    return null;
   }
 
   const signatureCheck = verifyHookaHmacSignature({
@@ -771,25 +791,30 @@ function createEventStreamResponse(
   options: HookaServerAppOptions,
   request: Request,
   url: URL,
-  eventStreamTickets: Map<string, number>,
+  eventStreamTickets: Map<string, EventStreamTicketEntry>,
 ): Response {
   const ticket = url.searchParams.get("ticket");
-  if (!consumeEventStreamTicket(eventStreamTickets, ticket)) {
+  const ticketCheck = consumeEventStreamTicket(eventStreamTickets, ticket);
+  if (!ticketCheck.ok) {
     appendAuditEvent(options, {
       category: "security",
       action: "event_stream_ticket_rejected",
       outcome: "rejected",
       subjectType: "request",
       request,
-      message: "Missing or invalid event stream ticket.",
+      message: `Event stream ticket rejected: ${ticketCheck.reason}.`,
+      context: {
+        reason: ticketCheck.reason,
+      },
     });
     options.logger?.warn("Event stream ticket rejected", {
       pathname: url.pathname,
+      reason: ticketCheck.reason,
     });
     return json(
       {
         ok: false,
-        error: "Missing or invalid event stream ticket.",
+        error: createEventStreamTicketError(ticketCheck.reason),
       },
       401,
     );
@@ -868,14 +893,17 @@ function createEventStreamResponse(
 }
 
 function createEventStreamTicketResponse(
-  eventStreamTickets: Map<string, number>,
+  eventStreamTickets: Map<string, EventStreamTicketEntry>,
 ): Response {
   const issuedAt = Date.now();
   sweepExpiredEventStreamTickets(eventStreamTickets, issuedAt);
 
   const ticket = crypto.randomUUID();
   const expiresAt = issuedAt + 30_000;
-  eventStreamTickets.set(ticket, expiresAt);
+  eventStreamTickets.set(ticket, {
+    consumed: false,
+    expiresAt,
+  });
 
   return json({
     ticket,
@@ -913,12 +941,34 @@ async function readTextBody(
     }
   }
 
-  const body = await request.text();
-  if (new TextEncoder().encode(body).byteLength > maxBodyBytes) {
-    throw new PayloadTooLargeError("Payload too large.");
+  if (!request.body) {
+    return "";
   }
 
-  return body;
+  const reader = request.body.getReader();
+  const decoder = new TextDecoder();
+  let totalBytes = 0;
+  let text = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+
+    totalBytes += value.byteLength;
+    if (totalBytes > maxBodyBytes) {
+      await reader.cancel();
+      throw new PayloadTooLargeError("Payload too large.");
+    }
+
+    text += decoder.decode(value, {
+      stream: true,
+    });
+  }
+
+  text += decoder.decode();
+  return text;
 }
 
 function requireAdminAuth(
@@ -936,6 +986,13 @@ function requireAdminAuth(
 
   if (pathname === "/api/events/stream") {
     return null;
+  }
+
+  if (!options.adminToken) {
+    options.logger?.error("Admin token is not configured", {
+      pathname,
+    });
+    return createMisconfiguredServerResponse("HOOKA_ADMIN_TOKEN");
   }
 
   if (isAuthorizedAdminRequest(request, options.adminToken)) {
@@ -1041,6 +1098,16 @@ function json(
       ...headersInit,
     }),
   });
+}
+
+function createMisconfiguredServerResponse(setting: string): Response {
+  return json(
+    {
+      ok: false,
+      error: `Server misconfigured: ${setting} is not configured.`,
+    },
+    503,
+  );
 }
 
 function createCorsPreflightResponse(
@@ -1268,33 +1335,73 @@ function handleTargetWriteError(error: unknown): Response {
 }
 
 function sweepExpiredEventStreamTickets(
-  eventStreamTickets: Map<string, number>,
+  eventStreamTickets: Map<string, EventStreamTicketEntry>,
   nowMs: number,
 ): void {
-  for (const [ticket, expiresAt] of eventStreamTickets.entries()) {
-    if (expiresAt <= nowMs) {
+  for (const [ticket, entry] of eventStreamTickets.entries()) {
+    if (entry.expiresAt <= nowMs) {
       eventStreamTickets.delete(ticket);
     }
   }
 }
 
 function consumeEventStreamTicket(
-  eventStreamTickets: Map<string, number>,
+  eventStreamTickets: Map<string, EventStreamTicketEntry>,
   ticket: string | null,
   nowMs = Date.now(),
-): boolean {
-  sweepExpiredEventStreamTickets(eventStreamTickets, nowMs);
-
+): EventStreamTicketCheck {
   if (!ticket) {
-    return false;
+    sweepExpiredEventStreamTickets(eventStreamTickets, nowMs);
+    return {
+      ok: false,
+      reason: "missing",
+    };
   }
 
-  const expiresAt = eventStreamTickets.get(ticket);
-  if (!expiresAt || expiresAt <= nowMs) {
+  const entry = eventStreamTickets.get(ticket);
+  if (!entry) {
+    sweepExpiredEventStreamTickets(eventStreamTickets, nowMs);
+    return {
+      ok: false,
+      reason: "unknown",
+    };
+  }
+
+  if (entry.expiresAt <= nowMs) {
     eventStreamTickets.delete(ticket);
-    return false;
+    sweepExpiredEventStreamTickets(eventStreamTickets, nowMs);
+    return {
+      ok: false,
+      reason: "expired",
+    };
   }
 
-  eventStreamTickets.delete(ticket);
-  return true;
+  if (entry.consumed) {
+    sweepExpiredEventStreamTickets(eventStreamTickets, nowMs);
+    return {
+      ok: false,
+      reason: "reused",
+    };
+  }
+
+  entry.consumed = true;
+  eventStreamTickets.set(ticket, entry);
+  sweepExpiredEventStreamTickets(eventStreamTickets, nowMs);
+  return {
+    ok: true,
+  };
+}
+
+function createEventStreamTicketError(
+  reason: EventStreamTicketRejectionReason,
+): string {
+  if (reason === "expired") {
+    return "Event stream ticket expired.";
+  }
+
+  if (reason === "reused") {
+    return "Event stream ticket has already been used.";
+  }
+
+  return "Missing or invalid event stream ticket.";
 }

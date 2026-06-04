@@ -18,7 +18,7 @@ test("resolveClientIp ignores x-forwarded-for unless trust proxy is enabled", ()
     resolveClientIp(request, {
       trustProxy: false,
     }),
-  ).toBe("198.51.100.2");
+  ).toBe("unknown");
   expect(
     resolveClientIp(request, {
       trustProxy: true,

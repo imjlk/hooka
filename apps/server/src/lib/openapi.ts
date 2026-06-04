@@ -1,3 +1,17 @@
+const adminAuthResponses = {
+  401: { description: "Missing or invalid admin bearer token." },
+  503: { description: "Server is missing HOOKA_ADMIN_TOKEN." },
+};
+
+const webhookIngressResponses = {
+  200: { description: "Existing run reused" },
+  202: { description: "Run queued" },
+  400: { description: "Malformed webhook body" },
+  401: { description: "Webhook signature verification failed" },
+  413: { description: "Payload too large" },
+  503: { description: "Server is missing HOOKA_WEBHOOK_SECRET." },
+};
+
 export function createOpenApiDocument() {
   return {
     openapi: "3.1.0",
@@ -106,35 +120,50 @@ export function createOpenApiDocument() {
         get: {
           summary: "List registered tasks",
           security: [{ bearerAuth: [] }],
-          responses: { 200: { description: "Registered tasks" } },
+          responses: {
+            200: { description: "Registered tasks" },
+            ...adminAuthResponses,
+          },
         },
       },
       "/api/capabilities": {
         get: {
           summary: "List registered capabilities",
           security: [{ bearerAuth: [] }],
-          responses: { 200: { description: "Registered capabilities" } },
+          responses: {
+            200: { description: "Registered capabilities" },
+            ...adminAuthResponses,
+          },
         },
       },
       "/api/presets": {
         get: {
           summary: "List active presets and plans",
           security: [{ bearerAuth: [] }],
-          responses: { 200: { description: "Preset catalog" } },
+          responses: {
+            200: { description: "Preset catalog" },
+            ...adminAuthResponses,
+          },
         },
       },
       "/api/summary": {
         get: {
           summary: "Registry and worker summary",
           security: [{ bearerAuth: [] }],
-          responses: { 200: { description: "Summary payload" } },
+          responses: {
+            200: { description: "Summary payload" },
+            ...adminAuthResponses,
+          },
         },
       },
       "/api/runs": {
         get: {
           summary: "List runs",
           security: [{ bearerAuth: [] }],
-          responses: { 200: { description: "Run summaries" } },
+          responses: {
+            200: { description: "Run summaries" },
+            ...adminAuthResponses,
+          },
         },
         post: {
           summary: "Enqueue a task run",
@@ -150,6 +179,8 @@ export function createOpenApiDocument() {
           responses: {
             202: { description: "Run queued" },
             404: { description: "Task not found" },
+            413: { description: "Payload too large" },
+            ...adminAuthResponses,
           },
         },
       },
@@ -168,6 +199,7 @@ export function createOpenApiDocument() {
           responses: {
             200: { description: "Run detail" },
             404: { description: "Run not found" },
+            ...adminAuthResponses,
           },
         },
       },
@@ -187,6 +219,7 @@ export function createOpenApiDocument() {
             202: { description: "Retry queued" },
             404: { description: "Run not found" },
             409: { description: "Run is not terminal" },
+            ...adminAuthResponses,
           },
         },
       },
@@ -194,7 +227,10 @@ export function createOpenApiDocument() {
         get: {
           summary: "List configured targets",
           security: [{ bearerAuth: [] }],
-          responses: { 200: { description: "Target list" } },
+          responses: {
+            200: { description: "Target list" },
+            ...adminAuthResponses,
+          },
         },
         post: {
           summary: "Create a target",
@@ -203,6 +239,7 @@ export function createOpenApiDocument() {
             200: { description: "Target created" },
             400: { description: "Invalid target" },
             409: { description: "Target conflict" },
+            ...adminAuthResponses,
           },
         },
       },
@@ -221,6 +258,7 @@ export function createOpenApiDocument() {
           responses: {
             200: { description: "Target detail" },
             404: { description: "Target not found" },
+            ...adminAuthResponses,
           },
         },
         put: {
@@ -239,6 +277,7 @@ export function createOpenApiDocument() {
             400: { description: "Invalid target" },
             404: { description: "Target not found" },
             409: { description: "Target conflict" },
+            ...adminAuthResponses,
           },
         },
         delete: {
@@ -255,6 +294,7 @@ export function createOpenApiDocument() {
           responses: {
             200: { description: "Target deleted" },
             404: { description: "Target not found" },
+            ...adminAuthResponses,
           },
         },
       },
@@ -262,7 +302,10 @@ export function createOpenApiDocument() {
         get: {
           summary: "List audit events",
           security: [{ bearerAuth: [] }],
-          responses: { 200: { description: "Audit events" } },
+          responses: {
+            200: { description: "Audit events" },
+            ...adminAuthResponses,
+          },
         },
       },
       "/api/events/ticket": {
@@ -278,6 +321,7 @@ export function createOpenApiDocument() {
                 },
               },
             },
+            ...adminAuthResponses,
           },
         },
       },
@@ -294,7 +338,9 @@ export function createOpenApiDocument() {
           ],
           responses: {
             200: { description: "Event stream" },
-            401: { description: "Missing or invalid ticket" },
+            401: {
+              description: "Missing, expired, invalid, or already consumed ticket",
+            },
           },
         },
       },
@@ -315,22 +361,14 @@ export function createOpenApiDocument() {
               },
             },
           },
-          responses: {
-            200: { description: "Existing run reused" },
-            202: { description: "Run queued" },
-            401: { description: "Signature failed" },
-          },
+          responses: webhookIngressResponses,
         },
       },
       "/api/webhooks/wordpress/simply-static": {
         post: {
           summary: "Compatibility alias for WordPress Simply Static webhooks",
           security: [{ webhookSignature: [] }],
-          responses: {
-            200: { description: "Existing run reused" },
-            202: { description: "Run queued" },
-            401: { description: "Signature failed" },
-          },
+          responses: webhookIngressResponses,
         },
       },
     },

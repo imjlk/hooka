@@ -199,7 +199,7 @@ export function createServerConfig(
   const env = input.env ?? (Bun.env as EnvRecord);
 
   return serverConfigSchema.parse({
-    port: parseNumberEnv(env["HOOKA_PORT"], defaultServerPort),
+    port: parseNumberEnv(env["HOOKA_PORT"], defaultServerPort, "HOOKA_PORT"),
     dbPath: env["HOOKA_DB_PATH"] ?? getDefaultLocalDbPath(cwd),
     runtimeRole: env["HOOKA_RUNTIME_ROLE"] ?? "hooka-server",
     webhookSecret: env["HOOKA_WEBHOOK_SECRET"] || undefined,
@@ -207,32 +207,43 @@ export function createServerConfig(
     maxAttempts: parseNumberEnv(
       env["HOOKA_RUN_MAX_ATTEMPTS"],
       defaultRunMaxAttempts,
+      "HOOKA_RUN_MAX_ATTEMPTS",
     ),
-    trustProxy: parseBooleanEnv(env["HOOKA_TRUST_PROXY"], false),
+    trustProxy: parseBooleanEnv(
+      env["HOOKA_TRUST_PROXY"],
+      false,
+      "HOOKA_TRUST_PROXY",
+    ),
     rateLimitWindowMs: parseNumberEnv(
       env["HOOKA_RATE_LIMIT_WINDOW_MS"],
       defaultRateLimitWindowMs,
+      "HOOKA_RATE_LIMIT_WINDOW_MS",
     ),
     apiRateLimit: parseNumberEnv(
       env["HOOKA_RATE_LIMIT_API_LIMIT"],
       defaultApiRateLimit,
+      "HOOKA_RATE_LIMIT_API_LIMIT",
     ),
     webhookRateLimit: parseNumberEnv(
       env["HOOKA_RATE_LIMIT_WEBHOOK_LIMIT"],
       defaultWebhookRateLimit,
+      "HOOKA_RATE_LIMIT_WEBHOOK_LIMIT",
     ),
     globalApiRateLimit: parseNumberEnv(
       env["HOOKA_RATE_LIMIT_GLOBAL_API_LIMIT"],
       defaultGlobalApiRateLimit,
+      "HOOKA_RATE_LIMIT_GLOBAL_API_LIMIT",
     ),
     globalWebhookRateLimit: parseNumberEnv(
       env["HOOKA_RATE_LIMIT_GLOBAL_WEBHOOK_LIMIT"],
       defaultGlobalWebhookRateLimit,
+      "HOOKA_RATE_LIMIT_GLOBAL_WEBHOOK_LIMIT",
     ),
     corsOrigins: parseCsvEnv(env["HOOKA_CORS_ORIGINS"]),
     maxBodyBytes: parseNumberEnv(
       env["HOOKA_MAX_BODY_BYTES"],
       defaultMaxBodyBytes,
+      "HOOKA_MAX_BODY_BYTES",
     ),
     capabilityManifestPath: getDefaultManifestPath(cwd, env),
     targetsPath: getDefaultTargetsPath(cwd, env),
@@ -255,31 +266,42 @@ export function createWorkerConfig(
     pollIntervalMs: parseNumberEnv(
       env["HOOKA_POLL_INTERVAL_MS"],
       defaultWorkerPollIntervalMs,
+      "HOOKA_POLL_INTERVAL_MS",
     ),
-    leaseMs: parseNumberEnv(env["HOOKA_RUN_LEASE_MS"], defaultRunLeaseMs),
+    leaseMs: parseNumberEnv(
+      env["HOOKA_RUN_LEASE_MS"],
+      defaultRunLeaseMs,
+      "HOOKA_RUN_LEASE_MS",
+    ),
     maxAttempts: parseNumberEnv(
       env["HOOKA_RUN_MAX_ATTEMPTS"],
       defaultRunMaxAttempts,
+      "HOOKA_RUN_MAX_ATTEMPTS",
     ),
     retryBaseDelayMs: parseNumberEnv(
       env["HOOKA_RETRY_BASE_DELAY_MS"],
       defaultRetryBaseDelayMs,
+      "HOOKA_RETRY_BASE_DELAY_MS",
     ),
     heartbeatIntervalMs: parseNumberEnv(
       env["HOOKA_WORKER_HEARTBEAT_MS"],
       defaultWorkerHeartbeatIntervalMs,
+      "HOOKA_WORKER_HEARTBEAT_MS",
     ),
     retentionRunDays: parseNumberEnv(
       env["HOOKA_RETENTION_RUN_DAYS"],
       defaultRetentionRunDays,
+      "HOOKA_RETENTION_RUN_DAYS",
     ),
     retentionAuditDays: parseNumberEnv(
       env["HOOKA_RETENTION_AUDIT_DAYS"],
       defaultRetentionAuditDays,
+      "HOOKA_RETENTION_AUDIT_DAYS",
     ),
     retentionSweepIntervalHours: parseNumberEnv(
       env["HOOKA_RETENTION_SWEEP_INTERVAL_HOURS"],
       defaultRetentionSweepIntervalHours,
+      "HOOKA_RETENTION_SWEEP_INTERVAL_HOURS",
     ),
   });
 }
@@ -297,10 +319,12 @@ export function createCliConfig(
     retentionRunDays: parseNumberEnv(
       env["HOOKA_RETENTION_RUN_DAYS"],
       defaultRetentionRunDays,
+      "HOOKA_RETENTION_RUN_DAYS",
     ),
     retentionAuditDays: parseNumberEnv(
       env["HOOKA_RETENTION_AUDIT_DAYS"],
       defaultRetentionAuditDays,
+      "HOOKA_RETENTION_AUDIT_DAYS",
     ),
   });
 }
@@ -311,26 +335,53 @@ export function createAdminUiDevConfig(
   const env = input.env ?? (Bun.env as EnvRecord);
 
   return adminUiDevConfigSchema.parse({
-    uiPort: parseNumberEnv(env["HOOKA_UI_PORT"], defaultUiPort),
+    uiPort: parseNumberEnv(
+      env["HOOKA_UI_PORT"],
+      defaultUiPort,
+      "HOOKA_UI_PORT",
+    ),
     apiOrigin: env["HOOKA_UI_API_ORIGIN"] ?? defaultUiApiOrigin,
   });
 }
 
-function parseNumberEnv(raw: string | undefined, fallback: number): number {
+function parseNumberEnv(
+  raw: string | undefined,
+  fallback: number,
+  envName: string,
+): number {
   if (!raw || raw.trim().length === 0) {
     return fallback;
   }
 
   const parsed = Number(raw);
-  return Number.isNaN(parsed) ? fallback : parsed;
+  if (!Number.isFinite(parsed)) {
+    throw new Error(`Invalid numeric value for ${envName}: ${raw}`);
+  }
+
+  return parsed;
 }
 
-function parseBooleanEnv(raw: string | undefined, fallback: boolean): boolean {
+function parseBooleanEnv(
+  raw: string | undefined,
+  fallback: boolean,
+  envName: string,
+): boolean {
   if (!raw || raw.trim().length === 0) {
     return fallback;
   }
 
-  return raw.trim().toLowerCase() === "true";
+  const normalized = raw.trim().toLowerCase();
+  if (normalized === "true" || normalized === "1") {
+    return true;
+  }
+
+  if (normalized === "false" || normalized === "0") {
+    return false;
+  }
+
+  throw new Error(
+    `Invalid boolean value for ${envName}: ${raw}. Use true/false or 1/0.`,
+  );
 }
 
 function parseCsvEnv(raw: string | undefined): string[] {

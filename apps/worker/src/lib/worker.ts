@@ -80,18 +80,46 @@ export async function processNextRun(
         options.runStore.deadLetterRun(claimed.id, result, {
           attemptCount,
         });
+        options.logger?.error("Run moved to dead-letter queue", {
+          runId: claimed.id,
+          taskId: claimed.taskId,
+          targetId: claimed.targetId,
+          attemptCount,
+          maxAttempts: claimed.maxAttempts,
+          errorCode: result.errorCode ?? null,
+        });
       } else {
+        const nextRetryAt = new Date(
+          Date.now() +
+            computeRetryDelayMs(attemptCount, options.retryBaseDelayMs),
+        ).toISOString();
         options.runStore.scheduleRetry(claimed.id, result, {
           attemptCount,
-          nextRetryAt: new Date(
-            Date.now() +
-              computeRetryDelayMs(attemptCount, options.retryBaseDelayMs),
-          ).toISOString(),
+          nextRetryAt,
+        });
+        options.logger?.warn("Run retry scheduled", {
+          runId: claimed.id,
+          taskId: claimed.taskId,
+          targetId: claimed.targetId,
+          attemptCount,
+          maxAttempts: claimed.maxAttempts,
+          nextRetryAt,
+          errorCode: result.errorCode ?? null,
         });
       }
     } else {
       options.runStore.finishRun(claimed.id, result, {
         attemptCount,
+      });
+      const log = result.ok ? options.logger?.info : options.logger?.warn;
+      log?.call(options.logger, "Run finished", {
+        runId: claimed.id,
+        taskId: claimed.taskId,
+        targetId: claimed.targetId,
+        status: result.status,
+        attemptCount,
+        maxAttempts: claimed.maxAttempts,
+        errorCode: result.errorCode ?? null,
       });
     }
   } finally {
@@ -115,6 +143,10 @@ export async function startWorkerLoop(
   const retentionAuditDays = options.retentionAuditDays ?? 90;
   const retentionSweepIntervalMs =
     (options.retentionSweepIntervalHours ?? 24) * 60 * 60 * 1000;
+  const workerHeartbeatRetentionMs = Math.max(
+    retentionSweepIntervalMs,
+    heartbeatIntervalMs * 12,
+  );
   const sleepFn = options.sleep ?? sleep;
   let consecutiveErrors = 0;
   let lastHeartbeatAt = 0;
@@ -141,13 +173,17 @@ export async function startWorkerLoop(
           auditCreatedBefore: new Date(
             now - retentionAuditDays * 24 * 60 * 60 * 1000,
           ).toISOString(),
+          workerHeartbeatSeenBefore: new Date(
+            now - workerHeartbeatRetentionMs,
+          ).toISOString(),
         });
         lastRetentionSweepAt = now;
 
         if (
           cleanupResult.deletedRuns > 0 ||
           cleanupResult.deletedRunEvents > 0 ||
-          cleanupResult.deletedAuditEvents > 0
+          cleanupResult.deletedAuditEvents > 0 ||
+          cleanupResult.deletedWorkerHeartbeats > 0
         ) {
           options.logger?.info(
             "Worker retention sweep completed",

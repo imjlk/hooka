@@ -106,13 +106,13 @@ GitHub Actions now cover both verification and GHCR publishing:
 - Runtime entrypoints now load typed env-backed defaults through `@hooka/config` instead of parsing env inline in each app.
 - Long-running services emit structured JSON logs through `@hooka/logger` for startup, shutdown, readiness, and loop/runtime failures.
 - Admin and read APIs are protected by `HOOKA_ADMIN_TOKEN`, while webhook ingress continues to use HMAC signatures.
-- SSE uses `POST /api/events/ticket` plus a short-lived single-use ticket for `GET /api/events/stream`.
+- SSE uses `POST /api/events/ticket` plus a short-lived single-use ticket for `GET /api/events/stream`, and reused or expired tickets are rejected and audited explicitly.
 - Target CRUD stays file-backed through `HOOKA_TARGETS_PATH`, but can now be managed through the admin API, CLI, and admin UI without hand-editing the JSON file.
 - Built-in target scaffolds cover shared-volume Pages deploys, cache purge targets, export verification, and a generic skeleton.
 - The worker applies retry backoff, dead-lettering, preflight validation, and heartbeat updates before and after task execution.
 - Optional targets in `.hooka/targets.json` provide policy-backed execution paths for shared-volume deploys and other reusable flows.
 - Audit events for auth failures, rate-limit rejections, policy rejections, and target mutations are stored in SQLite and surfaced in the admin UI and CLI.
-- Terminal runs and audit rows can be pruned with `hooka cleanup`, and workers can sweep old data automatically.
+- Terminal runs, audit rows, and stale worker heartbeat rows can be pruned with `hooka cleanup`, and workers sweep old data automatically.
 - `server` and `worker` share the same `HOOKA_DB_PATH`.
 - Producers such as WordPress share an artifact/source volume with the `worker`, not the server.
 
@@ -170,6 +170,10 @@ HOOKA_RETENTION_RUN_DAYS=30
 HOOKA_RETENTION_AUDIT_DAYS=90
 HOOKA_RETENTION_SWEEP_INTERVAL_HOURS=24
 ```
+
+Startup validation is strict for numeric and boolean env values. For example,
+`HOOKA_TRUST_PROXY` must be `true`, `false`, `1`, or `0`, and invalid numeric
+values now fail startup instead of silently falling back.
 
 Recommended shared source mount:
 
@@ -229,7 +233,7 @@ Planned presets are documented but not published in registry APIs or GHCR releas
 
 - `GET /api/health` returns a lightweight liveness response for the server role.
 - `GET /api/ready` returns readiness for deployment platforms and fails when the SQLite store is not ready.
-- `POST /api/runs` enqueues a task run. This route requires the admin bearer token.
+- `POST /api/runs` enqueues a task run. This route requires the admin bearer token and rejects oversized bodies with `413`.
 - `POST /api/runs/:id/retry` retries a terminal run by enqueueing a new run.
 - `POST /api/webhooks/task` verifies an HMAC-signed generic or target-based webhook and enqueues any registered task.
 - `POST /api/webhooks/wordpress/simply-static` remains as a compatibility alias for the first producer example.
@@ -242,9 +246,11 @@ Planned presets are documented but not published in registry APIs or GHCR releas
 - `GET /api/events/stream` emits SSE updates for run events and worker heartbeats when called with a valid ticket.
 - `GET /api/openapi.json` exposes a machine-readable OpenAPI 3.1 document.
 - All admin/read APIs except `/api/health` and `/api/ready` require `Authorization: Bearer <HOOKA_ADMIN_TOKEN>`.
+- If `HOOKA_ADMIN_TOKEN` or `HOOKA_WEBHOOK_SECRET` is missing, the affected routes now return `503` so deployment misconfiguration is distinguishable from bad client credentials.
 - API routes are protected by in-memory per-client and global rate limiting by default.
 - Cross-origin API access is disabled by default and can be enabled with `HOOKA_CORS_ORIGINS`.
-- `HOOKA_TRUST_PROXY=true` should only be enabled when Hooka is behind a trusted reverse proxy that sets `X-Forwarded-For`.
+- `HOOKA_TRUST_PROXY=true` should only be enabled when Hooka is behind a trusted reverse proxy that sets `X-Forwarded-For`. When it is `false`, Hooka ignores forwarded client IP headers entirely.
+- SSE tickets are single-use and short-lived. A reused or expired ticket returns `401` and is audited with a rejection reason.
 
 Generic webhook body:
 

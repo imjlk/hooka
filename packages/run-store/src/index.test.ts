@@ -227,6 +227,42 @@ test("worker heartbeats are stored and listed", async () => {
   runStore.close();
 });
 
+test("cleanupRetention prunes stale worker heartbeats", async () => {
+  let now = new Date("2026-03-26T00:00:00.000Z");
+  const runStore = await createRunStore({
+    dbPath: ":memory:",
+    now: () => now,
+  });
+
+  runStore.upsertWorkerHeartbeat({
+    workerId: "worker-old",
+    runtimeRole: "worker:legacy",
+    installedCapabilities: ["wrangler"],
+    currentRunId: null,
+  });
+
+  now = new Date("2026-04-30T00:00:00.000Z");
+  runStore.upsertWorkerHeartbeat({
+    workerId: "worker-new",
+    runtimeRole: "worker:cf-pages",
+    installedCapabilities: ["wrangler"],
+    currentRunId: null,
+  });
+
+  const result = runStore.cleanupRetention({
+    workerHeartbeatSeenBefore: "2026-04-01T00:00:00.000Z",
+  });
+
+  expect(result.deletedWorkerHeartbeats).toBe(1);
+  expect(runStore.listWorkerHeartbeats()).toEqual([
+    expect.objectContaining({
+      workerId: "worker-new",
+    }),
+  ]);
+
+  runStore.close();
+});
+
 test("audit events are stored and filterable", async () => {
   const runStore = await createRunStore({
     dbPath: ":memory:",
@@ -314,6 +350,40 @@ test("invalid audit event rows are rejected during mapping", async () => {
   runStore.close();
 });
 
+test("busy retry also handles SQLITE_LOCKED errors reported on the error code", async () => {
+  const runStore = await createRunStore({
+    dbPath: ":memory:",
+  });
+  const originalExec = runStore.db.exec.bind(runStore.db);
+  let locked = true;
+
+  runStore.db.exec = ((sql: string) => {
+    if (locked && sql === "begin immediate") {
+      locked = false;
+      const error = new Error("database is locked");
+      (
+        error as Error & {
+          code?: string;
+        }
+      ).code = "SQLITE_LOCKED";
+      throw error;
+    }
+
+    return originalExec(sql);
+  }) as typeof runStore.db.exec;
+
+  const result = runStore.cleanupRetention({});
+  expect(result).toMatchObject({
+    deletedRuns: 0,
+    deletedRunEvents: 0,
+    deletedAuditEvents: 0,
+    deletedWorkerHeartbeats: 0,
+  });
+
+  runStore.db.exec = originalExec as typeof runStore.db.exec;
+  runStore.close();
+});
+
 test("cleanupRetention prunes old terminal runs and audit events", async () => {
   let now = new Date("2026-03-30T00:00:00.000Z");
   const runStore = await createRunStore({
@@ -374,6 +444,7 @@ test("cleanupRetention prunes old terminal runs and audit events", async () => {
   expect(result.deletedRuns).toBe(1);
   expect(result.deletedRunEvents).toBeGreaterThan(0);
   expect(result.deletedAuditEvents).toBe(1);
+  expect(result.deletedWorkerHeartbeats).toBe(0);
   expect(runStore.getRun(oldRun.response.runId)).toBeNull();
   expect(runStore.getRun(newRun.response.runId)?.status).toBe("succeeded");
 

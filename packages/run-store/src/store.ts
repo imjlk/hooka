@@ -393,6 +393,9 @@ export class RunStore {
         result.summary ?? `Run finished with status ${result.status}.`,
         {
           ok: result.ok,
+          status: result.status,
+          retryable: result.retryable ?? false,
+          errorCode: result.errorCode ?? null,
           command: result.command,
           durationMs: result.durationMs,
         },
@@ -443,6 +446,9 @@ export class RunStore {
           ? `${result.summary} Retry scheduled.`
           : "Retry scheduled.",
         {
+          status: result.status,
+          retryable: result.retryable ?? true,
+          attemptCount: input.attemptCount,
           retryAt: input.nextRetryAt,
           errorCode: result.errorCode ?? null,
         },
@@ -491,6 +497,8 @@ export class RunStore {
         "dead-lettered",
         result.summary ?? "Run moved to the dead-letter queue.",
         {
+          status: "dead-lettered",
+          retryable: false,
           attempts: input.attemptCount,
           errorCode: result.errorCode ?? null,
         },
@@ -656,16 +664,19 @@ export class RunStore {
   cleanupRetention(input: {
     runFinishedBefore?: string;
     auditCreatedBefore?: string;
+    workerHeartbeatSeenBefore?: string;
     vacuum?: boolean;
   }): {
     deletedRuns: number;
     deletedRunEvents: number;
     deletedAuditEvents: number;
+    deletedWorkerHeartbeats: number;
   } {
     const result = this.withTransaction(() => {
       let deletedRuns = 0;
       let deletedRunEvents = 0;
       let deletedAuditEvents = 0;
+      let deletedWorkerHeartbeats = 0;
 
       if (input.runFinishedBefore) {
         deletedRunEvents = this.db
@@ -696,10 +707,17 @@ export class RunStore {
           .run(input.auditCreatedBefore).changes;
       }
 
+      if (input.workerHeartbeatSeenBefore) {
+        deletedWorkerHeartbeats = this.db
+          .query(`delete from worker_heartbeats where last_seen_at < ?`)
+          .run(input.workerHeartbeatSeenBefore).changes;
+      }
+
       return {
         deletedRuns,
         deletedRunEvents,
         deletedAuditEvents,
+        deletedWorkerHeartbeats,
       };
     });
 
@@ -707,7 +725,8 @@ export class RunStore {
       input.vacuum &&
       (result.deletedRuns > 0 ||
         result.deletedRunEvents > 0 ||
-        result.deletedAuditEvents > 0)
+        result.deletedAuditEvents > 0 ||
+        result.deletedWorkerHeartbeats > 0)
     ) {
       this.withBusyRetry(() => {
         this.db.exec("vacuum");
@@ -889,7 +908,15 @@ export class RunStore {
 }
 
 function isSqliteBusyError(error: unknown): boolean {
-  return error instanceof Error && error.message.includes("SQLITE_BUSY");
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const code =
+    "code" in error && typeof error.code === "string" ? error.code : "";
+  const text = `${code} ${error.message}`;
+
+  return text.includes("SQLITE_BUSY") || text.includes("SQLITE_LOCKED");
 }
 
 function sleepSync(ms: number): void {
