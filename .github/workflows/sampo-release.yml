@@ -27,6 +27,11 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Configure git credentials for Sampo
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+
       - name: Run Sampo release automation
         id: sampo
         uses: bruits/sampo/crates/sampo-github-action@537fa0a578ca5c60a6885c5477f3cc7ce161be82 # cargo-sampo-github-action-v0.16.0
@@ -39,6 +44,10 @@ jobs:
           open-discussion: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Clear Sampo git credentials
+        if: always()
+        run: git remote set-url origin "https://github.com/${GITHUB_REPOSITORY}.git"
 
       - name: Set up Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
