@@ -1,4 +1,4 @@
-import type { GenericTaskWebhook } from "@hooka/contracts";
+import type { IncomingTaskWebhook } from "@hooka/contracts";
 import type { CompatibilityWebhookAdapter } from "@hooka/task-sdk";
 import {
   type TrailBaseAssetsDrainedWebhook,
@@ -9,7 +9,7 @@ export const trailbaseAssetsDrainedWebhookAdapter: CompatibilityWebhookAdapter =
   {
     id: "trailbase.assets-drained",
     routePath: "/api/webhooks/trailbase/assets-drained",
-    normalize(rawBody: string): GenericTaskWebhook {
+    normalize(rawBody: string): IncomingTaskWebhook {
       return normalizeTrailBaseAssetsDrainedWebhook(
         parseTrailBaseAssetsDrainedWebhook(rawBody),
       );
@@ -24,21 +24,43 @@ export function parseTrailBaseAssetsDrainedWebhook(
 
 export function normalizeTrailBaseAssetsDrainedWebhook(
   payload: TrailBaseAssetsDrainedWebhook,
-): GenericTaskWebhook {
+): IncomingTaskWebhook {
+  const input = {
+    kind: "pages-deploy",
+    project: payload.project,
+    sourcePath: payload.sourcePath,
+    branch: payload.branch,
+    commitMessage: buildCommitMessage(payload),
+    noBundle: true,
+  };
+
+  if (payload.targetId) {
+    return {
+      targetId: payload.targetId,
+      overrides: toTargetOverrides(input),
+      eventId: payload.idempotencyKey,
+      source: payload.source,
+      triggeredAt: payload.triggeredAt,
+    };
+  }
+
   return {
     taskId: payload.taskId,
-    input: {
-      kind: "pages-deploy",
-      project: payload.project,
-      sourcePath: payload.sourcePath,
-      branch: payload.branch,
-      commitMessage: buildCommitMessage(payload),
-      noBundle: true,
-    },
+    input,
     eventId: payload.idempotencyKey,
     source: payload.source,
     triggeredAt: payload.triggeredAt,
   };
+}
+
+function toTargetOverrides(
+  input: Record<string, unknown>,
+): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(input).filter(
+      ([key, value]) => key !== "kind" && value !== undefined,
+    ),
+  );
 }
 
 function buildCommitMessage(payload: TrailBaseAssetsDrainedWebhook): string {

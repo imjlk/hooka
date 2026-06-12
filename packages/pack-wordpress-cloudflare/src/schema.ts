@@ -15,6 +15,7 @@ export const sharedVolumeWranglerInputSchema = z.object({
 
 export const wordpressSimplyStaticWebhookSchema = z.object({
   eventId: z.string().min(1),
+  targetId: z.string().min(1).optional(),
   project: z.string().min(1),
   exportDir: z.string().min(1),
   branch: z.string().min(1).optional(),
@@ -28,6 +29,7 @@ export const wordpressSimplyStaticWebhookSchema = z.object({
 });
 
 export const trailbaseAssetsDrainedWebhookSchema = z.object({
+  targetId: z.string().min(1).optional(),
   taskId: z.string().min(1).default("deploy.trailbase-pages.full"),
   idempotencyKey: z.string().min(1),
   source: z

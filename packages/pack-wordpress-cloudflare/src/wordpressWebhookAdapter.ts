@@ -1,4 +1,4 @@
-import type { GenericTaskWebhook } from "@hooka/contracts";
+import type { IncomingTaskWebhook } from "@hooka/contracts";
 import type { CompatibilityWebhookAdapter } from "@hooka/task-sdk";
 import {
   wordpressSimplyStaticWebhookSchema,
@@ -9,7 +9,7 @@ export const wordpressSimplyStaticWebhookAdapter: CompatibilityWebhookAdapter =
   {
     id: "wordpress.simply-static",
     routePath: "/api/webhooks/wordpress/simply-static",
-    normalize(rawBody: string): GenericTaskWebhook {
+    normalize(rawBody: string): IncomingTaskWebhook {
       return normalizeWordpressSimplyStaticWebhook(
         parseWordpressSimplyStaticWebhook(rawBody),
       );
@@ -24,23 +24,45 @@ export function parseWordpressSimplyStaticWebhook(
 
 export function normalizeWordpressSimplyStaticWebhook(
   payload: WordpressSimplyStaticWebhook,
-): GenericTaskWebhook {
+): IncomingTaskWebhook {
+  const input = {
+    kind: "pages-deploy",
+    project: payload.project,
+    sourcePath: payload.exportDir,
+    branch: payload.branch,
+    commitSha: payload.commitSha,
+    commitMessage: payload.commitMessage,
+    commitDirty: payload.commitDirty,
+    skipCaching: payload.skipCaching,
+    noBundle: payload.noBundle,
+    uploadSourceMaps: payload.uploadSourceMaps,
+  };
+
+  if (payload.targetId) {
+    return {
+      targetId: payload.targetId,
+      overrides: toTargetOverrides(input),
+      eventId: payload.eventId,
+      source: "wordpress.webhook",
+      triggeredAt: payload.triggeredAt,
+    };
+  }
+
   return {
     taskId: "deploy.shared-volume.wrangler",
-    input: {
-      kind: "pages-deploy",
-      project: payload.project,
-      sourcePath: payload.exportDir,
-      branch: payload.branch,
-      commitSha: payload.commitSha,
-      commitMessage: payload.commitMessage,
-      commitDirty: payload.commitDirty,
-      skipCaching: payload.skipCaching,
-      noBundle: payload.noBundle,
-      uploadSourceMaps: payload.uploadSourceMaps,
-    },
+    input,
     eventId: payload.eventId,
     source: "wordpress.webhook",
     triggeredAt: payload.triggeredAt,
   };
+}
+
+function toTargetOverrides(
+  input: Record<string, unknown>,
+): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(input).filter(
+      ([key, value]) => key !== "kind" && value !== undefined,
+    ),
+  );
 }
