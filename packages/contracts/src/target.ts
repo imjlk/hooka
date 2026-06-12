@@ -8,10 +8,17 @@ export const targetArtifactReadinessSchema = z.discriminatedUnion("mode", [
   z.object({
     mode: z.literal("marker-file"),
     markerFile: z.string().min(1),
+    requiredFiles: z.array(z.string().min(1)).optional(),
+  }),
+  z.object({
+    mode: z.literal("required-files"),
+    requiredFiles: z.array(z.string().min(1)).min(1),
   }),
   z.object({
     mode: z.literal("quiet-period"),
     quietPeriodMs: z.number().int().positive().default(3_000),
+    recursive: z.boolean().optional(),
+    requiredFiles: z.array(z.string().min(1)).optional(),
   }),
 ]);
 
