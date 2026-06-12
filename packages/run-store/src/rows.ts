@@ -24,6 +24,7 @@ export interface RunRow {
   capability_snapshot_json: string;
   attempt_count: number;
   max_attempts: number;
+  target_max_concurrent_runs: number | null;
   next_retry_at: string | null;
   last_error_code: string | null;
   target_policy_json: string | null;
@@ -66,6 +67,7 @@ export interface RunStoreOptions {
 export interface EnqueueRunInput extends EnqueueRunRequest {
   capabilitySnapshot: string[];
   maxAttempts?: number;
+  targetMaxConcurrentRuns?: number;
   targetId?: string;
   targetPolicy?: TargetPolicy;
 }

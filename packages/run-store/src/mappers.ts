@@ -37,6 +37,7 @@ export function toRunSummary(row: RunRow): RunSummary {
     errorText: row.error_text,
     attemptCount: row.attempt_count,
     maxAttempts: row.max_attempts,
+    targetMaxConcurrentRuns: row.target_max_concurrent_runs,
     nextRetryAt: row.next_retry_at,
     lastErrorCode: row.last_error_code,
     createdAt: row.created_at,

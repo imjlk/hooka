@@ -634,6 +634,7 @@ test("wordpress alias can enqueue through a configured target", async () => {
           branch: "main",
         },
         maxAttempts: 4,
+        maxConcurrentRuns: 1,
         policy: {
           allowedProjects: ["main-site"],
           allowedSourceRoots: ["/shared-source"],
@@ -678,6 +679,7 @@ test("wordpress alias can enqueue through a configured target", async () => {
   expect(run?.taskId).toBe("deploy.shared-volume.wrangler");
   expect(run?.source).toBe("wordpress.webhook");
   expect(run?.maxAttempts).toBe(4);
+  expect(run?.targetMaxConcurrentRuns).toBe(1);
 
   app.runStore.close();
 });
@@ -731,6 +733,7 @@ test("target webhook resolves configured targets and stores target metadata", as
           branch: "main",
         },
         maxAttempts: 4,
+        maxConcurrentRuns: 1,
         policy: {
           allowedProjects: ["main-site"],
           allowedSourceRoots: ["/shared-source"],
@@ -774,6 +777,7 @@ test("target webhook resolves configured targets and stores target metadata", as
   const run = app.runStore.listRuns()[0];
   expect(run?.targetId).toBe("pages-main");
   expect(run?.maxAttempts).toBe(4);
+  expect(run?.targetMaxConcurrentRuns).toBe(1);
 
   app.runStore.close();
 });

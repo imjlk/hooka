@@ -527,6 +527,7 @@ function getBaseTargetScaffold(templateId: TargetScaffoldTemplateId): Target {
         presetId: "cf-pages",
         source: "target.cloudflare-pages",
         maxAttempts: 3,
+        maxConcurrentRuns: 1,
         defaultInput: {
           kind: "pages-deploy",
           project: "change-me",
@@ -563,6 +564,7 @@ function getBaseTargetScaffold(templateId: TargetScaffoldTemplateId): Target {
         presetId: "cf-cache",
         source: "target.cloudflare-cache",
         maxAttempts: 3,
+        maxConcurrentRuns: 1,
         defaultInput: {
           zoneId: "change-me",
           urls: "https://example.com/",
@@ -588,6 +590,7 @@ function getBaseTargetScaffold(templateId: TargetScaffoldTemplateId): Target {
         presetId: "rclone-sync",
         source: "target.rclone-copy",
         maxAttempts: 3,
+        maxConcurrentRuns: 1,
         defaultInput: {
           sourcePath: "/shared-source/simply-static",
           destination: "change-me:bucket/path",
@@ -616,6 +619,7 @@ function getBaseTargetScaffold(templateId: TargetScaffoldTemplateId): Target {
         presetId: "wp-ops",
         source: "target.wordpress-export",
         maxAttempts: 3,
+        maxConcurrentRuns: 1,
         defaultInput: {
           exportDir: "/shared-source/simply-static",
           pattern: "**/*.html",
@@ -640,6 +644,7 @@ function getBaseTargetScaffold(templateId: TargetScaffoldTemplateId): Target {
         taskId: "deploy.shared-volume.wrangler",
         source: "target.local",
         maxAttempts: 3,
+        maxConcurrentRuns: 1,
         defaultInput: {
           kind: "pages-deploy",
           project: "change-me",

@@ -176,6 +176,7 @@ function createDefaultTargetsForPreset(
           branch: "main",
         },
         maxAttempts: 3,
+        maxConcurrentRuns: 1,
         policy: {
           allowedProjects: ["change-me"],
           allowedSourceRoots: [join(process.cwd(), ".hooka/shared-source")],

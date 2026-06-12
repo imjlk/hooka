@@ -18,6 +18,7 @@ export function initializeRunStoreSchema(db: Database): void {
       capability_snapshot_json text not null,
       attempt_count integer not null default 0,
       max_attempts integer not null default 3,
+      target_max_concurrent_runs integer,
       next_retry_at text,
       last_error_code text,
       target_policy_json text,
@@ -74,6 +75,9 @@ export function initializeRunStoreSchema(db: Database): void {
     "create index if not exists idx_runs_status_next_retry on runs(status, next_retry_at, queued_at, created_at);",
   );
   db.exec(
+    "create index if not exists idx_runs_target_running on runs(target_id, status);",
+  );
+  db.exec(
     "create index if not exists idx_run_events_run_id_created_at on run_events(run_id, created_at);",
   );
   db.exec(
@@ -96,6 +100,7 @@ function migrateRunsTable(db: Database): void {
 
   ensureColumn(db, columns, "target_id", "text");
   ensureColumn(db, columns, "max_attempts", "integer not null default 3");
+  ensureColumn(db, columns, "target_max_concurrent_runs", "integer");
   ensureColumn(db, columns, "next_retry_at", "text");
   ensureColumn(db, columns, "last_error_code", "text");
   ensureColumn(db, columns, "target_policy_json", "text");

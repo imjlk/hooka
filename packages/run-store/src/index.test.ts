@@ -162,6 +162,71 @@ test("claimNextQueuedRun can still claim unknown task ids", async () => {
   runStore.close();
 });
 
+test("claimNextQueuedRun respects target concurrency limits", async () => {
+  const runStore = await createRunStore({
+    dbPath: ":memory:",
+  });
+
+  const firstTargetRun = runStore.enqueueRun({
+    taskId: "deploy.shared-volume.wrangler",
+    input: {
+      kind: "pages-deploy",
+      project: "main-site",
+      sourcePath: "/shared-source/main-site",
+    },
+    source: "test",
+    capabilitySnapshot: ["wrangler"],
+    targetId: "pages-main",
+    targetMaxConcurrentRuns: 1,
+  });
+  const secondTargetRun = runStore.enqueueRun({
+    taskId: "deploy.shared-volume.wrangler",
+    input: {
+      kind: "pages-deploy",
+      project: "main-site",
+      sourcePath: "/shared-source/main-site",
+    },
+    source: "test",
+    capabilitySnapshot: ["wrangler"],
+    targetId: "pages-main",
+    targetMaxConcurrentRuns: 1,
+  });
+  const otherTargetRun = runStore.enqueueRun({
+    taskId: "deploy.shared-volume.wrangler",
+    input: {
+      kind: "pages-deploy",
+      project: "other-site",
+      sourcePath: "/shared-source/other-site",
+    },
+    source: "test",
+    capabilitySnapshot: ["wrangler"],
+    targetId: "pages-other",
+    targetMaxConcurrentRuns: 1,
+  });
+
+  expect(runStore.claimNextQueuedRun("worker-a", 1_000)?.id).toBe(
+    firstTargetRun.response.runId,
+  );
+  expect(runStore.claimNextQueuedRun("worker-b", 1_000)?.id).toBe(
+    otherTargetRun.response.runId,
+  );
+  expect(runStore.claimNextQueuedRun("worker-c", 1_000)).toBeNull();
+
+  runStore.finishRun(firstTargetRun.response.runId, {
+    taskId: "deploy.shared-volume.wrangler",
+    ok: true,
+    status: "succeeded",
+    summary: "done",
+    durationMs: 1,
+  });
+
+  expect(runStore.claimNextQueuedRun("worker-c", 1_000)?.id).toBe(
+    secondTargetRun.response.runId,
+  );
+
+  runStore.close();
+});
+
 test("queryRuns filters by status, taskId, and source", async () => {
   const runStore = await createRunStore({
     dbPath: ":memory:",

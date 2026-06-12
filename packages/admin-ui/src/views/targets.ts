@@ -19,6 +19,7 @@ export function renderTargetList(
               <div class="task-meta">
                 <span class="chip">${escapeHtml(target.source)}</span>
                 <span class="chip">${target.maxAttempts} attempts</span>
+                <span class="chip">${target.maxConcurrentRuns ?? 1} concurrent</span>
               </div>
             </button>
           `;
@@ -58,6 +59,7 @@ export function renderTargetDetail(
             <span class="chip">${escapeHtml(target.taskId)}</span>
             <span class="chip">${escapeHtml(target.source)}</span>
             <span class="chip">${target.maxAttempts} attempts</span>
+            <span class="chip">${target.maxConcurrentRuns ?? 1} concurrent</span>
           </div>
         </div>
         <div class="detail-card">

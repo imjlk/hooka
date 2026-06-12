@@ -26,9 +26,11 @@ test("target scaffolds produce valid built-in templates", () => {
     id: "cf-pages-default",
     taskId: "deploy.shared-volume.wrangler",
     presetId: "cf-pages",
+    maxConcurrentRuns: 1,
     policy: {
       artifactReadiness: {
         mode: "quiet-period",
+        recursive: true,
       },
     },
   });
@@ -41,8 +43,12 @@ test("target scaffolds produce valid built-in templates", () => {
     id: "rclone-copy-default",
     taskId: "rclone.copy.directory",
     presetId: "rclone-sync",
+    maxConcurrentRuns: 1,
     policy: {
       allowedDestinationPrefixes: ["change-me:bucket/path"],
+      artifactReadiness: {
+        recursive: true,
+      },
     },
   });
   expect(createTargetScaffold("export-verify")).toMatchObject({
