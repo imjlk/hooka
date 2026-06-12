@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { createHmac } from "node:crypto";
 
 const bunBinary = process.execPath;
 const cwd = process.cwd();
@@ -80,6 +81,78 @@ test("webhook test sends a signed generic task payload", async () => {
     });
     expect(request.headers.get("x-hooka-timestamp")).toBe("1774483200");
     expect(request.headers.get("x-hooka-signature")).toMatch(/^sha256=/);
+  } finally {
+    server.stop(true);
+  }
+});
+
+test("webhook send signs and sends a raw JSON body", async () => {
+  let resolveRequest:
+    | ((value: { headers: Headers; body: string }) => void)
+    | null = null;
+  const receivedRequest = new Promise<{ headers: Headers; body: string }>(
+    (resolve) => {
+      resolveRequest = resolve;
+    },
+  );
+
+  const server = Bun.serve({
+    port: 0,
+    async fetch(request) {
+      const body = await request.text();
+      resolveRequest?.({
+        headers: request.headers,
+        body,
+      });
+
+      return new Response(JSON.stringify({ accepted: true }), {
+        headers: {
+          "content-type": "application/json",
+        },
+      });
+    },
+  });
+
+  try {
+    const rawBody =
+      '{"eventId":"evt_raw","project":"main-site","exportDir":"/shared-source/site"}';
+    const result = await runCli(
+      [
+        "webhook",
+        "send",
+        "--url",
+        `http://127.0.0.1:${server.port}/api/webhooks/wordpress/simply-static`,
+        "--body-json",
+        rawBody,
+        "--timestamp",
+        "1774483200",
+      ],
+      {
+        HOOKA_WEBHOOK_SECRET: "secret",
+      },
+    );
+
+    const request = await receivedRequest;
+    const output = JSON.parse(result.stdout) as {
+      status: number;
+      body: { accepted: boolean };
+    };
+    const signature = createHmac("sha256", "secret")
+      .update(`1774483200.${rawBody}`)
+      .digest("hex");
+
+    expect(result.exitCode).toBe(0);
+    expect(output).toEqual({
+      status: 200,
+      body: {
+        accepted: true,
+      },
+    });
+    expect(request.body).toBe(rawBody);
+    expect(request.headers.get("x-hooka-timestamp")).toBe("1774483200");
+    expect(request.headers.get("x-hooka-signature")).toBe(
+      `sha256=${signature}`,
+    );
   } finally {
     server.stop(true);
   }
