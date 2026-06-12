@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { createTempDir } from "@hooka/bun-utils";
+import { mkdir, utimes } from "node:fs/promises";
 import { join } from "node:path";
 import {
   createTarget,
@@ -7,6 +8,7 @@ import {
   deleteTarget,
   listTargetScaffoldTemplates,
   loadTargets,
+  validateArtifactReadiness,
   validateTargetPolicyInput,
   updateTarget,
 } from "./index";
@@ -186,6 +188,81 @@ test("target policy validation accepts allowed destination prefixes and rejects 
   ).toEqual([
     expect.objectContaining({
       code: "target_destination_disallowed",
+    }),
+  ]);
+});
+
+test("artifact readiness checks required files under the source path", async () => {
+  const tempDir = await createTempDir("hooka-artifact-required-files");
+  const sourcePath = join(tempDir, "site");
+  const assetsPath = join(sourcePath, "assets");
+
+  await mkdir(sourcePath, { recursive: true });
+  await Bun.write(join(sourcePath, "index.html"), "<!doctype html>");
+
+  expect(
+    await validateArtifactReadiness(
+      { sourcePath },
+      {
+        mode: "required-files",
+        requiredFiles: ["index.html", "assets/app.js"],
+      },
+    ),
+  ).toEqual([
+    expect.objectContaining({
+      code: "artifact_required_file_missing",
+      retryable: true,
+    }),
+  ]);
+
+  await mkdir(assetsPath, { recursive: true });
+  await Bun.write(join(assetsPath, "app.js"), "console.log('ready');");
+
+  expect(
+    await validateArtifactReadiness(
+      { sourcePath },
+      {
+        mode: "required-files",
+        requiredFiles: ["index.html", "assets/app.js"],
+      },
+    ),
+  ).toEqual([]);
+});
+
+test("quiet-period readiness can inspect nested artifact mtimes", async () => {
+  const tempDir = await createTempDir("hooka-artifact-recursive-quiet");
+  const sourcePath = join(tempDir, "site");
+  const assetsPath = join(sourcePath, "assets");
+  const oldDate = new Date(Date.now() - 10 * 60_000);
+
+  await mkdir(assetsPath, { recursive: true });
+  await Bun.write(join(assetsPath, "app.js"), "console.log('fresh');");
+  await utimes(sourcePath, oldDate, oldDate);
+
+  expect(
+    await validateArtifactReadiness(
+      { sourcePath },
+      {
+        mode: "quiet-period",
+        quietPeriodMs: 60_000,
+        recursive: false,
+      },
+    ),
+  ).toEqual([]);
+
+  expect(
+    await validateArtifactReadiness(
+      { sourcePath },
+      {
+        mode: "quiet-period",
+        quietPeriodMs: 60_000,
+        recursive: true,
+      },
+    ),
+  ).toEqual([
+    expect.objectContaining({
+      code: "artifact_quiet_period_pending",
+      retryable: true,
     }),
   ]);
 });

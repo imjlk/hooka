@@ -114,8 +114,18 @@ export type Target = {
     }>;
     artifactReadiness:
       | { mode: "none" }
-      | { mode: "marker-file"; markerFile: string }
-      | { mode: "quiet-period"; quietPeriodMs: number };
+      | {
+          mode: "marker-file";
+          markerFile: string;
+          requiredFiles?: string[];
+        }
+      | { mode: "required-files"; requiredFiles: string[] }
+      | {
+          mode: "quiet-period";
+          quietPeriodMs: number;
+          recursive?: boolean;
+          requiredFiles?: string[];
+        };
   };
 };
 

@@ -10,7 +10,7 @@ import {
   type TargetArtifactReadiness,
 } from "@hooka/contracts";
 import { ensureParentDir } from "@hooka/bun-utils";
-import { rename } from "node:fs/promises";
+import { readdir, rename, stat } from "node:fs/promises";
 import { join, normalize } from "node:path/posix";
 
 const targetWriteLocks = new Map<string, Promise<void>>();
@@ -377,10 +377,17 @@ export async function validateArtifactReadiness(
   }
 
   if (readiness.mode === "marker-file") {
-    const markerPath = join(sourcePath, readiness.markerFile);
-    const markerFile = Bun.file(markerPath);
+    const requiredFileIssues = await validateRequiredFiles(
+      sourcePath,
+      readiness.requiredFiles ?? [],
+    );
+    if (requiredFileIssues.length > 0) {
+      return requiredFileIssues;
+    }
 
-    if (!(await markerFile.exists())) {
+    const markerPath = join(sourcePath, readiness.markerFile);
+
+    if (!(await getPathStat(markerPath))) {
       return [
         {
           code: "artifact_marker_missing",
@@ -393,9 +400,21 @@ export async function validateArtifactReadiness(
     return [];
   }
 
-  const source = Bun.file(sourcePath);
+  if (readiness.mode === "required-files") {
+    return validateRequiredFiles(sourcePath, readiness.requiredFiles);
+  }
 
-  if (!(await source.exists())) {
+  const requiredFileIssues = await validateRequiredFiles(
+    sourcePath,
+    readiness.requiredFiles ?? [],
+  );
+  if (requiredFileIssues.length > 0) {
+    return requiredFileIssues;
+  }
+
+  const sourceStat = await getPathStat(sourcePath);
+
+  if (!sourceStat) {
     return [
       {
         code: "artifact_source_missing",
@@ -405,8 +424,12 @@ export async function validateArtifactReadiness(
     ];
   }
 
-  const stat = await source.stat();
-  const ageMs = Date.now() - stat.mtimeMs;
+  const latestMtimeMs = await getLatestArtifactMtimeMs(
+    sourcePath,
+    readiness.recursive ?? false,
+    sourceStat,
+  );
+  const ageMs = Date.now() - latestMtimeMs;
 
   if (ageMs < readiness.quietPeriodMs) {
     return [
@@ -419,6 +442,78 @@ export async function validateArtifactReadiness(
   }
 
   return [];
+}
+
+async function validateRequiredFiles(
+  sourcePath: string,
+  requiredFiles: string[],
+): Promise<TargetPreflightIssue[]> {
+  for (const requiredFile of requiredFiles) {
+    const requiredPath = join(sourcePath, requiredFile);
+
+    if (!(await getPathStat(requiredPath))) {
+      return [
+        {
+          code: "artifact_required_file_missing",
+          message: `Required artifact file not found: ${requiredPath}`,
+          retryable: true,
+        },
+      ];
+    }
+  }
+
+  return [];
+}
+
+async function getLatestArtifactMtimeMs(
+  sourcePath: string,
+  recursive: boolean,
+  sourceStat: Awaited<ReturnType<typeof stat>>,
+): Promise<number> {
+  let latestMtimeMs = Number(sourceStat.mtimeMs);
+
+  if (!recursive || !sourceStat.isDirectory()) {
+    return latestMtimeMs;
+  }
+
+  for (const entry of await readdir(sourcePath, { withFileTypes: true })) {
+    const entryPath = join(sourcePath, entry.name);
+    const entryStat = await getPathStat(entryPath);
+
+    if (!entryStat) {
+      continue;
+    }
+
+    const entryLatestMtimeMs = entryStat.isDirectory()
+      ? await getLatestArtifactMtimeMs(entryPath, true, entryStat)
+      : Number(entryStat.mtimeMs);
+    latestMtimeMs = Math.max(latestMtimeMs, entryLatestMtimeMs);
+  }
+
+  return latestMtimeMs;
+}
+
+async function getPathStat(
+  path: string,
+): Promise<Awaited<ReturnType<typeof stat>> | null> {
+  try {
+    return await stat(path);
+  } catch (error) {
+    if (isNotFoundError(error)) {
+      return null;
+    }
+
+    throw error;
+  }
+}
+
+function isNotFoundError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code?: unknown }).code === "ENOENT"
+  );
 }
 
 function getBaseTargetScaffold(templateId: TargetScaffoldTemplateId): Target {
@@ -455,6 +550,7 @@ function getBaseTargetScaffold(templateId: TargetScaffoldTemplateId): Target {
           artifactReadiness: {
             mode: "quiet-period",
             quietPeriodMs: 3_000,
+            recursive: true,
           },
         },
       });
@@ -506,6 +602,7 @@ function getBaseTargetScaffold(templateId: TargetScaffoldTemplateId): Target {
           artifactReadiness: {
             mode: "quiet-period",
             quietPeriodMs: 3_000,
+            recursive: true,
           },
         },
       });
