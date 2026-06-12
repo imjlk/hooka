@@ -1,5 +1,6 @@
 {
   "name": "hooka",
+  "version": "1.1.0",
   "private": true,
   "type": "module",
   "workspaces": [
@@ -22,6 +23,7 @@
     "test:watch": "bun test --watch",
     "test:dev-ui:smoke": "bun run scripts/smoke-dev-ui.ts",
     "test:e2e:docker": "bun run scripts/e2e/dockerized-preset-e2e.ts",
+    "changeset:check": "bun run scripts/verify-sampo-changeset.ts",
     "task:validate": "bun run apps/cli/src/index.ts task validate",
     "bake:generate": "bun run scripts/generate-docker-bake.ts",
     "dockerfile:generate": "bun run scripts/generate-dockerfile-manifests.ts",

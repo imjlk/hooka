@@ -1,0 +1,21 @@
+# Sampo configuration
+version = 1
+
+[git]
+default_branch = "main"
+short_tags = "npm/hooka"
+short_tags_format = "v{version}"
+
+[github]
+repository = "imjlk/hooka"
+
+[changesets]
+tags = ["Added", "Changed", "Deprecated", "Removed", "Fixed", "Security"]
+
+[changelog]
+show_commit_hash = true
+show_acknowledgments = true
+
+[packages]
+ignore_unpublished = false
+ignore = ["apps/*", "packages/*"]
