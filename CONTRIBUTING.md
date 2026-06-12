@@ -41,6 +41,16 @@ Generated Docker files must stay committed. CI will fail if either `docker/docke
 - For server changes, cover auth, rate limiting, and response shape regressions.
 - For worker/store changes, cover retry, retention, and queue-state transitions.
 
+## Changesets and releases
+
+- Add a Sampo changeset under `.sampo/changesets/` for user-facing runtime, CLI, image, operator workflow, or API changes.
+- Use `npm/hooka` as the package id and choose `patch`, `minor`, or `major`.
+- Optional changelog sections are `Added`, `Changed`, `Deprecated`, `Removed`, `Fixed`, and `Security`.
+- Docs-only PRs do not need a changeset.
+- Label rare release-neutral PRs with `no-release` or `skip-changeset`.
+- After changesets merge to `main`, the Sampo workflow opens or updates the `Release Hooka` PR.
+- Merge the release PR to publish the GitHub release, `vX.Y.Z` tag, and immutable GHCR image aliases.
+
 ## Pull requests
 
 - Keep unrelated operational automation changes in separate commits when possible.
