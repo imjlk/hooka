@@ -90,6 +90,46 @@ test("expired running runs are requeued and attempt count increments", async () 
   runStore.close();
 });
 
+test("claimNextQueuedRun can filter by eligible task ids", async () => {
+  const runStore = await createRunStore({
+    dbPath: ":memory:",
+  });
+
+  const rcloneRun = runStore.enqueueRun({
+    taskId: "rclone.copy.directory",
+    input: {
+      sourcePath: "/shared-source/export",
+      destination: "backup:site/export",
+    },
+    source: "test",
+    capabilitySnapshot: ["rclone"],
+  });
+  const wranglerRun = runStore.enqueueRun({
+    taskId: "deploy.shared-volume.wrangler",
+    input: {
+      kind: "pages-deploy",
+      project: "staging-site",
+      sourcePath: "/shared-source/simply-static",
+    },
+    source: "test",
+    capabilitySnapshot: ["wrangler"],
+  });
+
+  const claimed = runStore.claimNextQueuedRun("worker-a", 1_000, {
+    eligibleTaskIds: ["deploy.shared-volume.wrangler"],
+  });
+
+  expect(claimed?.id).toBe(wranglerRun.response.runId);
+  expect(runStore.getRun(rcloneRun.response.runId)?.status).toBe("queued");
+  expect(
+    runStore.claimNextQueuedRun("worker-a", 1_000, {
+      eligibleTaskIds: [],
+    }),
+  ).toBeNull();
+
+  runStore.close();
+});
+
 test("queryRuns filters by status, taskId, and source", async () => {
   const runStore = await createRunStore({
     dbPath: ":memory:",

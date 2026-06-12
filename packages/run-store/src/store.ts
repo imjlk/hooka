@@ -283,19 +283,40 @@ export class RunStore {
     });
   }
 
-  claimNextQueuedRun(workerId: string, leaseMs: number): ClaimedRun | null {
+  claimNextQueuedRun(
+    workerId: string,
+    leaseMs: number,
+    options: { eligibleTaskIds?: string[] } = {},
+  ): ClaimedRun | null {
+    const eligibleTaskIds =
+      options.eligibleTaskIds === undefined
+        ? undefined
+        : [...new Set(options.eligibleTaskIds)].filter(Boolean).sort();
+
+    if (eligibleTaskIds?.length === 0) {
+      return null;
+    }
+
     return this.withBusyRetry(() => {
       for (let attempt = 0; attempt < 10; attempt += 1) {
         const now = this.timestamp();
+        const taskFilter =
+          eligibleTaskIds === undefined
+            ? { sql: "", params: [] as string[] }
+            : {
+                sql: `and task_id in (${eligibleTaskIds.map(() => "?").join(", ")})`,
+                params: eligibleTaskIds,
+              };
         const queued = this.db
           .query(
             `select id from runs
              where status = 'queued'
                and (next_retry_at is null or next_retry_at <= ?)
+               ${taskFilter.sql}
              order by queued_at asc, created_at asc
              limit 1`,
           )
-          .get(now) as { id: string } | null;
+          .get(now, ...taskFilter.params) as { id: string } | null;
 
         if (!queued) {
           return null;

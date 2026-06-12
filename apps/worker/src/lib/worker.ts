@@ -8,7 +8,7 @@ import {
 } from "@hooka/config";
 import type { CommandRunner } from "@hooka/executor-process";
 import type { Logger } from "@hooka/logger";
-import { getTask } from "@hooka/registry";
+import { getTask, listTasks } from "@hooka/registry";
 import type { ClaimedRun, RunStore } from "@hooka/run-store";
 import { runTask } from "@hooka/runner-core";
 import {
@@ -52,9 +52,11 @@ export async function processNextRun(
   options: ProcessNextRunOptions,
 ): Promise<boolean> {
   options.runStore.requeueExpiredRuns();
+  const eligibleTaskIds = getEligibleTaskIds(options.installedCapabilities);
   const claimed = options.runStore.claimNextQueuedRun(
     options.workerId,
     options.leaseMs,
+    { eligibleTaskIds },
   );
 
   if (!claimed) {
@@ -226,6 +228,17 @@ function missingTaskResult(taskId: string): TaskRunResult {
     summary: `Task not found: ${taskId}.`,
     durationMs: 0,
   };
+}
+
+export function getEligibleTaskIds(installedCapabilities: string[]): string[] {
+  const installed = new Set(installedCapabilities);
+
+  return listTasks()
+    .filter((task) =>
+      task.requires.every((requirement) => installed.has(requirement)),
+    )
+    .map((task) => task.id)
+    .sort();
 }
 
 async function executeTaskWithPreflight(
