@@ -86,6 +86,7 @@ type RouteHandler = (
 
 interface EnqueueMetadata {
   maxAttempts?: number;
+  targetMaxConcurrentRuns?: number;
   targetId?: string;
   targetPolicy?: TargetPolicy;
 }
@@ -470,6 +471,7 @@ async function enqueueIncomingWebhook(
     },
     {
       maxAttempts: resolved.target.maxAttempts,
+      targetMaxConcurrentRuns: resolved.target.maxConcurrentRuns ?? 1,
       targetId: resolved.target.id,
       targetPolicy: resolved.target.policy,
     },
@@ -743,6 +745,7 @@ async function retryRun(
     source: "api.retry",
     capabilitySnapshot: manifest.installed,
     targetId: run.targetId ?? undefined,
+    targetMaxConcurrentRuns: run.targetMaxConcurrentRuns ?? undefined,
     maxAttempts: run.maxAttempts,
   });
 
@@ -771,6 +774,7 @@ async function enqueueRun(
     targetId: metadata.targetId,
     targetPolicy: metadata.targetPolicy,
     maxAttempts: metadata.maxAttempts ?? options.defaultMaxAttempts,
+    targetMaxConcurrentRuns: metadata.targetMaxConcurrentRuns,
   });
 
   return {

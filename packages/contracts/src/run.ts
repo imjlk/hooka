@@ -61,6 +61,7 @@ export const runSummarySchema = z.object({
   errorText: z.string().nullable(),
   attemptCount: z.number().int().nonnegative(),
   maxAttempts: z.number().int().positive(),
+  targetMaxConcurrentRuns: z.number().int().positive().nullable(),
   nextRetryAt: z.string().nullable(),
   lastErrorCode: z.string().nullable(),
   createdAt: z.string(),

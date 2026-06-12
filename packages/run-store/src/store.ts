@@ -99,6 +99,7 @@ export class RunStore {
             capability_snapshot_json,
             attempt_count,
             max_attempts,
+            target_max_concurrent_runs,
             next_retry_at,
             last_error_code,
             target_policy_json,
@@ -108,7 +109,7 @@ export class RunStore {
             finished_at,
             lease_expires_at,
             worker_id
-          ) values (?, ?, ?, ?, ?, 'queued', ?, null, null, null, ?, 0, ?, null, null, ?, ?, ?, null, null, null, null)`,
+          ) values (?, ?, ?, ?, ?, 'queued', ?, null, null, null, ?, 0, ?, ?, null, null, ?, ?, ?, null, null, null, null)`,
         )
         .run(
           runId,
@@ -119,6 +120,7 @@ export class RunStore {
           JSON.stringify(input.input),
           JSON.stringify(input.capabilitySnapshot),
           input.maxAttempts ?? 3,
+          input.targetMaxConcurrentRuns ?? null,
           input.targetPolicy ? JSON.stringify(input.targetPolicy) : null,
           queuedAt,
           queuedAt,
@@ -303,7 +305,7 @@ export class RunStore {
 
     const taskFilter = buildClaimTaskFilter(eligibleTaskIds, knownTaskIds);
 
-    return this.withBusyRetry(() => {
+    return this.withTransaction(() => {
       for (let attempt = 0; attempt < 10; attempt += 1) {
         const now = this.timestamp();
         const queued = this.db
@@ -312,6 +314,16 @@ export class RunStore {
              where status = 'queued'
                and (next_retry_at is null or next_retry_at <= ?)
                ${taskFilter.sql}
+               and (
+                 target_id is null
+                 or target_max_concurrent_runs is null
+                 or (
+                   select count(*)
+                   from runs running_runs
+                   where running_runs.status = 'running'
+                     and running_runs.target_id = runs.target_id
+                 ) < target_max_concurrent_runs
+               )
              order by queued_at asc, created_at asc
              limit 1`,
           )

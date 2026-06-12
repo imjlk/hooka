@@ -49,6 +49,7 @@ export type RunSummary = {
   createdAt: string;
   attemptCount: number;
   maxAttempts: number;
+  targetMaxConcurrentRuns?: number | null;
   nextRetryAt: string | null;
   lastErrorCode: string | null;
 };
@@ -99,6 +100,7 @@ export type Target = {
   presetId?: string;
   source: string;
   maxAttempts: number;
+  maxConcurrentRuns?: number;
   defaultInput: Record<string, unknown>;
   policy: {
     allowedProjects: string[];

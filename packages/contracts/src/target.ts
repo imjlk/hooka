@@ -45,6 +45,7 @@ export const targetSchema = z.object({
   source: z.string().min(1).default("target"),
   defaultInput: z.record(z.string(), z.unknown()).default({}),
   maxAttempts: z.number().int().positive().default(3),
+  maxConcurrentRuns: z.number().int().positive().optional(),
   policy: targetPolicySchema.default(() => ({
     allowedProjects: [],
     allowedSourceRoots: [],
