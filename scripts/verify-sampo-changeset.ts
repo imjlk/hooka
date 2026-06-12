@@ -7,6 +7,7 @@ const releaseBranches = new Set([
 
 const relevantPrefixes = ["apps/", "packages/", "docker/", "scripts/"];
 const relevantFiles = new Set([
+  ".sampo/config.toml",
   ".env.example",
   ".github/workflows/publish-images.yml",
   ".github/workflows/sampo-release.yml",
