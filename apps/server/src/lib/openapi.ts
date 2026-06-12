@@ -339,7 +339,8 @@ export function createOpenApiDocument() {
           responses: {
             200: { description: "Event stream" },
             401: {
-              description: "Missing, expired, invalid, or already consumed ticket",
+              description:
+                "Missing, expired, invalid, or already consumed ticket",
             },
           },
         },

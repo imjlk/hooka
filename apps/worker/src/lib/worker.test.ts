@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { createRunStore } from "@hooka/run-store";
 import type { CommandRunner } from "@hooka/executor-process";
 import { createWorkerShutdownSignal } from "./shutdown";
-import { processNextRun, startWorkerLoop } from "./worker";
+import { getEligibleTaskIds, processNextRun, startWorkerLoop } from "./worker";
 
 test("worker executes a queued run and stores the result", async () => {
   const runStore = await createRunStore({
@@ -47,7 +47,7 @@ test("worker executes a queued run and stores the result", async () => {
   runStore.close();
 });
 
-test("worker records failed runs when capabilities are missing", async () => {
+test("worker leaves runs queued when required capabilities are missing", async () => {
   const runStore = await createRunStore({
     dbPath: ":memory:",
   });
@@ -63,7 +63,7 @@ test("worker records failed runs when capabilities are missing", async () => {
     capabilitySnapshot: [],
   });
 
-  await processNextRun({
+  const processed = await processNextRun({
     installedCapabilities: [],
     manifestPath: "/tmp/manifest.json",
     runtimeRole: "worker:test",
@@ -74,10 +74,104 @@ test("worker records failed runs when capabilities are missing", async () => {
   });
 
   const run = runStore.getRun(queued.response.runId);
-  expect(run?.status).toBe("failed");
-  expect(run?.summary).toContain("Missing required capabilities");
+  expect(processed).toBe(false);
+  expect(run?.status).toBe("queued");
+  expect(run?.events.map((event) => event.type)).toEqual(["queued"]);
 
   runStore.close();
+});
+
+test("worker claims only runs covered by its installed capabilities", async () => {
+  const runStore = await createRunStore({
+    dbPath: ":memory:",
+  });
+
+  const rcloneRun = runStore.enqueueRun({
+    taskId: "rclone.copy.directory",
+    input: {
+      sourcePath: "/shared-source/export",
+      destination: "backup:site/export",
+    },
+    source: "test",
+    capabilitySnapshot: ["rclone"],
+  });
+  const wranglerRun = runStore.enqueueRun({
+    taskId: "deploy.shared-volume.wrangler",
+    input: {
+      kind: "pages-deploy",
+      project: "staging-site",
+      sourcePath: "/shared-source/simply-static",
+    },
+    source: "test",
+    capabilitySnapshot: ["wrangler"],
+  });
+  const commandRunner: CommandRunner = async () => {
+    return {
+      stdout: "ok",
+      stderr: "",
+      exitCode: 0,
+    };
+  };
+
+  expect(
+    await processNextRun({
+      commandRunner,
+      installedCapabilities: ["wrangler"],
+      manifestPath: "/tmp/manifest.json",
+      runtimeRole: "worker:test",
+      runStore,
+      workerId: "worker-a",
+      leaseMs: 60_000,
+      retryBaseDelayMs: 1000,
+    }),
+  ).toBe(true);
+
+  expect(runStore.getRun(rcloneRun.response.runId)?.status).toBe("queued");
+  expect(runStore.getRun(wranglerRun.response.runId)?.status).toBe("succeeded");
+
+  runStore.close();
+});
+
+test("worker marks unknown queued tasks as failed", async () => {
+  const runStore = await createRunStore({
+    dbPath: ":memory:",
+  });
+
+  const queued = runStore.enqueueRun({
+    taskId: "legacy.task.removed",
+    input: {},
+    source: "test",
+    capabilitySnapshot: [],
+  });
+
+  expect(
+    await processNextRun({
+      installedCapabilities: [],
+      manifestPath: "/tmp/manifest.json",
+      runtimeRole: "worker:test",
+      runStore,
+      workerId: "worker-a",
+      leaseMs: 60_000,
+      retryBaseDelayMs: 1000,
+    }),
+  ).toBe(true);
+
+  const run = runStore.getRun(queued.response.runId);
+  expect(run?.status).toBe("failed");
+  expect(run?.lastErrorCode).toBe("task_not_found");
+  expect(run?.summary).toContain("Task not found");
+
+  runStore.close();
+});
+
+test("eligible task discovery follows installed capability requirements", () => {
+  expect(getEligibleTaskIds(["wrangler"])).toContain(
+    "deploy.shared-volume.wrangler",
+  );
+  expect(getEligibleTaskIds(["wrangler"])).not.toContain(
+    "rclone.copy.directory",
+  );
+  expect(getEligibleTaskIds([])).toContain("wordpress.export.verify");
 });
 
 test("worker records failed runs when task execution throws", async () => {
