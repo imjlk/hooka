@@ -47,24 +47,20 @@ jobs:
         id: hooka_release
         run: |
           version=$(bun -e 'console.log((await Bun.file("package.json").json()).version)')
+          previous_version=$(git show HEAD^:package.json 2>/dev/null | bun -e 'try { console.log((await new Response(Bun.stdin.stream()).json()).version ?? "") } catch { console.log("") }')
           tag="v${version}"
           git fetch --tags --force origin
-          if git rev-parse --verify --quiet "refs/tags/${tag}" >/dev/null; then
+          if [ -z "${previous_version}" ] || [ "${previous_version}" = "${version}" ]; then
+            should_publish=false
+          elif git rev-parse --verify --quiet "refs/tags/${tag}" >/dev/null; then
             should_publish=false
           else
             should_publish=true
           fi
           echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "previous_version=${previous_version}" >> "$GITHUB_OUTPUT"
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
           echo "should_publish=${should_publish}" >> "$GITHUB_OUTPUT"
-
-      - name: Create Hooka release tag
-        if: steps.hooka_release.outputs.should_publish == 'true'
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag -a "${{ steps.hooka_release.outputs.tag }}" -m "Hooka ${{ steps.hooka_release.outputs.version }}"
-          git push origin "${{ steps.hooka_release.outputs.tag }}"
 
       - name: Extract release notes
         if: steps.hooka_release.outputs.should_publish == 'true'
@@ -77,6 +73,14 @@ jobs:
             in_section { print }
           ' CHANGELOG.md > release-notes.md
           test -s release-notes.md
+
+      - name: Create Hooka release tag
+        if: steps.hooka_release.outputs.should_publish == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "${{ steps.hooka_release.outputs.tag }}" -m "Hooka ${{ steps.hooka_release.outputs.version }}"
+          git push origin "${{ steps.hooka_release.outputs.tag }}"
 
       - name: Create GitHub release
         if: steps.hooka_release.outputs.should_publish == 'true'
