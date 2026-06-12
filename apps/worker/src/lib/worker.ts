@@ -53,10 +53,11 @@ export async function processNextRun(
 ): Promise<boolean> {
   options.runStore.requeueExpiredRuns();
   const eligibleTaskIds = getEligibleTaskIds(options.installedCapabilities);
+  const knownTaskIds = getKnownTaskIds();
   const claimed = options.runStore.claimNextQueuedRun(
     options.workerId,
     options.leaseMs,
-    { eligibleTaskIds },
+    { eligibleTaskIds, knownTaskIds },
   );
 
   if (!claimed) {
@@ -237,6 +238,12 @@ export function getEligibleTaskIds(installedCapabilities: string[]): string[] {
     .filter((task) =>
       task.requires.every((requirement) => installed.has(requirement)),
     )
+    .map((task) => task.id)
+    .sort();
+}
+
+function getKnownTaskIds(): string[] {
+  return listTasks()
     .map((task) => task.id)
     .sort();
 }

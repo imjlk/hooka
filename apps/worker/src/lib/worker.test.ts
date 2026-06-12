@@ -132,6 +132,38 @@ test("worker claims only runs covered by its installed capabilities", async () =
   runStore.close();
 });
 
+test("worker marks unknown queued tasks as failed", async () => {
+  const runStore = await createRunStore({
+    dbPath: ":memory:",
+  });
+
+  const queued = runStore.enqueueRun({
+    taskId: "legacy.task.removed",
+    input: {},
+    source: "test",
+    capabilitySnapshot: [],
+  });
+
+  expect(
+    await processNextRun({
+      installedCapabilities: [],
+      manifestPath: "/tmp/manifest.json",
+      runtimeRole: "worker:test",
+      runStore,
+      workerId: "worker-a",
+      leaseMs: 60_000,
+      retryBaseDelayMs: 1000,
+    }),
+  ).toBe(true);
+
+  const run = runStore.getRun(queued.response.runId);
+  expect(run?.status).toBe("failed");
+  expect(run?.lastErrorCode).toBe("task_not_found");
+  expect(run?.summary).toContain("Task not found");
+
+  runStore.close();
+});
+
 test("eligible task discovery follows installed capability requirements", () => {
   expect(getEligibleTaskIds(["wrangler"])).toContain(
     "deploy.shared-volume.wrangler",

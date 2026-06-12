@@ -130,6 +130,38 @@ test("claimNextQueuedRun can filter by eligible task ids", async () => {
   runStore.close();
 });
 
+test("claimNextQueuedRun can still claim unknown task ids", async () => {
+  const runStore = await createRunStore({
+    dbPath: ":memory:",
+  });
+
+  const rcloneRun = runStore.enqueueRun({
+    taskId: "rclone.copy.directory",
+    input: {
+      sourcePath: "/shared-source/export",
+      destination: "backup:site/export",
+    },
+    source: "test",
+    capabilitySnapshot: ["rclone"],
+  });
+  const unknownRun = runStore.enqueueRun({
+    taskId: "legacy.task.removed",
+    input: {},
+    source: "test",
+    capabilitySnapshot: [],
+  });
+
+  const claimed = runStore.claimNextQueuedRun("worker-a", 1_000, {
+    eligibleTaskIds: [],
+    knownTaskIds: ["deploy.shared-volume.wrangler", "rclone.copy.directory"],
+  });
+
+  expect(claimed?.id).toBe(unknownRun.response.runId);
+  expect(runStore.getRun(rcloneRun.response.runId)?.status).toBe("queued");
+
+  runStore.close();
+});
+
 test("queryRuns filters by status, taskId, and source", async () => {
   const runStore = await createRunStore({
     dbPath: ":memory:",

@@ -286,27 +286,26 @@ export class RunStore {
   claimNextQueuedRun(
     workerId: string,
     leaseMs: number,
-    options: { eligibleTaskIds?: string[] } = {},
+    options: { eligibleTaskIds?: string[]; knownTaskIds?: string[] } = {},
   ): ClaimedRun | null {
     const eligibleTaskIds =
       options.eligibleTaskIds === undefined
         ? undefined
         : [...new Set(options.eligibleTaskIds)].filter(Boolean).sort();
+    const knownTaskIds =
+      options.knownTaskIds === undefined
+        ? undefined
+        : [...new Set(options.knownTaskIds)].filter(Boolean).sort();
 
-    if (eligibleTaskIds?.length === 0) {
+    if (eligibleTaskIds?.length === 0 && knownTaskIds === undefined) {
       return null;
     }
+
+    const taskFilter = buildClaimTaskFilter(eligibleTaskIds, knownTaskIds);
 
     return this.withBusyRetry(() => {
       for (let attempt = 0; attempt < 10; attempt += 1) {
         const now = this.timestamp();
-        const taskFilter =
-          eligibleTaskIds === undefined
-            ? { sql: "", params: [] as string[] }
-            : {
-                sql: `and task_id in (${eligibleTaskIds.map(() => "?").join(", ")})`,
-                params: eligibleTaskIds,
-              };
         const queued = this.db
           .query(
             `select id from runs
@@ -926,6 +925,42 @@ export class RunStore {
 
     throw new Error("Unreachable SQLite retry state.");
   }
+}
+
+function buildClaimTaskFilter(
+  eligibleTaskIds: string[] | undefined,
+  knownTaskIds: string[] | undefined,
+): { sql: string; params: string[] } {
+  if (eligibleTaskIds === undefined) {
+    return { sql: "", params: [] };
+  }
+
+  if (knownTaskIds === undefined) {
+    return {
+      sql: `and task_id in (${eligibleTaskIds.map(() => "?").join(", ")})`,
+      params: eligibleTaskIds,
+    };
+  }
+
+  if (knownTaskIds.length === 0) {
+    return { sql: "", params: [] };
+  }
+
+  const clauses: string[] = [];
+  const params: string[] = [];
+
+  if (eligibleTaskIds.length > 0) {
+    clauses.push(`task_id in (${eligibleTaskIds.map(() => "?").join(", ")})`);
+    params.push(...eligibleTaskIds);
+  }
+
+  clauses.push(`task_id not in (${knownTaskIds.map(() => "?").join(", ")})`);
+  params.push(...knownTaskIds);
+
+  return {
+    sql: `and (${clauses.join(" or ")})`,
+    params,
+  };
 }
 
 function isSqliteBusyError(error: unknown): boolean {
