@@ -1,4 +1,4 @@
-import type { GenericTaskWebhook } from "@hooka/contracts";
+import type { IncomingTaskWebhook } from "@hooka/contracts";
 import type { z } from "zod";
 
 export type TaskInputSchema = z.ZodTypeAny;
@@ -98,7 +98,7 @@ export interface PresetDefinition {
 export interface CompatibilityWebhookAdapter {
   id: string;
   routePath: string;
-  normalize: (rawBody: string) => GenericTaskWebhook;
+  normalize: (rawBody: string) => IncomingTaskWebhook;
 }
 
 export interface TaskPackDefinition {

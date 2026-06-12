@@ -619,6 +619,69 @@ test("wordpress alias normalizes to the generic runtime path", async () => {
   app.runStore.close();
 });
 
+test("wordpress alias can enqueue through a configured target", async () => {
+  const app = await createTestServerApp({
+    targets: [
+      {
+        id: "pages-main",
+        title: "Pages Main",
+        taskId: "deploy.shared-volume.wrangler",
+        source: "target.cloudflare-pages",
+        defaultInput: {
+          kind: "pages-deploy",
+          project: "main-site",
+          sourcePath: "/shared-source/main-site",
+          branch: "main",
+        },
+        maxAttempts: 4,
+        policy: {
+          allowedProjects: ["main-site"],
+          allowedSourceRoots: ["/shared-source"],
+          allowedDestinationPrefixes: [],
+          allowedBranches: ["main"],
+          allowedOverrideFields: ["project", "sourcePath", "branch"],
+          requiredEnv: [],
+          artifactReadiness: {
+            mode: "none",
+          },
+        },
+      },
+    ],
+  });
+  const payload = JSON.stringify({
+    targetId: "pages-main",
+    eventId: "evt_wp_target_1",
+    project: "main-site",
+    exportDir: "/shared-source/main-site",
+    branch: "main",
+  });
+  const timestamp = String(Math.floor(Date.now() / 1000));
+  const signature = createHmac("sha256", "secret")
+    .update(`${timestamp}.${payload}`)
+    .digest("hex");
+
+  const response = await app.fetch(
+    new Request("http://hooka.local/api/webhooks/wordpress/simply-static", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-hooka-timestamp": timestamp,
+        "x-hooka-signature": `sha256=${signature}`,
+      },
+      body: payload,
+    }),
+  );
+
+  expect(response.status).toBe(202);
+  const run = app.runStore.listRuns()[0];
+  expect(run?.targetId).toBe("pages-main");
+  expect(run?.taskId).toBe("deploy.shared-volume.wrangler");
+  expect(run?.source).toBe("wordpress.webhook");
+  expect(run?.maxAttempts).toBe(4);
+
+  app.runStore.close();
+});
+
 test("trailbase assets webhook accepts internal bearer secret", async () => {
   const app = await createTestServerApp();
   const response = await app.fetch(

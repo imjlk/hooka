@@ -111,6 +111,30 @@ test("wordpress compatibility adapter normalizes webhook payloads", () => {
   });
 });
 
+test("wordpress compatibility adapter can target configured policies", () => {
+  const payload = wordpressSimplyStaticWebhookAdapter.normalize(
+    JSON.stringify({
+      targetId: "pages-main",
+      eventId: "evt_1",
+      project: "customer-site",
+      exportDir: "/shared-source/simply-static",
+      branch: "main",
+    }),
+  );
+
+  expect(payload).toEqual({
+    targetId: "pages-main",
+    overrides: {
+      project: "customer-site",
+      sourcePath: "/shared-source/simply-static",
+      branch: "main",
+    },
+    eventId: "evt_1",
+    source: "wordpress.webhook",
+    triggeredAt: undefined,
+  });
+});
+
 test("trailbase assets adapter normalizes drained webhook payloads", () => {
   const payload = trailbaseAssetsDrainedWebhookAdapter.normalize(
     JSON.stringify({
@@ -130,6 +154,38 @@ test("trailbase assets adapter normalizes drained webhook payloads", () => {
     taskId: "deploy.trailbase-pages.full",
     input: {
       kind: "pages-deploy",
+      project: "zero-three-three-assets",
+      sourcePath: "/shared-source/trailbase/uploads",
+      branch: "production",
+      commitMessage:
+        "TrailBase full static deploy: ready=10, failed=2, latest=123, static=456:7",
+      noBundle: true,
+    },
+    eventId: "asset-drain:v2:latest:123:ready:10:failed:2:static:456:7",
+    source: "zero-three-three.asset_generation_drained",
+    triggeredAt: undefined,
+  });
+});
+
+test("trailbase assets adapter can target configured policies", () => {
+  const payload = trailbaseAssetsDrainedWebhookAdapter.normalize(
+    JSON.stringify({
+      targetId: "trailbase-pages",
+      idempotencyKey:
+        "asset-drain:v2:latest:123:ready:10:failed:2:static:456:7",
+      project: "zero-three-three-assets",
+      branch: "production",
+      sourcePath: "/shared-source/trailbase/uploads",
+      readyCount: 10,
+      failedCount: 2,
+      latestAssetUpdatedAt: 123,
+      staticRevision: "456:7",
+    }),
+  );
+
+  expect(payload).toEqual({
+    targetId: "trailbase-pages",
+    overrides: {
       project: "zero-three-three-assets",
       sourcePath: "/shared-source/trailbase/uploads",
       branch: "production",
