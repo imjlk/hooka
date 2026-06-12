@@ -11,13 +11,14 @@ Hooka follows a Bun-first style:
 - keep `node:path` where path composition is clearer and more stable
 - keep `node:crypto` for HMAC and constant-time signature checks
 
-`1.0.0` keeps Hooka as a generic task runtime. The first producer example is WordPress, and the first showcase task is:
+Hooka's `1.x` line keeps Hooka as a generic task runtime. The first producer example is WordPress, and the first showcase task is:
 
 `signed webhook -> SQLite queue -> worker -> wrangler pages deploy`
 
 Release docs:
 
-- [Release notes](./docs/releases/1.0.0.md)
+- [Release notes `1.1.0`](./docs/releases/1.1.0.md)
+- [Release notes `1.0.0`](./docs/releases/1.0.0.md)
 - [Upgrade guide](./docs/upgrade/v1.md)
 - [Coolify deployment guide](./docs/deploy/coolify.md)
 - [Contributing guide](./CONTRIBUTING.md)
