@@ -48,14 +48,7 @@ export function createWebhookCommandGroup() {
           }),
         },
         handler: async ({ flags }) => {
-          const secret = flags.secret ?? Bun.env["HOOKA_WEBHOOK_SECRET"];
-
-          if (!secret) {
-            throw new Error(
-              "Provide --secret or set HOOKA_WEBHOOK_SECRET to sign the webhook.",
-            );
-          }
-
+          const secret = getWebhookSecret(flags.secret);
           const input = await loadWebhookPayload(flags);
           const timestamp = flags.timestamp ?? Math.floor(Date.now() / 1000);
           const payload = {
@@ -65,39 +58,108 @@ export function createWebhookCommandGroup() {
             source: flags.source,
           };
           const rawBody = JSON.stringify(payload);
-          const signature = createHmac("sha256", secret)
-            .update(`${timestamp}.${rawBody}`)
-            .digest("hex");
 
-          const response = await fetch(flags.url, {
-            method: "POST",
-            headers: {
-              "content-type": "application/json",
-              "x-hooka-timestamp": String(timestamp),
-              "x-hooka-signature": `sha256=${signature}`,
-            },
-            body: rawBody,
+          await sendSignedWebhook({
+            rawBody,
+            secret,
+            timestamp,
+            url: flags.url,
           });
+        },
+      }),
+      defineCommand({
+        name: "send",
+        description: "Send a signed raw JSON body to any webhook route.",
+        options: {
+          url: option(
+            z
+              .string()
+              .default(
+                `http://127.0.0.1:${getEnvOrDefault("HOOKA_PORT", "3000")}/api/webhooks/task`,
+              ),
+            {
+              description: "Absolute webhook target URL.",
+            },
+          ),
+          secret: option(z.string().optional(), {
+            description:
+              "Webhook secret. Falls back to HOOKA_WEBHOOK_SECRET when omitted.",
+          }),
+          "body-json": option(z.string().optional(), {
+            description: "Inline raw JSON body to sign and send.",
+          }),
+          "body-file": option(z.string().optional(), {
+            description: "Path to a JSON file body to sign and send.",
+          }),
+          timestamp: option(z.coerce.number().int().positive().optional(), {
+            description:
+              "Unix timestamp override used for the HMAC signature and header.",
+          }),
+        },
+        handler: async ({ flags }) => {
+          const secret = getWebhookSecret(flags.secret);
+          const rawBody = await loadRawJsonBody(flags);
+          const timestamp = flags.timestamp ?? Math.floor(Date.now() / 1000);
 
-          const rawResponse = await response.text();
-          console.log(
-            JSON.stringify(
-              {
-                status: response.status,
-                body: tryParseJson(rawResponse),
-              },
-              null,
-              2,
-            ),
-          );
-
-          if (!response.ok) {
-            process.exitCode = 1;
-          }
+          await sendSignedWebhook({
+            rawBody,
+            secret,
+            timestamp,
+            url: flags.url,
+          });
         },
       }),
     ],
   });
+}
+
+function getWebhookSecret(secretFlag: string | undefined): string {
+  const secret = secretFlag ?? Bun.env["HOOKA_WEBHOOK_SECRET"];
+
+  if (!secret) {
+    throw new Error(
+      "Provide --secret or set HOOKA_WEBHOOK_SECRET to sign the webhook.",
+    );
+  }
+
+  return secret;
+}
+
+async function sendSignedWebhook(input: {
+  rawBody: string;
+  secret: string;
+  timestamp: number;
+  url: string;
+}): Promise<void> {
+  const signature = createHmac("sha256", input.secret)
+    .update(`${input.timestamp}.${input.rawBody}`)
+    .digest("hex");
+
+  const response = await fetch(input.url, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-hooka-timestamp": String(input.timestamp),
+      "x-hooka-signature": `sha256=${signature}`,
+    },
+    body: input.rawBody,
+  });
+
+  const rawResponse = await response.text();
+  console.log(
+    JSON.stringify(
+      {
+        status: response.status,
+        body: tryParseJson(rawResponse),
+      },
+      null,
+      2,
+    ),
+  );
+
+  if (!response.ok) {
+    process.exitCode = 1;
+  }
 }
 
 async function loadWebhookPayload(
@@ -118,6 +180,32 @@ async function loadWebhookPayload(
   }
 
   throw new Error("Provide either --payload-json or --payload-file.");
+}
+
+async function loadRawJsonBody(
+  flags: Record<string, unknown>,
+): Promise<string> {
+  const hasBodyJson =
+    typeof flags["body-json"] === "string" && flags["body-json"].length > 0;
+  const hasBodyFile =
+    typeof flags["body-file"] === "string" && flags["body-file"].length > 0;
+
+  if (hasBodyJson && hasBodyFile) {
+    throw new Error("Provide only one of --body-json or --body-file.");
+  }
+
+  const rawBody = hasBodyFile
+    ? await Bun.file(flags["body-file"] as string).text()
+    : hasBodyJson
+      ? (flags["body-json"] as string)
+      : null;
+
+  if (rawBody === null) {
+    throw new Error("Provide either --body-json or --body-file.");
+  }
+
+  JSON.parse(rawBody);
+  return rawBody;
 }
 
 function tryParseJson(value: string): unknown {
