@@ -1,3 +1,6 @@
+import { Database } from "bun:sqlite";
+import { dirname } from "node:path";
+import { ensureDir } from "@hooka/bun-utils";
 import type {
   AuditEvent,
   EnqueueRunResponse,
@@ -11,20 +14,12 @@ import {
   auditEventListQuerySchema,
   runListQuerySchema,
 } from "@hooka/contracts";
-import { ensureDir } from "@hooka/bun-utils";
-import { Database } from "bun:sqlite";
-import { dirname } from "node:path";
 import {
   toEnqueueResponse,
   toRunDetail,
   toRunEvent,
   toRunSummary,
 } from "./mappers";
-import {
-  normalizeRunSummaryFilters,
-  toAuditEvent,
-  toWorkerHeartbeat,
-} from "./rows";
 import type {
   AuditEventFilters,
   AuditEventRow,
@@ -35,6 +30,11 @@ import type {
   RunStoreOptions,
   RunSummaryFilters,
   WorkerHeartbeatRow,
+} from "./rows";
+import {
+  normalizeRunSummaryFilters,
+  toAuditEvent,
+  toWorkerHeartbeat,
 } from "./rows";
 import { initializeRunStoreSchema } from "./schema";
 
@@ -51,12 +51,19 @@ export class RunStore {
   readonly now: () => Date;
 
   constructor(dbPath: string, options: RunStoreOptions = {}) {
-    this.db = new Database(dbPath, {
+    const db = new Database(dbPath, {
       create: true,
       strict: true,
     });
     this.now = options.now ?? (() => new Date());
-    initializeRunStoreSchema(this.db);
+
+    try {
+      initializeRunStoreSchema(db);
+      this.db = db;
+    } catch (error) {
+      db.close();
+      throw error;
+    }
   }
 
   close(): void {
@@ -984,7 +991,11 @@ function isSqliteBusyError(error: unknown): boolean {
     "code" in error && typeof error.code === "string" ? error.code : "";
   const text = `${code} ${error.message}`;
 
-  return text.includes("SQLITE_BUSY") || text.includes("SQLITE_LOCKED");
+  return (
+    text.includes("SQLITE_BUSY") ||
+    text.includes("SQLITE_LOCKED") ||
+    text.includes("SQLITE_BUSY_RECOVERY")
+  );
 }
 
 function sleepSync(ms: number): void {
@@ -1000,5 +1011,22 @@ export async function createRunStore(
     await ensureDir(dirname(dbPath));
   }
 
-  return new RunStore(dbPath, options);
+  const maxAttempts = dbPath === ":memory:" ? 1 : 8;
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      return new RunStore(dbPath, options);
+    } catch (error) {
+      lastError = error;
+
+      if (!isSqliteBusyError(error) || attempt === maxAttempts) {
+        break;
+      }
+
+      sleepSync(Math.min(250 * attempt, 2_000));
+    }
+  }
+
+  throw lastError;
 }

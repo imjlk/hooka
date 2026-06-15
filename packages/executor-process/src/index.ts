@@ -128,6 +128,53 @@ export async function runProcessTask<TSchema extends TaskInputSchema>(
       };
     }
 
+    let validation:
+      | ReturnType<NonNullable<typeof executor.validateResult>>
+      | undefined;
+
+    if (result.exitCode === 0 && executor.validateResult) {
+      try {
+        validation = executor.validateResult({
+          input,
+          dryRun,
+          env,
+          command,
+          stdout: result.stdout,
+          stderr: result.stderr,
+          exitCode: result.exitCode,
+        });
+      } catch (error) {
+        return {
+          taskId: task.id,
+          ok: false,
+          status: "failed",
+          retryable: true,
+          errorCode: "process_result_validation_failed",
+          command,
+          stdout: result.stdout,
+          stderr: error instanceof Error ? error.message : String(error),
+          summary: `${task.id} result validation failed.`,
+          durationMs: performance.now() - startedAt,
+        };
+      }
+    }
+
+    if (validation?.ok === false) {
+      return {
+        taskId: task.id,
+        ok: false,
+        status: "failed",
+        retryable: validation.retryable ?? true,
+        errorCode: validation.errorCode ?? "process_result_invalid",
+        command,
+        stdout: result.stdout,
+        stderr: validation.stderr ?? result.stderr,
+        summary: validation.summary,
+        durationMs: performance.now() - startedAt,
+        data: validation.data,
+      };
+    }
+
     return {
       taskId: task.id,
       ok: result.exitCode === 0,
@@ -139,10 +186,12 @@ export async function runProcessTask<TSchema extends TaskInputSchema>(
       stdout: result.stdout,
       stderr: result.stderr,
       summary:
-        result.exitCode === 0
+        validation?.summary ??
+        (result.exitCode === 0
           ? `${task.id} completed successfully.`
-          : `${task.id} exited with status ${result.exitCode}.`,
+          : `${task.id} exited with status ${result.exitCode}.`),
       durationMs: performance.now() - startedAt,
+      data: validation?.data,
     };
   } catch (error) {
     return {

@@ -28,6 +28,27 @@ export interface ProcessTaskExecutor<TInput> {
   env?: (
     context: TaskRuntimeContext<TInput>,
   ) => Record<string, string | undefined>;
+  validateResult?: (
+    context: TaskRuntimeContext<TInput> & {
+      command: string[];
+      stdout: string;
+      stderr: string;
+      exitCode: number;
+    },
+  ) =>
+    | {
+        ok: true;
+        summary?: string;
+        data?: unknown;
+      }
+    | {
+        ok: false;
+        retryable?: boolean;
+        errorCode?: string;
+        stderr?: string;
+        summary: string;
+        data?: unknown;
+      };
 }
 
 export interface HttpTaskExecutor<TInput> {
