@@ -25,12 +25,13 @@ changes, label the PR `no-release` or `skip-changeset`.
 ## Release Flow
 
 When changesets land on `main`, `.github/workflows/sampo-release.yml` opens or
-updates the `Release Hooka` PR from `codex/release`. Merging that release PR lets
-Sampo bump `package.json` and update `CHANGELOG.md`. Because Hooka's root npm
-package is private and only used as release metadata, the workflow creates the
-`vX.Y.Z` tag and GitHub release itself when the version has no matching tag yet.
-It then publishes current Hooka images and immutable GHCR aliases for the
-released version.
+updates the `Release Hooka` PR from `codex/release`. The workflow only invokes
+Sampo while pending changesets exist, so merging the release PR does not run
+Sampo's publish/tag path for Hooka's private root package. Because that package
+is only used as release metadata, the workflow creates the `vX.Y.Z` tag and
+GitHub release itself when the version has no matching tag yet. It then
+publishes current Hooka images and immutable GHCR aliases for the released
+version.
 
 ## Quick Links
 
