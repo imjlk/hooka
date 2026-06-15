@@ -111,3 +111,51 @@ test("runProcessTask reports timeout failures from the command runner", async ()
     summary: "test.process.task timed out after 25ms.",
   });
 });
+
+test("runProcessTask can reject zero-exit results with task validation", async () => {
+  const validatedTask = defineTask({
+    id: "test.process.validated",
+    title: "Validated Process Task",
+    input: processTaskInput,
+    requires: [],
+    executor: {
+      kind: "process",
+      command: "wrangler",
+      args: ({ input }) => ["pages", "deploy", input.exportDir],
+      validateResult: ({ stdout }) => {
+        if (stdout.includes("success")) {
+          return { ok: true, summary: "validated" };
+        }
+
+        return {
+          ok: false,
+          errorCode: "output_unverified",
+          summary: "Output was not verifiable.",
+        };
+      },
+    },
+  });
+
+  const result = await runProcessTask(
+    validatedTask,
+    {
+      exportDir: "/shared-source/site",
+    },
+    false,
+    {
+      commandRunner: async () => ({
+        stdout: "wrangler header only",
+        stderr: "",
+        exitCode: 0,
+      }),
+    },
+  );
+
+  expect(result).toMatchObject({
+    ok: false,
+    status: "failed",
+    retryable: true,
+    errorCode: "output_unverified",
+    summary: "Output was not verifiable.",
+  });
+});

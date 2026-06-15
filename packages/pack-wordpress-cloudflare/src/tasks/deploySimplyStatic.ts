@@ -34,6 +34,43 @@ function wranglerPagesDeployArgs(input: {
   ];
 }
 
+function validatePagesDeployOutput(input: {
+  stdout: string;
+  stderr: string;
+  project: string;
+}) {
+  const output = `${input.stdout}\n${input.stderr}`.trim();
+  const hasDeploymentUrl =
+    /https:\/\/[^\s]+\.pages\.dev\b/.test(output) ||
+    output.includes(`https://${input.project}.pages.dev`);
+  const hasSuccessMarker =
+    /\b(success|successful|deployed|deployment complete|uploaded)\b/i.test(
+      output,
+    );
+
+  if (hasDeploymentUrl || hasSuccessMarker) {
+    return {
+      ok: true as const,
+      summary: `Cloudflare Pages deploy for ${input.project} completed successfully.`,
+      data: {
+        outputVerified: true,
+      },
+    };
+  }
+
+  return {
+    ok: false as const,
+    retryable: true,
+    errorCode: "pages_deploy_output_unverified",
+    stderr:
+      "Wrangler exited successfully, but Hooka could not find a Pages deployment URL or success marker in stdout/stderr.",
+    summary: `Cloudflare Pages deploy for ${input.project} did not produce a verifiable success signal.`,
+    data: {
+      outputVerified: false,
+    },
+  };
+}
+
 export const sharedVolumeWranglerTask = defineTask({
   id: "deploy.shared-volume.wrangler",
   aliases: ["wordpress.deploy.simply-static"],
@@ -62,6 +99,12 @@ export const trailbaseUploadsPagesTask = defineTask({
     kind: "process",
     command: "wrangler",
     args: ({ input }) => wranglerPagesDeployArgs(input),
+    validateResult: ({ input, stdout, stderr }) =>
+      validatePagesDeployOutput({
+        stdout,
+        stderr,
+        project: input.project,
+      }),
   },
   tags: ["wrangler", "deploy", "shared-volume", "trailbase"],
 });

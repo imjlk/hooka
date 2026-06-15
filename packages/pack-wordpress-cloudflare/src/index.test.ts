@@ -81,6 +81,63 @@ test("trailbase full static task deploys the shared TrailBase Pages root", async
   ]);
 });
 
+test("trailbase full static task rejects unverified zero-exit deploy output", async () => {
+  const result = await runTask(
+    trailbaseUploadsPagesTask,
+    {
+      kind: "pages-deploy",
+      sourcePath: "/shared-source/trailbase/uploads",
+      project: "zero-three-three",
+      branch: "production",
+      noBundle: true,
+    },
+    {
+      installedCapabilities: ["wrangler"],
+      commandRunner: async () => ({
+        stdout: "\n ⛅️ wrangler 4.100.0\n────────────────────\n",
+        stderr: "",
+        exitCode: 0,
+      }),
+    },
+  );
+
+  expect(result).toMatchObject({
+    ok: false,
+    status: "failed",
+    retryable: true,
+    errorCode: "pages_deploy_output_unverified",
+  });
+});
+
+test("trailbase full static task accepts Pages deploy success output", async () => {
+  const result = await runTask(
+    trailbaseUploadsPagesTask,
+    {
+      kind: "pages-deploy",
+      sourcePath: "/shared-source/trailbase/uploads",
+      project: "zero-three-three",
+      branch: "production",
+      noBundle: true,
+    },
+    {
+      installedCapabilities: ["wrangler"],
+      commandRunner: async () => ({
+        stdout:
+          "✨ Success! Uploaded 120 files\nhttps://zero-three-three.pages.dev",
+        stderr: "",
+        exitCode: 0,
+      }),
+    },
+  );
+
+  expect(result).toMatchObject({
+    ok: true,
+    status: "succeeded",
+    summary:
+      "Cloudflare Pages deploy for zero-three-three completed successfully.",
+  });
+});
+
 test("wordpress compatibility adapter normalizes webhook payloads", () => {
   const payload = wordpressSimplyStaticWebhookAdapter.normalize(
     JSON.stringify({
