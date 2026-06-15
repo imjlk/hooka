@@ -51,12 +51,19 @@ export class RunStore {
   readonly now: () => Date;
 
   constructor(dbPath: string, options: RunStoreOptions = {}) {
-    this.db = new Database(dbPath, {
+    const db = new Database(dbPath, {
       create: true,
       strict: true,
     });
     this.now = options.now ?? (() => new Date());
-    initializeRunStoreSchema(this.db);
+
+    try {
+      initializeRunStoreSchema(db);
+      this.db = db;
+    } catch (error) {
+      db.close();
+      throw error;
+    }
   }
 
   close(): void {

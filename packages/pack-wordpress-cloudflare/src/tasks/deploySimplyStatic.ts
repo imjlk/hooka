@@ -43,12 +43,12 @@ function validatePagesDeployOutput(input: {
   const hasDeploymentUrl =
     /https:\/\/[^\s]+\.pages\.dev\b/.test(output) ||
     output.includes(`https://${input.project}.pages.dev`);
-  const hasSuccessMarker =
-    /\b(success|successful|deployed|deployment complete|uploaded)\b/i.test(
+  const hasDeploymentCompleteMarker =
+    /\b(deployment complete|deployment completed|deployed to|deployment url)\b/i.test(
       output,
     );
 
-  if (hasDeploymentUrl || hasSuccessMarker) {
+  if (hasDeploymentUrl || hasDeploymentCompleteMarker) {
     return {
       ok: true as const,
       summary: `Cloudflare Pages deploy for ${input.project} completed successfully.`,

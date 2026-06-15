@@ -128,18 +128,36 @@ export async function runProcessTask<TSchema extends TaskInputSchema>(
       };
     }
 
-    const validation =
-      result.exitCode === 0
-        ? executor.validateResult?.({
-            input,
-            dryRun,
-            env,
-            command,
-            stdout: result.stdout,
-            stderr: result.stderr,
-            exitCode: result.exitCode,
-          })
-        : undefined;
+    let validation:
+      | ReturnType<NonNullable<typeof executor.validateResult>>
+      | undefined;
+
+    if (result.exitCode === 0 && executor.validateResult) {
+      try {
+        validation = executor.validateResult({
+          input,
+          dryRun,
+          env,
+          command,
+          stdout: result.stdout,
+          stderr: result.stderr,
+          exitCode: result.exitCode,
+        });
+      } catch (error) {
+        return {
+          taskId: task.id,
+          ok: false,
+          status: "failed",
+          retryable: true,
+          errorCode: "process_result_validation_failed",
+          command,
+          stdout: result.stdout,
+          stderr: error instanceof Error ? error.message : String(error),
+          summary: `${task.id} result validation failed.`,
+          durationMs: performance.now() - startedAt,
+        };
+      }
+    }
 
     if (validation?.ok === false) {
       return {

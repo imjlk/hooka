@@ -109,6 +109,34 @@ test("trailbase full static task rejects unverified zero-exit deploy output", as
   });
 });
 
+test("trailbase full static task rejects upload-only zero-exit deploy output", async () => {
+  const result = await runTask(
+    trailbaseUploadsPagesTask,
+    {
+      kind: "pages-deploy",
+      sourcePath: "/shared-source/trailbase/uploads",
+      project: "zero-three-three",
+      branch: "production",
+      noBundle: true,
+    },
+    {
+      installedCapabilities: ["wrangler"],
+      commandRunner: async () => ({
+        stdout: "✨ Success! Uploaded 120 files",
+        stderr: "",
+        exitCode: 0,
+      }),
+    },
+  );
+
+  expect(result).toMatchObject({
+    ok: false,
+    status: "failed",
+    retryable: true,
+    errorCode: "pages_deploy_output_unverified",
+  });
+});
+
 test("trailbase full static task accepts Pages deploy success output", async () => {
   const result = await runTask(
     trailbaseUploadsPagesTask,

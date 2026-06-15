@@ -159,3 +159,44 @@ test("runProcessTask can reject zero-exit results with task validation", async (
     summary: "Output was not verifiable.",
   });
 });
+
+test("runProcessTask reports validator exceptions as validation failures", async () => {
+  const validatedTask = defineTask({
+    id: "test.process.validator-throws",
+    title: "Validated Process Task",
+    input: processTaskInput,
+    requires: [],
+    executor: {
+      kind: "process",
+      command: "wrangler",
+      args: ({ input }) => ["pages", "deploy", input.exportDir],
+      validateResult: () => {
+        throw new Error("validator exploded");
+      },
+    },
+  });
+
+  const result = await runProcessTask(
+    validatedTask,
+    {
+      exportDir: "/shared-source/site",
+    },
+    false,
+    {
+      commandRunner: async () => ({
+        stdout: "zero exit output",
+        stderr: "",
+        exitCode: 0,
+      }),
+    },
+  );
+
+  expect(result).toMatchObject({
+    ok: false,
+    status: "failed",
+    retryable: true,
+    errorCode: "process_result_validation_failed",
+    stderr: "validator exploded",
+    summary: "test.process.validator-throws result validation failed.",
+  });
+});
