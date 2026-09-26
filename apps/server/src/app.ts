@@ -78,10 +78,24 @@ export interface HookaServerAppOptions {
   uiDistDir: string;
   webhookRateLimit: number;
   webhookSecret?: string;
+  /** Interval for SSE keepalive comments; defaults to 15 seconds. */
+  eventStreamKeepaliveMs?: number;
 }
 
 class NotFoundError extends Error {}
 class PayloadTooLargeError extends Error {}
+/** Raised for invalid request data; other errors are server faults (500). */
+class BadRequestError extends Error {}
+
+const eventStreamPath = "/api/events/stream";
+const runPathPattern = /^\/api\/runs\/([^/]+)$/;
+const runRetryPathPattern = /^\/api\/runs\/([^/]+)\/retry$/;
+const targetPathPattern = /^\/api\/targets\/([^/]+)$/;
+const parameterizedRoutes = [
+  { pattern: runPathPattern, methods: ["GET"] },
+  { pattern: runRetryPathPattern, methods: ["POST"] },
+  { pattern: targetPathPattern, methods: ["GET", "PUT", "DELETE"] },
+];
 
 type RouteHandler = (
   request: Request,
@@ -135,13 +149,27 @@ export function createHookaFetchHandler(options: HookaServerAppOptions) {
 
   return async function fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
+    // HEAD is served by the matching GET route without a body. The event
+    // stream is excluded: it would consume a ticket and open a stream.
+    const routeMethod =
+      request.method === "HEAD" && url.pathname !== eventStreamPath
+        ? "GET"
+        : request.method;
     const respond = (response: Response): Response => {
-      return applyCorsHeaders(
+      const corsResponse = applyCorsHeaders(
         request,
         url.pathname,
         response,
         options.corsOrigins,
       );
+
+      return request.method === "HEAD"
+        ? new Response(null, {
+            status: corsResponse.status,
+            statusText: corsResponse.statusText,
+            headers: corsResponse.headers,
+          })
+        : corsResponse;
     };
 
     try {
@@ -173,19 +201,17 @@ export function createHookaFetchHandler(options: HookaServerAppOptions) {
         }
       }
 
-      const exactHandler = exactRoutes.get(
-        routeKey(request.method, url.pathname),
-      );
+      const exactHandler = exactRoutes.get(routeKey(routeMethod, url.pathname));
       if (exactHandler) {
         return respond(await exactHandler(request, url));
       }
 
-      const retryRunId = matchRunRetryRoute(request.method, url.pathname);
+      const retryRunId = matchRunRetryRoute(routeMethod, url.pathname);
       if (retryRunId) {
         return respond(await retryRun(options, retryRunId));
       }
 
-      const runId = matchRunIdRoute(request.method, url.pathname);
+      const runId = matchRunIdRoute(routeMethod, url.pathname);
       if (runId) {
         const run = options.runStore.getRun(runId);
 
@@ -204,42 +230,43 @@ export function createHookaFetchHandler(options: HookaServerAppOptions) {
         return respond(json(run));
       }
 
-      const targetDetailId = matchTargetDetailRoute(
-        request.method,
-        url.pathname,
-      );
+      const targetDetailId = matchTargetDetailRoute(routeMethod, url.pathname);
       if (targetDetailId) {
         return respond(await handleTargetDetail(options, targetDetailId));
       }
 
-      const targetUpdateId = matchTargetUpdateRoute(
-        request.method,
-        url.pathname,
-      );
+      const targetUpdateId = matchTargetUpdateRoute(routeMethod, url.pathname);
       if (targetUpdateId) {
         return respond(
           await handleTargetUpdate(options, request, targetUpdateId),
         );
       }
 
-      const targetDeleteId = matchTargetDeleteRoute(
-        request.method,
-        url.pathname,
-      );
+      const targetDeleteId = matchTargetDeleteRoute(routeMethod, url.pathname);
       if (targetDeleteId) {
         return respond(
           await handleTargetDelete(options, request, targetDeleteId),
         );
       }
 
+      // Never answer an API path with the admin UI shell: a typo'd webhook
+      // URL must not look like a successful delivery.
+      if (url.pathname.startsWith("/api/")) {
+        return respond(createUnmatchedApiResponse(url.pathname, exactRoutes));
+      }
+
       return respond(await serveUi(url.pathname, options.uiDistDir));
     } catch (error) {
-      if (
-        !(error instanceof NotFoundError) &&
-        !(error instanceof PayloadTooLargeError) &&
-        !(error instanceof ZodError) &&
-        !(error instanceof SyntaxError)
-      ) {
+      const status =
+        error instanceof NotFoundError
+          ? 404
+          : error instanceof BadRequestError
+            ? 400
+            : error instanceof PayloadTooLargeError
+              ? 413
+              : 500;
+
+      if (status === 500) {
         if (error instanceof Error) {
           options.logger?.error("Request failed unexpectedly", error, {
             method: request.method,
@@ -259,24 +286,80 @@ export function createHookaFetchHandler(options: HookaServerAppOptions) {
           {
             ok: false,
             error:
-              error instanceof NotFoundError ||
-              error instanceof PayloadTooLargeError ||
-              error instanceof ZodError ||
-              error instanceof SyntaxError
-                ? error.message
-                : "Internal server error",
+              status === 500 || !(error instanceof Error)
+                ? "Internal server error"
+                : error.message,
           },
-          error instanceof NotFoundError
-            ? 404
-            : error instanceof PayloadTooLargeError
-              ? 413
-              : error instanceof ZodError || error instanceof SyntaxError
-                ? 400
-                : 500,
+          status,
         ),
       );
     }
   };
+}
+
+/**
+ * Parses data that came from the request. JSON and validation errors here are
+ * the client's fault (400). The same error types from server-side state, such
+ * as a corrupt targets.json or manifest, fall through to the logged 500.
+ */
+function parseRequestData<T>(parse: () => T): T {
+  try {
+    return parse();
+  } catch (error) {
+    if (error instanceof ZodError || error instanceof SyntaxError) {
+      throw new BadRequestError(error.message);
+    }
+
+    throw error;
+  }
+}
+
+function createUnmatchedApiResponse(
+  pathname: string,
+  exactRoutes: Map<string, RouteHandler>,
+): Response {
+  const allowedMethods = new Set<string>();
+
+  for (const key of exactRoutes.keys()) {
+    const separator = key.indexOf(" ");
+    if (key.slice(separator + 1) === pathname) {
+      allowedMethods.add(key.slice(0, separator));
+    }
+  }
+
+  for (const route of parameterizedRoutes) {
+    if (route.pattern.test(pathname)) {
+      for (const method of route.methods) {
+        allowedMethods.add(method);
+      }
+    }
+  }
+
+  if (allowedMethods.size === 0) {
+    return json(
+      {
+        ok: false,
+        error: `No API route matches ${pathname}.`,
+      },
+      404,
+    );
+  }
+
+  if (allowedMethods.has("GET") && pathname !== eventStreamPath) {
+    allowedMethods.add("HEAD");
+  }
+  const allow = [...allowedMethods].sort().join(", ");
+
+  return json(
+    {
+      ok: false,
+      error: `Method not allowed. Allowed methods: ${allow}.`,
+    },
+    405,
+    {
+      allow,
+    },
+  );
 }
 
 function createExactRoutes(
@@ -293,7 +376,15 @@ function createExactRoutes(
         }),
     ],
     [routeKey("GET", "/api/ready"), () => checkReadiness(options)],
-    [routeKey("GET", "/api/openapi.json"), () => json(createOpenApiDocument())],
+    [
+      routeKey("GET", "/api/openapi.json"),
+      () =>
+        json(
+          createOpenApiDocument({
+            webhookAdapters: listWebhookAdapters(),
+          }),
+        ),
+    ],
     [routeKey("GET", "/api/tasks"), () => json(listTasks())],
     [routeKey("GET", "/api/capabilities"), () => json(listCapabilities())],
     [
@@ -321,12 +412,14 @@ function createExactRoutes(
     [
       routeKey("GET", "/api/runs"),
       (_request, url) => {
-        const filters = runListQuerySchema.parse({
-          limit: getPositiveInt(url.searchParams.get("limit"), 20),
-          status: url.searchParams.get("status") ?? undefined,
-          taskId: url.searchParams.get("taskId") ?? undefined,
-          source: url.searchParams.get("source") ?? undefined,
-        });
+        const filters = parseRequestData(() =>
+          runListQuerySchema.parse({
+            limit: getPositiveInt(url.searchParams.get("limit"), 20),
+            status: url.searchParams.get("status") ?? undefined,
+            taskId: url.searchParams.get("taskId") ?? undefined,
+            source: url.searchParams.get("source") ?? undefined,
+          }),
+        );
         return json(
           options.runStore.queryRuns({
             limit: filters.limit,
@@ -340,8 +433,9 @@ function createExactRoutes(
     [
       routeKey("POST", "/api/runs"),
       async (request) => {
-        const payload = enqueueRunRequestSchema.parse(
-          await readJsonBody(request, options.maxBodyBytes),
+        const body = await readJsonBody(request, options.maxBodyBytes);
+        const payload = parseRequestData(() =>
+          enqueueRunRequestSchema.parse(body),
         );
         return handleGenericEnqueue(options, payload);
       },
@@ -360,7 +454,7 @@ function createExactRoutes(
       () => createEventStreamTicketResponse(eventStreamTickets),
     ],
     [
-      routeKey("GET", "/api/events/stream"),
+      routeKey("GET", eventStreamPath),
       (request, url) =>
         createEventStreamResponse(options, request, url, eventStreamTickets),
     ],
@@ -401,7 +495,9 @@ async function handleSignedIncomingWebhook(
     return verified;
   }
 
-  const webhookPayload = parseIncomingTaskWebhook(rawBody);
+  const webhookPayload = parseRequestData(() =>
+    parseIncomingTaskWebhook(rawBody),
+  );
   return enqueueIncomingWebhook(options, webhookPayload);
 }
 
@@ -416,7 +512,7 @@ async function handleCompatibilityWebhook(
     return verified;
   }
 
-  const webhookPayload = adapter.normalize(rawBody);
+  const webhookPayload = parseRequestData(() => adapter.normalize(rawBody));
   return enqueueIncomingWebhook(options, webhookPayload);
 }
 
@@ -425,8 +521,8 @@ async function enqueueIncomingWebhook(
   payload: IncomingTaskWebhook,
 ): Promise<Response> {
   if ("taskId" in payload) {
-    const enqueuePayload = normalizeGenericTaskWebhook(
-      payload as GenericTaskWebhook,
+    const enqueuePayload = parseRequestData(() =>
+      normalizeGenericTaskWebhook(payload as GenericTaskWebhook),
     );
     const enqueued = await enqueueRun(options, enqueuePayload);
     return json(enqueued.queued.response, enqueued.queued.created ? 202 : 200);
@@ -576,11 +672,13 @@ function handleAuditEventsList(
   options: HookaServerAppOptions,
   url: URL,
 ): Response {
-  const filters = auditEventListQuerySchema.parse({
-    limit: getPositiveInt(url.searchParams.get("limit"), 20),
-    category: url.searchParams.get("category") ?? undefined,
-    outcome: url.searchParams.get("outcome") ?? undefined,
-  });
+  const filters = parseRequestData(() =>
+    auditEventListQuerySchema.parse({
+      limit: getPositiveInt(url.searchParams.get("limit"), 20),
+      category: url.searchParams.get("category") ?? undefined,
+      outcome: url.searchParams.get("outcome") ?? undefined,
+    }),
+  );
 
   return json(
     options.runStore.listAuditEvents({
@@ -616,9 +714,8 @@ async function handleTargetCreate(
   options: HookaServerAppOptions,
   request: Request,
 ): Promise<Response> {
-  const target = targetSchema.parse(
-    await readJsonBody(request, options.maxBodyBytes),
-  );
+  const body = await readJsonBody(request, options.maxBodyBytes);
+  const target = parseRequestData(() => targetSchema.parse(body));
 
   try {
     await createTarget(options.targetsPath, target);
@@ -651,9 +748,8 @@ async function handleTargetUpdate(
   request: Request,
   targetId: string,
 ): Promise<Response> {
-  const target = targetSchema.parse(
-    await readJsonBody(request, options.maxBodyBytes),
-  );
+  const body = await readJsonBody(request, options.maxBodyBytes);
+  const target = parseRequestData(() => targetSchema.parse(body));
 
   try {
     await updateTarget(options.targetsPath, targetId, target);
@@ -755,7 +851,9 @@ async function enqueueRun(
   }
 
   const manifest = await getInstalledCapabilities(options);
-  const parsedInput = task.input.parse(payload.input ?? {});
+  const parsedInput = parseRequestData(() =>
+    task.input.parse(payload.input ?? {}),
+  );
   const queued = options.runStore.enqueueRun({
     taskId: task.id,
     input: parsedInput,
@@ -816,6 +914,8 @@ function createEventStreamResponse(
   }
 
   const encoder = new TextEncoder();
+  const keepaliveMs = options.eventStreamKeepaliveMs ?? 15_000;
+  let lastWriteAt = Date.now();
   let interval: ReturnType<typeof setInterval> | undefined;
   let cleanedUp = false;
   let lastSequence = options.runStore.getLastRunEventSequence();
@@ -853,6 +953,12 @@ function createEventStreamResponse(
           auditSequence === lastAuditSequence &&
           latestWorkerSeenAt === lastWorkerSeenAt
         ) {
+          // Quiet streams would otherwise hit the server's 30s idle timeout
+          // (and proxy read timeouts) and disconnect the admin UI.
+          if (Date.now() - lastWriteAt >= keepaliveMs) {
+            controller.enqueue(encoder.encode(": keepalive\n\n"));
+            lastWriteAt = Date.now();
+          }
           return;
         }
 
@@ -867,6 +973,7 @@ function createEventStreamResponse(
           auditSequence,
           workers,
         });
+        lastWriteAt = Date.now();
       }, 1_000);
     },
     cancel() {
@@ -921,7 +1028,8 @@ async function readJsonBody(
   request: Request,
   maxBodyBytes: number,
 ): Promise<unknown> {
-  return JSON.parse(await readTextBody(request, maxBodyBytes));
+  const text = await readTextBody(request, maxBodyBytes);
+  return parseRequestData(() => JSON.parse(text));
 }
 
 async function readTextBody(
@@ -1011,6 +1119,9 @@ function requireAdminAuth(
       error: "Missing or invalid admin token.",
     },
     401,
+    {
+      "www-authenticate": 'Bearer realm="hooka"',
+    },
   );
 }
 
@@ -1170,58 +1281,56 @@ function routeKey(method: string, pathname: string): string {
   return `${method.toUpperCase()} ${pathname}`;
 }
 
-function matchRunIdRoute(method: string, pathname: string): string | null {
-  if (method.toUpperCase() !== "GET") {
+function matchPathParam(
+  method: string,
+  expectedMethod: string,
+  pathname: string,
+  pattern: RegExp,
+): string | null {
+  if (method.toUpperCase() !== expectedMethod) {
     return null;
   }
 
-  const match = pathname.match(/^\/api\/runs\/([^/]+)$/);
-  return match?.[1] ?? null;
+  const segment = pathname.match(pattern)?.[1];
+  if (segment === undefined) {
+    return null;
+  }
+
+  // The admin UI and CLI percent-encode ids such as `site:prod`.
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    throw new BadRequestError(`Malformed path segment: ${segment}`);
+  }
+}
+
+function matchRunIdRoute(method: string, pathname: string): string | null {
+  return matchPathParam(method, "GET", pathname, runPathPattern);
 }
 
 function matchRunRetryRoute(method: string, pathname: string): string | null {
-  if (method.toUpperCase() !== "POST") {
-    return null;
-  }
-
-  const match = pathname.match(/^\/api\/runs\/([^/]+)\/retry$/);
-  return match?.[1] ?? null;
+  return matchPathParam(method, "POST", pathname, runRetryPathPattern);
 }
 
 function matchTargetDetailRoute(
   method: string,
   pathname: string,
 ): string | null {
-  if (method.toUpperCase() !== "GET") {
-    return null;
-  }
-
-  const match = pathname.match(/^\/api\/targets\/([^/]+)$/);
-  return match?.[1] ?? null;
+  return matchPathParam(method, "GET", pathname, targetPathPattern);
 }
 
 function matchTargetUpdateRoute(
   method: string,
   pathname: string,
 ): string | null {
-  if (method.toUpperCase() !== "PUT") {
-    return null;
-  }
-
-  const match = pathname.match(/^\/api\/targets\/([^/]+)$/);
-  return match?.[1] ?? null;
+  return matchPathParam(method, "PUT", pathname, targetPathPattern);
 }
 
 function matchTargetDeleteRoute(
   method: string,
   pathname: string,
 ): string | null {
-  if (method.toUpperCase() !== "DELETE") {
-    return null;
-  }
-
-  const match = pathname.match(/^\/api\/targets\/([^/]+)$/);
-  return match?.[1] ?? null;
+  return matchPathParam(method, "DELETE", pathname, targetPathPattern);
 }
 
 async function serveUi(pathname: string, uiDistDir: string): Promise<Response> {
@@ -1312,20 +1421,22 @@ function appendAuditEvent(
 }
 
 function handleTargetWriteError(error: unknown): Response {
-  const message = error instanceof Error ? error.message : String(error);
+  if (
+    !(error instanceof TargetNotFoundError) &&
+    !(error instanceof TargetConflictError) &&
+    !(error instanceof TargetValidationError)
+  ) {
+    // I/O failures such as EACCES are server faults; let the request handler
+    // log them and answer 500 without echoing file-system paths.
+    throw error;
+  }
 
   return json(
     {
       ok: false,
-      error: message,
+      error: error.message,
     },
-    error instanceof TargetNotFoundError
-      ? 404
-      : error instanceof TargetConflictError
-        ? 409
-        : error instanceof TargetValidationError
-          ? 409
-          : 400,
+    error instanceof TargetNotFoundError ? 404 : 409,
   );
 }
 

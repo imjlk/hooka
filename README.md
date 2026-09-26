@@ -254,6 +254,7 @@ Planned presets are documented but not published in registry APIs or GHCR releas
 - Cross-origin API access is disabled by default and can be enabled with `HOOKA_CORS_ORIGINS`.
 - `HOOKA_TRUST_PROXY=true` should only be enabled when Hooka is behind a trusted reverse proxy that sets `X-Forwarded-For`. When it is `false`, Hooka ignores forwarded client IP headers entirely.
 - SSE tickets are single-use and short-lived. A reused or expired ticket returns `401` and is audited with a rejection reason.
+- Unknown `/api/*` paths return a JSON `404` (or `405` with an `Allow` header for a known path), never the admin UI shell, and `HEAD` is answered for every `GET` route. Invalid request data returns `400`; failures reading server-side state such as a corrupt `targets.json` return a logged `500`.
 
 Generic webhook body:
 
