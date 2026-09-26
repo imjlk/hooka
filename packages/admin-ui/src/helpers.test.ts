@@ -7,7 +7,10 @@ import {
   describeWorkerHealth,
   deriveRunFilterOptions,
   formatCapabilityEnvRows,
+  isHeartbeatOnlyUpdate,
+  parseEventStreamUpdate,
   parseTargetEditorValue,
+  readAuditSequence,
   resolveTargetEditorSync,
   selectActiveRunId,
   selectPreset,
@@ -345,4 +348,63 @@ test("createCoalescedTask runs bursts once and never overlaps", async () => {
 
   expect(runs).toBe(2);
   expect(maxActive).toBe(1);
+});
+
+test("an edited scaffold shown with no targets stays an unbound draft", () => {
+  const appeared = createTargetScaffold("shared-volume-pages");
+
+  expect(
+    resolveTargetEditorSync([appeared], {
+      activeTargetId: null,
+      creating: false,
+      dirty: true,
+    }),
+  ).toEqual({
+    activeTargetId: null,
+    target: null,
+    refillEditor: false,
+  });
+});
+
+test("createCoalescedTask starts the first run right away, then spaces runs out", async () => {
+  const startedAt: number[] = [];
+  const schedule = createCoalescedTask(async () => {
+    startedAt.push(Date.now());
+  }, 60);
+
+  const firstRequestAt = Date.now();
+  schedule();
+  await Bun.sleep(10);
+  schedule();
+  schedule();
+  await Bun.sleep(120);
+
+  expect(startedAt).toHaveLength(2);
+  expect((startedAt[0] ?? 0) - firstRequestAt).toBeLessThan(30);
+  expect((startedAt[1] ?? 0) - (startedAt[0] ?? 0)).toBeGreaterThanOrEqual(55);
+});
+
+test("heartbeat-only live updates are recognized from the event payload", () => {
+  const heartbeat = parseEventStreamUpdate(
+    JSON.stringify({
+      events: [],
+      auditSequence: 7,
+      workers: [
+        {
+          workerId: "worker-a",
+          runtimeRole: "cf-pages",
+          installedCapabilities: ["wrangler"],
+          lastSeenAt: "2026-09-26T00:00:00.000Z",
+          currentRunId: null,
+        },
+      ],
+    }),
+  );
+
+  expect(heartbeat).not.toBeNull();
+  expect(readAuditSequence(JSON.stringify({ auditSequence: 7 }))).toBe(7);
+  expect(heartbeat && isHeartbeatOnlyUpdate(heartbeat, 7)).toBe(true);
+  expect(heartbeat && isHeartbeatOnlyUpdate(heartbeat, 6)).toBe(false);
+  expect(parseEventStreamUpdate("not json")).toBeNull();
+  expect(parseEventStreamUpdate(JSON.stringify({ events: [] }))).toBeNull();
 });

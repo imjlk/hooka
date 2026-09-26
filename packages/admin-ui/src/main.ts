@@ -14,7 +14,10 @@ import {
   createCoalescedTask,
   createTargetScaffold,
   describeTargetEditorValidation,
+  isHeartbeatOnlyUpdate,
+  parseEventStreamUpdate,
   parseTargetEditorValue,
+  readAuditSequence,
   resolveTargetEditorSync,
   selectActiveRunId,
   serializeTargetEditorValue,
@@ -50,6 +53,7 @@ const state: {
   eventSource: EventSource | null;
   eventSourceReconnectTimer: ReturnType<typeof setTimeout> | null;
   filters: RunFilters;
+  lastAuditSequence: number | null;
   presets: PresetWithPlan[];
   runs: RunSummary[];
   summary: Summary | null;
@@ -71,6 +75,7 @@ const state: {
   filters: {
     limit: 8,
   },
+  lastAuditSequence: null,
   presets: [],
   runs: [],
   summary: null,
@@ -79,10 +84,10 @@ const state: {
   targets: [],
 };
 
-// Live updates (every worker heartbeat, run event, or audit row) refresh the
-// whole dashboard. Coalesce bursts so a busy queue cannot make the tab exceed
-// its own API rate limit.
-const scheduleHydrate = createCoalescedTask(hydrate, 1_000);
+// A full refresh costs 6-7 API requests. Heartbeat-only updates are applied
+// from the event itself, and other updates refresh at most every 5 seconds,
+// which keeps a busy dashboard well inside the default 120 requests/minute.
+const scheduleHydrate = createCoalescedTask(hydrate, 5_000);
 
 const root = document.querySelector<HTMLDivElement>("#app");
 
@@ -585,7 +590,25 @@ async function connectEventStream(): Promise<void> {
     });
     const ticket = encodeURIComponent(ticketResponse.ticket);
     const stream = new EventSource(`/api/events/stream?ticket=${ticket}`);
-    stream.addEventListener("update", () => {
+    stream.addEventListener("ready", (event) => {
+      state.lastAuditSequence = readAuditSequence(
+        (event as MessageEvent<string>).data,
+      );
+    });
+    stream.addEventListener("update", (event) => {
+      const update = parseEventStreamUpdate(
+        (event as MessageEvent<string>).data,
+      );
+
+      if (update && isHeartbeatOnlyUpdate(update, state.lastAuditSequence)) {
+        if (state.summary) {
+          state.summary = { ...state.summary, workers: update.workers };
+          renderSummaryPanels();
+        }
+        return;
+      }
+
+      state.lastAuditSequence = update?.auditSequence ?? null;
       scheduleHydrate();
     });
     stream.onerror = () => {
