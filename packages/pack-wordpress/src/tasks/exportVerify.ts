@@ -13,6 +13,9 @@ export const exportVerifyTask = defineTask({
   description: "Count generated files in the export directory before deploy.",
   input: exportVerifyInput,
   requires: [],
+  policyInputFields: {
+    sourcePath: "exportDir",
+  },
   executor: {
     kind: "internal",
     run: async ({ input, dryRun }) => {

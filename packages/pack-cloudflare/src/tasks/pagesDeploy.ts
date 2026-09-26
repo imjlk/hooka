@@ -13,6 +13,9 @@ export const pagesDeployTask = defineTask({
   description: "Push a local build directory to a Cloudflare Pages project.",
   input: pagesDeployInput,
   requires: ["wrangler"],
+  policyInputFields: {
+    sourcePath: "directory",
+  },
   executor: {
     kind: "process",
     command: "wrangler",
