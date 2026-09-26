@@ -10,6 +10,7 @@ import {
   type TargetArtifactReadiness,
 } from "@hooka/contracts";
 import { ensureParentDir } from "@hooka/bun-utils";
+import type { Stats } from "node:fs";
 import { readdir, rename, stat } from "node:fs/promises";
 import { join, normalize } from "node:path/posix";
 
@@ -468,7 +469,7 @@ async function validateRequiredFiles(
 async function getLatestArtifactMtimeMs(
   sourcePath: string,
   recursive: boolean,
-  sourceStat: Awaited<ReturnType<typeof stat>>,
+  sourceStat: Stats,
 ): Promise<number> {
   let latestMtimeMs = Number(sourceStat.mtimeMs);
 
@@ -493,9 +494,7 @@ async function getLatestArtifactMtimeMs(
   return latestMtimeMs;
 }
 
-async function getPathStat(
-  path: string,
-): Promise<Awaited<ReturnType<typeof stat>> | null> {
+async function getPathStat(path: string): Promise<Stats | null> {
   try {
     return await stat(path);
   } catch (error) {

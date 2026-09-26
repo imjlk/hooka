@@ -8,8 +8,6 @@
     "jsx": "react-jsx",
     "allowJs": true,
     "types": ["bun", "node"],
-    "baseUrl": ".",
-    "ignoreDeprecations": "6.0",
 
     // Bundler mode
     "moduleResolution": "bundler",
@@ -17,7 +15,7 @@
     "verbatimModuleSyntax": true,
     "noEmit": true,
     "paths": {
-      "@hooka/*": ["packages/*/src/index.ts", "apps/*/src/index.ts"]
+      "@hooka/*": ["./packages/*/src/index.ts", "./apps/*/src/index.ts"]
     },
 
     // Best practices

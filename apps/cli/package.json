@@ -10,7 +10,7 @@
     "dev": "bun run ./src/index.ts"
   },
   "dependencies": {
-    "@bunli/core": "^0.9.0",
+    "@bunli/core": "^0.9.1",
     "@hooka/bun-utils": "workspace:*",
     "@hooka/config": "workspace:*",
     "@hooka/contracts": "workspace:*",
@@ -19,7 +19,7 @@
     "@hooka/runner-core": "workspace:*",
     "@hooka/task-sdk": "workspace:*",
     "@hooka/targets": "workspace:*",
-    "bunli": "^0.9.0",
-    "zod": "^4.3.6"
+    "bunli": "^0.9.1",
+    "zod": "catalog:"
   }
 }
