@@ -15,10 +15,7 @@ import {
   type RunStore,
 } from "@hooka/run-store";
 import { runTask } from "@hooka/runner-core";
-import {
-  validateArtifactReadiness,
-  validateTargetPolicyInput,
-} from "@hooka/targets";
+import { validateTargetPreflight } from "@hooka/targets";
 import type { WorkerShutdownSignal } from "./shutdown";
 
 export {
@@ -367,7 +364,7 @@ async function executeTaskWithPreflight(
   options: ProcessNextRunOptions,
 ): Promise<TaskRunResult> {
   const payload = claimed.payload;
-  const preflightIssues = await getPreflightIssues(claimed, payload);
+  const preflightIssues = await getPreflightIssues(claimed, payload, task);
 
   if (preflightIssues.length > 0) {
     const retryable = preflightIssues.every((issue) => issue.retryable);
@@ -431,7 +428,11 @@ async function executeTaskWithPreflight(
   }
 }
 
-async function getPreflightIssues(claimed: ClaimedRun, payload: unknown) {
+async function getPreflightIssues(
+  claimed: ClaimedRun,
+  payload: unknown,
+  task: NonNullable<ReturnType<typeof getTask>>,
+) {
   if (!claimed.targetId || !claimed.targetPolicy) {
     return [];
   }
@@ -450,15 +451,7 @@ async function getPreflightIssues(claimed: ClaimedRun, payload: unknown) {
     maxAttempts: 1,
     policy: claimed.targetPolicy,
   };
-  const policyIssues = validateTargetPolicyInput(target, input);
-  if (policyIssues.length > 0) {
-    return policyIssues;
-  }
-
-  return validateArtifactReadiness(
-    input,
-    claimed.targetPolicy.artifactReadiness,
-  );
+  return validateTargetPreflight(target, input, task.policyInputFields);
 }
 
 function computeRetryDelayMs(

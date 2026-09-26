@@ -1,4 +1,7 @@
-import type { IncomingTaskWebhook } from "@hooka/contracts";
+import type {
+  IncomingTaskWebhook,
+  TaskPolicyInputFields,
+} from "@hooka/contracts";
 import type { z } from "zod";
 
 export type TaskInputSchema = z.ZodTypeAny;
@@ -81,6 +84,11 @@ export interface HookaTask<TSchema extends TaskInputSchema = TaskInputSchema> {
   input: TSchema;
   requires: TaskCapabilityId[];
   executor: TaskExecutor<z.output<TSchema>>;
+  /**
+   * Input fields that target policies inspect when they are not named
+   * `sourcePath`, `destination`, `project`, or `branch`.
+   */
+  policyInputFields?: TaskPolicyInputFields;
   tags?: string[];
 }
 

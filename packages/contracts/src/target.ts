@@ -67,3 +67,15 @@ export type TargetArtifactReadiness = z.infer<
 export type TargetPolicy = z.infer<typeof targetPolicySchema>;
 export type Target = z.infer<typeof targetSchema>;
 export type TargetsFile = z.infer<typeof targetsFileSchema>;
+
+/**
+ * Input field names that target policies and artifact readiness checks read.
+ * Tasks whose inputs use other names (for example `exportDir` or `directory`
+ * for the source path) declare them so the checks inspect the right value.
+ */
+export interface TaskPolicyInputFields {
+  sourcePath?: string;
+  destination?: string;
+  project?: string;
+  branch?: string;
+}

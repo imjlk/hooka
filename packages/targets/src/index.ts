@@ -3,6 +3,7 @@ import type {
   TargetPolicy,
   TargetedTaskWebhook,
   TargetsFile,
+  TaskPolicyInputFields,
 } from "@hooka/contracts";
 import {
   targetSchema,
@@ -13,6 +14,7 @@ import { ensureParentDir } from "@hooka/bun-utils";
 import type { Stats } from "node:fs";
 import { readdir, rename, stat } from "node:fs/promises";
 import { join, normalize } from "node:path/posix";
+import { realpath } from "node:fs/promises";
 
 const targetWriteLocks = new Map<string, Promise<void>>();
 
@@ -61,6 +63,17 @@ export interface TargetPreflightIssue {
   code: string;
   message: string;
   retryable: boolean;
+}
+
+function resolvePolicyInputFields(
+  fields: TaskPolicyInputFields = {},
+): Required<TaskPolicyInputFields> {
+  return {
+    sourcePath: fields.sourcePath ?? "sourcePath",
+    destination: fields.destination ?? "destination",
+    project: fields.project ?? "project",
+    branch: fields.branch ?? "branch",
+  };
 }
 
 export function listTargetScaffoldTemplates(): TargetScaffoldTemplate[] {
@@ -274,12 +287,14 @@ export function getOverrideViolations(
 export function validateTargetPolicyInput(
   target: Target,
   input: Record<string, unknown>,
+  fields?: TaskPolicyInputFields,
 ): TargetPreflightIssue[] {
   const issues: TargetPreflightIssue[] = [];
-  const project = asTrimmedString(input["project"]);
-  const sourcePath = asTrimmedString(input["sourcePath"]);
-  const branch = asTrimmedString(input["branch"]);
-  const destination = asTrimmedString(input["destination"]);
+  const fieldNames = resolvePolicyInputFields(fields);
+  const project = asTrimmedString(input[fieldNames.project]);
+  const sourcePath = asTrimmedString(input[fieldNames.sourcePath]);
+  const branch = asTrimmedString(input[fieldNames.branch]);
+  const destination = asTrimmedString(input[fieldNames.destination]);
 
   if (
     target.policy.allowedProjects.length > 0 &&
@@ -314,7 +329,7 @@ export function validateTargetPolicyInput(
     } else {
       const normalizedPath = normalize(sourcePath);
       const allowed = target.policy.allowedSourceRoots.some((root) =>
-        isPathWithin(normalizedPath, normalize(root)),
+        isPathWithin(normalizedPath, normalizeRoot(root)),
       );
 
       if (!allowed) {
@@ -335,8 +350,9 @@ export function validateTargetPolicyInput(
         retryable: false,
       });
     } else if (
+      hasParentSegment(destination) ||
       !target.policy.allowedDestinationPrefixes.some((prefix) =>
-        destination.startsWith(prefix),
+        isDestinationWithin(destination, prefix),
       )
     ) {
       issues.push({
@@ -357,24 +373,155 @@ export function validateTargetPolicyInput(
   return issues;
 }
 
+/**
+ * Runs every target preflight check for a claimed run: the input policy, then
+ * whether an existing source path really resolves inside an allowed root (a
+ * symlink inside the shared volume can point anywhere on the worker), then
+ * artifact readiness.
+ */
+export async function validateTargetPreflight(
+  target: Target,
+  input: Record<string, unknown>,
+  fields?: TaskPolicyInputFields,
+): Promise<TargetPreflightIssue[]> {
+  const policyIssues = validateTargetPolicyInput(target, input, fields);
+  if (policyIssues.length > 0) {
+    return policyIssues;
+  }
+
+  const containmentIssues = await validateSourcePathContainment(
+    target,
+    input,
+    fields,
+  );
+  if (containmentIssues.length > 0) {
+    return containmentIssues;
+  }
+
+  return validateArtifactReadiness(
+    input,
+    target.policy.artifactReadiness,
+    fields,
+  );
+}
+
+async function validateSourcePathContainment(
+  target: Target,
+  input: Record<string, unknown>,
+  fields?: TaskPolicyInputFields,
+): Promise<TargetPreflightIssue[]> {
+  const sourcePath = asTrimmedString(
+    input[resolvePolicyInputFields(fields).sourcePath],
+  );
+
+  if (target.policy.allowedSourceRoots.length === 0 || !sourcePath) {
+    return [];
+  }
+
+  let realSourcePath: string | null;
+  try {
+    realSourcePath = await resolveExistingRealPath(sourcePath);
+  } catch (error) {
+    return [
+      {
+        code: "target_source_unresolvable",
+        message: `Target ${target.id} could not resolve sourcePath ${sourcePath}: ${describeError(error)}`,
+        retryable: false,
+      },
+    ];
+  }
+
+  if (!realSourcePath) {
+    // Not produced yet; artifact readiness reports a missing source.
+    return [];
+  }
+
+  const realRoots = await Promise.all(
+    target.policy.allowedSourceRoots.map(async (root) => {
+      try {
+        return normalizeRoot(
+          (await resolveExistingRealPath(root)) ?? normalize(root),
+        );
+      } catch {
+        return normalizeRoot(root);
+      }
+    }),
+  );
+
+  if (realRoots.some((root) => isPathWithin(realSourcePath, root))) {
+    return [];
+  }
+
+  return [
+    {
+      code: "target_source_disallowed",
+      message: `Target ${target.id} does not allow sourcePath ${sourcePath}: it resolves to ${realSourcePath}, outside the allowed source roots.`,
+      retryable: false,
+    },
+  ];
+}
+
 export async function validateArtifactReadiness(
   input: Record<string, unknown>,
   readiness: TargetArtifactReadiness,
+  fields?: TaskPolicyInputFields,
 ): Promise<TargetPreflightIssue[]> {
   if (readiness.mode === "none") {
     return [];
   }
 
-  const sourcePath = asTrimmedString(input["sourcePath"]);
+  const sourcePathField = resolvePolicyInputFields(fields).sourcePath;
+  const sourcePath = asTrimmedString(input[sourcePathField]);
 
   if (!sourcePath) {
     return [
       {
         code: "artifact_source_missing",
-        message: "Artifact readiness checks require input.sourcePath.",
+        message: `Artifact readiness checks require input.${sourcePathField}.`,
         retryable: false,
       },
     ];
+  }
+
+  try {
+    return await checkArtifactReadiness(sourcePath, readiness);
+  } catch (error) {
+    // The export changed underneath the check (a directory was replaced
+    // mid-scan), or part of it is unreadable. Report it as a preflight issue
+    // instead of throwing out of the worker with the run still claimed.
+    const code = getErrorCode(error);
+    return [
+      code === "ENOENT" || code === "ENOTDIR"
+        ? {
+            code: "artifact_source_changed",
+            message: `Artifact source ${sourcePath} changed while it was being checked.`,
+            retryable: true,
+          }
+        : {
+            code: "artifact_source_unreadable",
+            message: `Artifact source ${sourcePath} could not be read: ${describeError(error)}`,
+            retryable: false,
+          },
+    ];
+  }
+}
+
+async function checkArtifactReadiness(
+  sourcePath: string,
+  readiness: Exclude<TargetArtifactReadiness, { mode: "none" }>,
+): Promise<TargetPreflightIssue[]> {
+  if (readiness.mode === "marker-file" || readiness.mode === "required-files") {
+    const sourceStat = await getPathStat(sourcePath);
+
+    if (sourceStat && !sourceStat.isDirectory()) {
+      return [
+        {
+          code: "artifact_source_not_directory",
+          message: `Artifact source ${sourcePath} must be a directory for ${readiness.mode} readiness checks.`,
+          retryable: false,
+        },
+      ];
+    }
   }
 
   if (readiness.mode === "marker-file") {
@@ -507,12 +654,9 @@ async function getPathStat(path: string): Promise<Stats | null> {
 }
 
 function isNotFoundError(error: unknown): boolean {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    (error as { code?: unknown }).code === "ENOENT"
-  );
+  // ENOTDIR: a path component is a file, so the path cannot exist.
+  const code = getErrorCode(error);
+  return code === "ENOENT" || code === "ENOTDIR";
 }
 
 function getBaseTargetScaffold(templateId: TargetScaffoldTemplateId): Target {
@@ -719,7 +863,61 @@ function asTrimmedString(value: unknown): string | undefined {
 }
 
 function isPathWithin(candidate: string, root: string): boolean {
-  return candidate === root || candidate.startsWith(`${root}/`);
+  return (
+    candidate === root ||
+    candidate.startsWith(root.endsWith("/") ? root : `${root}/`)
+  );
+}
+
+/** `normalize` keeps a trailing slash, which made `/shared-source/` match nothing. */
+function normalizeRoot(root: string): string {
+  const normalized = normalize(root);
+  return normalized.length > 1 ? normalized.replace(/\/+$/, "") : normalized;
+}
+
+/**
+ * Prefix match on a path boundary: `remote:bucket/site` allows
+ * `remote:bucket/site` and `remote:bucket/site/x`, but not
+ * `remote:bucket/site-other`. Prefixes ending in `/` or `:` (a whole remote)
+ * already end on a boundary.
+ */
+function isDestinationWithin(destination: string, prefix: string): boolean {
+  if (destination === prefix) {
+    return true;
+  }
+
+  const boundary =
+    prefix.endsWith("/") || prefix.endsWith(":") ? prefix : `${prefix}/`;
+  return destination.startsWith(boundary);
+}
+
+function hasParentSegment(value: string): boolean {
+  return value.split(/[\\/:]/).includes("..");
+}
+
+async function resolveExistingRealPath(path: string): Promise<string | null> {
+  try {
+    return await realpath(path);
+  } catch (error) {
+    if (isNotFoundError(error)) {
+      return null;
+    }
+
+    throw error;
+  }
+}
+
+function getErrorCode(error: unknown): string | undefined {
+  return typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    typeof (error as { code?: unknown }).code === "string"
+    ? (error as { code: string }).code
+    : undefined;
+}
+
+function describeError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function hasEnvValue(
