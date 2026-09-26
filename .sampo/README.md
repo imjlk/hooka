@@ -38,3 +38,13 @@ version.
 - Documentation: https://github.com/bruits/sampo/blob/main/crates/sampo/README.md
 - GitHub Action: https://github.com/bruits/sampo/blob/main/crates/sampo-github-action/README.md
 - GitHub Bot: https://github.com/bruits/sampo/blob/main/crates/sampo-github-bot/README.md
+
+## Tooling Notes
+
+The release workflow intentionally pins the Sampo GitHub Action to
+`v0.16.0`. Sampo `0.19+` refreshes `bun.lock` with
+`bun update --lockfile-only --no-save` while it prepares a release, which
+re-resolves every dependency to the newest in-range version. Release PRs are
+opened with `GITHUB_TOKEN`, so CI does not run on them, and those untested
+lockfile upgrades would ship straight into the release images. Upgrade Sampo
+only together with a guard for that behavior.
