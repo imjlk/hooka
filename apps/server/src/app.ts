@@ -715,9 +715,11 @@ async function retryRun(
   options: HookaServerAppOptions,
   runId: string,
 ): Promise<Response> {
-  const manifest = await getInstalledCapabilities(options);
-
   try {
+    // Reject unknown and active runs before loading the capability manifest,
+    // so a manifest problem cannot turn those answers into a 500.
+    options.runStore.assertRunRetryable(runId);
+    const manifest = await getInstalledCapabilities(options);
     const queued = options.runStore.retryRun(runId, {
       source: "api.retry",
       capabilitySnapshot: manifest.installed,

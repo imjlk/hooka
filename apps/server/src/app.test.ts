@@ -1200,6 +1200,41 @@ test("run retry API rejects unknown and non-terminal runs", async () => {
   app.runStore.close();
 });
 
+test("run retry API checks the run before loading capabilities", async () => {
+  const app = await createTestServerApp();
+  const failingApp = createHookaFetchHandler({
+    adminToken: "admin-token",
+    apiRateLimit: 120,
+    capabilityManifestPath: "/definitely/missing/manifest.json",
+    corsOrigins: [],
+    defaultMaxAttempts: 3,
+    globalApiRateLimit: 1_200,
+    globalWebhookRateLimit: 600,
+    loadCapabilities: async () => {
+      throw new SyntaxError("Unexpected token in manifest");
+    },
+    maxBodyBytes: 1_048_576,
+    rateLimitWindowMs: 60_000,
+    runStore: app.runStore,
+    targetsPath: "/definitely/missing/targets.json",
+    trustProxy: false,
+    uiDistDir: "/definitely/missing/ui",
+    webhookRateLimit: 60,
+    webhookSecret: "secret",
+  });
+
+  const missing = await failingApp(
+    new Request("http://hooka.local/api/runs/missing-run/retry", {
+      method: "POST",
+      headers: createAdminHeaders(),
+    }),
+  );
+
+  expect(missing.status).toBe(404);
+
+  app.runStore.close();
+});
+
 test("summary excludes stale worker heartbeats after retention cleanup", async () => {
   const app = await createTestServerApp();
 

@@ -192,6 +192,32 @@ export class RunStore {
     run: RunDetail;
     created: boolean;
   } {
+    const row = this.requireRetryableRunRow(runId);
+
+    return this.enqueueRun({
+      taskId: row.task_id,
+      input: JSON.parse(row.payload_json),
+      source: input.source,
+      capabilitySnapshot:
+        input.capabilitySnapshot ?? JSON.parse(row.capability_snapshot_json),
+      maxAttempts: row.max_attempts,
+      targetId: row.target_id ?? undefined,
+      targetMaxConcurrentRuns: row.target_max_concurrent_runs ?? undefined,
+      targetPolicy: row.target_policy_json
+        ? JSON.parse(row.target_policy_json)
+        : undefined,
+    });
+  }
+
+  /**
+   * Throws RunNotFoundError or RunNotRetryableError unless `retryRun` would
+   * accept the run, so callers can reject a request before doing other work.
+   */
+  assertRunRetryable(runId: string): void {
+    this.requireRetryableRunRow(runId);
+  }
+
+  private requireRetryableRunRow(runId: string): RunRow {
     const row = this.db
       .query(`select * from runs where id = ? limit 1`)
       .get(runId) as RunRow | null;
@@ -208,19 +234,7 @@ export class RunStore {
       throw new RunNotRetryableError(row.status);
     }
 
-    return this.enqueueRun({
-      taskId: row.task_id,
-      input: JSON.parse(row.payload_json),
-      source: input.source,
-      capabilitySnapshot:
-        input.capabilitySnapshot ?? JSON.parse(row.capability_snapshot_json),
-      maxAttempts: row.max_attempts,
-      targetId: row.target_id ?? undefined,
-      targetMaxConcurrentRuns: row.target_max_concurrent_runs ?? undefined,
-      targetPolicy: row.target_policy_json
-        ? JSON.parse(row.target_policy_json)
-        : undefined,
-    });
+    return row;
   }
 
   listRuns(limit = 20): RunSummary[] {
