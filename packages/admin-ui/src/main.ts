@@ -11,9 +11,11 @@ import type {
 } from "./helpers";
 import {
   buildRunQuery,
+  createCoalescedTask,
   createTargetScaffold,
   describeTargetEditorValidation,
   parseTargetEditorValue,
+  resolveTargetEditorSync,
   selectActiveRunId,
   serializeTargetEditorValue,
 } from "./helpers";
@@ -51,6 +53,8 @@ const state: {
   presets: PresetWithPlan[];
   runs: RunSummary[];
   summary: Summary | null;
+  targetEditorCreating: boolean;
+  targetEditorDirty: boolean;
   targets: Target[];
 } = {
   activePresetId: null,
@@ -70,8 +74,15 @@ const state: {
   presets: [],
   runs: [],
   summary: null,
+  targetEditorCreating: false,
+  targetEditorDirty: false,
   targets: [],
 };
+
+// Live updates (every worker heartbeat, run event, or audit row) refresh the
+// whole dashboard. Coalesce bursts so a busy queue cannot make the tab exceed
+// its own API rate limit.
+const scheduleHydrate = createCoalescedTask(hydrate, 1_000);
 
 const root = document.querySelector<HTMLDivElement>("#app");
 
@@ -112,8 +123,9 @@ document.addEventListener("click", (event) => {
 
   if (targetTrigger?.dataset["targetId"]) {
     state.activeTargetId = targetTrigger.dataset["targetId"];
+    state.targetEditorCreating = false;
     syncSelectedRows("[data-target-id]", state.activeTargetId);
-    renderTargetPanels();
+    renderTargetPanels({ explicit: true });
     return;
   }
 
@@ -133,6 +145,7 @@ document.addEventListener("click", (event) => {
     const template = (getElement("target-template") as HTMLSelectElement)
       .value as Parameters<typeof createTargetScaffold>[0];
     state.activeTargetId = null;
+    state.targetEditorCreating = true;
     applyTargetEditorValue(
       serializeTargetEditorValue(createTargetScaffold(template)),
     );
@@ -177,6 +190,7 @@ document.addEventListener("input", (event) => {
   const target = event.target;
 
   if (target instanceof HTMLTextAreaElement && target.id === "target-editor") {
+    state.targetEditorDirty = true;
     applyTargetValidation();
   }
 });
@@ -308,22 +322,37 @@ function renderPresetPanels(): void {
   syncSelectedRows("[data-preset-id]", state.activePresetId);
 }
 
-function renderTargetPanels(): void {
+function renderTargetPanels(options: { explicit?: boolean } = {}): void {
+  const sync = resolveTargetEditorSync(
+    state.targets,
+    {
+      activeTargetId: state.activeTargetId,
+      creating: state.targetEditorCreating,
+      dirty: state.targetEditorDirty,
+    },
+    options,
+  );
+  state.activeTargetId = sync.activeTargetId;
   getElement("target-list").innerHTML = renderTargetList(
     state.targets,
     state.activeTargetId,
   );
   const detail = renderTargetDetail(state.targets, state.activeTargetId);
-  state.activeTargetId = detail.selectedTargetId;
   getElement("target-detail").innerHTML = detail.html;
   syncSelectedRows("[data-target-id]", state.activeTargetId);
+
+  if (!sync.refillEditor) {
+    return;
+  }
+
+  state.targetEditorDirty = false;
   applyTargetEditorValue(
-    serializeTargetEditorValue(detail.target ?? createTargetScaffold()),
+    serializeTargetEditorValue(sync.target ?? createTargetScaffold()),
   );
   applyTargetValidation();
   setTargetEditorStatus(
-    detail.target
-      ? `Editing target ${detail.target.id}.`
+    sync.target
+      ? `Editing target ${sync.target.id}.`
       : "No targets configured. Start from a scaffold.",
   );
 }
@@ -477,9 +506,11 @@ async function saveTargetFromEditor(): Promise<void> {
         body: JSON.stringify(parseResult.target),
       });
       state.activeTargetId = parseResult.target.id;
+      state.targetEditorCreating = false;
       setTargetEditorStatus(`Created target ${parseResult.target.id}.`);
     }
 
+    state.targetEditorDirty = false;
     await hydrate();
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -502,6 +533,8 @@ async function deleteActiveTarget(): Promise<void> {
     );
     setTargetEditorStatus(`Deleted target ${state.activeTargetId}.`);
     state.activeTargetId = null;
+    state.targetEditorCreating = false;
+    state.targetEditorDirty = false;
     applyTargetEditorValue(serializeTargetEditorValue(createTargetScaffold()));
     await hydrate();
   } catch (error) {
@@ -553,7 +586,7 @@ async function connectEventStream(): Promise<void> {
     const ticket = encodeURIComponent(ticketResponse.ticket);
     const stream = new EventSource(`/api/events/stream?ticket=${ticket}`);
     stream.addEventListener("update", () => {
-      void hydrate();
+      scheduleHydrate();
     });
     stream.onerror = () => {
       stream.close();

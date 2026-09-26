@@ -9,7 +9,7 @@ export function renderPresetList(
     .map((preset) => {
       const selected = preset.id === activePresetId ? " selected" : "";
       return `
-        <button type="button" class="task-row run-row${selected}" data-preset-id="${preset.id}">
+        <button type="button" class="task-row run-row${selected}" data-preset-id="${escapeHtml(preset.id)}">
           <div>
             <strong>${escapeHtml(preset.id)}</strong>
             <p>${escapeHtml(preset.publicWorkerTag ?? preset.imageTag)}</p>

@@ -10,7 +10,7 @@ export function renderTargetList(
         .map((target) => {
           const selected = target.id === activeTargetId ? " selected" : "";
           return `
-            <button type="button" class="task-row run-row${selected}" data-target-id="${target.id}">
+            <button type="button" class="task-row run-row${selected}" data-target-id="${escapeHtml(target.id)}">
               <div>
                 <strong>${escapeHtml(target.id)}</strong>
                 <p>${escapeHtml(target.taskId)}</p>

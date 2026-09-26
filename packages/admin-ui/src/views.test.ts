@@ -6,7 +6,7 @@ import {
   renderInstalledCapabilities,
   renderSummaryCards,
 } from "./views/summary";
-import { renderTargetDetail } from "./views/targets";
+import { renderTargetDetail, renderTargetList } from "./views/targets";
 import type {
   AuditEvent,
   PresetWithPlan,
@@ -198,4 +198,34 @@ test("renderAuditList includes audit metadata and message", () => {
   expect(html).toContain("/api/summary");
   expect(html).toContain("Missing or invalid admin token.");
   expect(html).toContain("retryAfterSeconds");
+});
+
+test("renderTargetList escapes target ids inside attributes", () => {
+  const html = renderTargetList(
+    [
+      {
+        id: 'x" autofocus onfocus="alert(1)',
+        title: "Hostile",
+        taskId: "deploy.shared-volume.wrangler",
+        source: "target",
+        defaultInput: {},
+        maxAttempts: 3,
+        policy: {
+          allowedProjects: [],
+          allowedSourceRoots: [],
+          allowedDestinationPrefixes: [],
+          allowedBranches: [],
+          allowedOverrideFields: [],
+          requiredEnv: [],
+          artifactReadiness: { mode: "none" },
+        },
+      } satisfies Target,
+    ],
+    null,
+  );
+
+  expect(html).toContain(
+    'data-target-id="x&quot; autofocus onfocus=&quot;alert(1)"',
+  );
+  expect(html).not.toContain('onfocus="alert(1)"');
 });
