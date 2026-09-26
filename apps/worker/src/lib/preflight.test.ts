@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { createTempDir, removeDir } from "@hooka/bun-utils";
 import { createRunStore } from "@hooka/run-store";
 import { createTargetScaffold } from "@hooka/targets";
-import { mkdir } from "node:fs/promises";
+import { mkdir, realpath } from "node:fs/promises";
 import { join } from "node:path";
 import { processNextRun } from "./worker";
 
@@ -46,8 +46,9 @@ test("export-verify target runs pass preflight on their exportDir field", async 
     const run = runStore.getRun(queued.response.runId);
     expect(run?.lastErrorCode).toBeNull();
     expect(run?.status).toBe("succeeded");
+    // The task runs on the canonical path that preflight checked.
     expect(run?.result?.data).toEqual({
-      exportDir,
+      exportDir: await realpath(exportDir),
       htmlFiles: 1,
     });
   } finally {
