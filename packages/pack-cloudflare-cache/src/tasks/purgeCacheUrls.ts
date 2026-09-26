@@ -2,7 +2,11 @@ import { defineTask } from "@hooka/task-sdk";
 import { z } from "zod";
 
 export const purgeCacheUrlsInput = z.object({
-  zoneId: z.string().min(1),
+  // The zone id becomes a URL path segment of an authenticated request, so it
+  // must not be able to add path segments or a query string.
+  zoneId: z
+    .string()
+    .regex(/^[A-Za-z0-9_-]+$/, "zoneId must be a Cloudflare zone id."),
   urls: z.string().min(1),
 });
 
@@ -24,7 +28,7 @@ export const purgeCacheUrlsTask = defineTask({
     kind: "http",
     method: "POST",
     url: ({ input }) =>
-      `https://api.cloudflare.com/client/v4/zones/${input.zoneId}/purge_cache`,
+      `https://api.cloudflare.com/client/v4/zones/${encodeURIComponent(input.zoneId)}/purge_cache`,
     headers: ({ env }) => ({
       Authorization: `Bearer ${env["CLOUDFLARE_API_TOKEN"] ?? ""}`,
     }),

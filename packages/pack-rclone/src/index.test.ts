@@ -56,3 +56,20 @@ test("copyDirectoryTask executes through the injected command runner", async () 
     command: ["rclone", "copy", "/shared-source/site", "remote:bucket/site"],
   });
 });
+
+test("copyDirectoryTask rejects paths that rclone would parse as flags", async () => {
+  for (const input of [
+    { sourcePath: "--config=/tmp/evil.conf", destination: "remote:bucket" },
+    { sourcePath: "/shared-source/site", destination: "--dry-run" },
+  ]) {
+    const result = await runTask(copyDirectoryTask, input, {
+      dryRun: true,
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      retryable: false,
+      errorCode: "input_invalid",
+    });
+  }
+});

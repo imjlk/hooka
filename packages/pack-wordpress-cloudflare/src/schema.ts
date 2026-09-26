@@ -2,7 +2,13 @@ import { z } from "zod";
 
 export const sharedVolumeWranglerInputSchema = z.object({
   kind: z.literal("pages-deploy").default("pages-deploy"),
-  sourcePath: z.string().min(1).default("/shared-source/simply-static"),
+  sourcePath: z
+    .string()
+    .min(1)
+    .refine((value) => !value.startsWith("-"), {
+      message: "sourcePath must not start with '-'.",
+    })
+    .default("/shared-source/simply-static"),
   project: z.string().min(1),
   branch: z.string().min(1).optional(),
   commitSha: z.string().min(1).optional(),
@@ -25,7 +31,7 @@ export const wordpressSimplyStaticWebhookSchema = z.object({
   skipCaching: z.boolean().optional(),
   noBundle: z.boolean().optional(),
   uploadSourceMaps: z.boolean().optional(),
-  triggeredAt: z.string().datetime().optional(),
+  triggeredAt: z.string().datetime({ offset: true }).optional(),
 });
 
 export const trailbaseAssetsDrainedWebhookSchema = z.object({
@@ -46,7 +52,7 @@ export const trailbaseAssetsDrainedWebhookSchema = z.object({
   pendingProblemAssetsCount: z.number().int().nonnegative().default(0),
   latestAssetUpdatedAt: z.number().int().nonnegative().optional(),
   warning: z.string().nullable().optional(),
-  triggeredAt: z.string().datetime().optional(),
+  triggeredAt: z.string().datetime({ offset: true }).optional(),
 });
 
 export type SharedVolumeWranglerInput = z.infer<

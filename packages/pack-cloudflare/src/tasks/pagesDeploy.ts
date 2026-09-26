@@ -3,7 +3,13 @@ import { z } from "zod";
 
 export const pagesDeployInput = z.object({
   project: z.string().min(1),
-  directory: z.string().default("./dist"),
+  directory: z
+    .string()
+    .min(1)
+    .refine((value) => !value.startsWith("-"), {
+      message: "directory must not start with '-'.",
+    })
+    .default("./dist"),
   branch: z.string().optional(),
 });
 
@@ -20,9 +26,8 @@ export const pagesDeployTask = defineTask({
       "pages",
       "deploy",
       input.directory,
-      "--project-name",
-      input.project,
-      ...(input.branch ? ["--branch", input.branch] : []),
+      `--project-name=${input.project}`,
+      ...(input.branch ? [`--branch=${input.branch}`] : []),
     ],
   },
   tags: ["cloudflare", "deploy"],

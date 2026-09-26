@@ -16,15 +16,17 @@ function wranglerPagesDeployArgs(input: {
   noBundle?: boolean;
   uploadSourceMaps?: boolean;
 }) {
+  // Keep option values attached with `=` so a value that starts with `-`
+  // (a commit message like "- fix typo", or "--branch=production") stays data
+  // instead of being parsed as another wrangler flag.
   return [
     "pages",
     "deploy",
     input.sourcePath,
-    "--project-name",
-    input.project,
-    ...(input.branch ? ["--branch", input.branch] : []),
-    ...(input.commitSha ? ["--commit-hash", input.commitSha] : []),
-    ...(input.commitMessage ? ["--commit-message", input.commitMessage] : []),
+    `--project-name=${input.project}`,
+    ...(input.branch ? [`--branch=${input.branch}`] : []),
+    ...(input.commitSha ? [`--commit-hash=${input.commitSha}`] : []),
+    ...(input.commitMessage ? [`--commit-message=${input.commitMessage}`] : []),
     ...(input.commitDirty === undefined
       ? []
       : [`--commit-dirty=${input.commitDirty}`]),

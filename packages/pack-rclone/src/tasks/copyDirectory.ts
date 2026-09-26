@@ -1,9 +1,18 @@
 import { defineTask } from "@hooka/task-sdk";
 import { z } from "zod";
 
+// rclone would parse a leading `-` as a flag, so reject it up front.
+const rclonePathSchema = (field: string) =>
+  z
+    .string()
+    .min(1)
+    .refine((value) => !value.startsWith("-"), {
+      message: `${field} must not start with '-'.`,
+    });
+
 export const copyDirectoryInput = z.object({
-  sourcePath: z.string().min(1),
-  destination: z.string().min(1),
+  sourcePath: rclonePathSchema("sourcePath"),
+  destination: rclonePathSchema("destination"),
 });
 
 export const copyDirectoryTask = defineTask({

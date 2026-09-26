@@ -16,10 +16,11 @@ export const wpcliEvalTask = defineTask({
   executor: {
     kind: "process",
     command: "wp",
+    // WP-CLI only accepts global parameters in `--key=value` form; with a
+    // separate token it fails with "The --path parameter cannot be empty".
     args: ({ input }) => [
-      "--path",
-      input.path,
-      ...(input.user ? ["--user", input.user] : []),
+      `--path=${input.path}`,
+      ...(input.user ? [`--user=${input.user}`] : []),
       "eval",
       input.code,
     ],

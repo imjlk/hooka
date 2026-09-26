@@ -95,3 +95,15 @@ test("wordpress payload normalizes into generic task webhook payload", () => {
     },
   });
 });
+
+test("generic task webhook accepts triggeredAt with a UTC offset", () => {
+  const parsed = parseGenericTaskWebhook(
+    JSON.stringify({
+      taskId: "deploy.shared-volume.wrangler",
+      eventId: "evt_offset",
+      triggeredAt: "2026-09-26T12:00:00+00:00",
+    }),
+  );
+
+  expect(parsed.triggeredAt).toBe("2026-09-26T12:00:00+00:00");
+});

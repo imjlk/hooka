@@ -5,15 +5,16 @@ export const genericTaskWebhookSchema = z.object({
   input: z.unknown().default({}),
   eventId: z.string().min(1),
   source: z.string().default("webhook"),
-  triggeredAt: z.string().datetime().optional(),
+  triggeredAt: z.string().datetime({ offset: true }).optional(),
 });
 
 export const targetedTaskWebhookSchema = z.object({
   targetId: z.string().min(1),
   overrides: z.unknown().default({}),
   eventId: z.string().min(1),
-  source: z.string().default("webhook"),
-  triggeredAt: z.string().datetime().optional(),
+  // Left optional so resolveTargetWebhook can fall back to the target's source.
+  source: z.string().min(1).optional(),
+  triggeredAt: z.string().datetime({ offset: true }).optional(),
 });
 
 export const incomingTaskWebhookSchema = z.union([

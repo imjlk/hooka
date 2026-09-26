@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { join } from "node:path";
-import { exportVerifyTask } from "./index";
+import { runTask } from "@hooka/runner-core";
+import { exportVerifyTask, wpcliEvalTask } from "./index";
 
 test("exportVerifyTask dry run skips filesystem scanning", async () => {
   if (exportVerifyTask.executor.kind !== "internal") {
@@ -54,5 +55,48 @@ test("exportVerifyTask counts matching HTML files", async () => {
     });
   } finally {
     await Bun.$`rm -rf ${tempDir}`.quiet();
+  }
+});
+
+test("wpcliEvalTask passes WP-CLI global parameters in --key=value form", async () => {
+  const result = await runTask(
+    wpcliEvalTask,
+    {
+      path: "/var/www/html",
+      user: "admin",
+      code: "echo home_url();",
+    },
+    {
+      dryRun: true,
+    },
+  );
+
+  expect(result.command).toEqual([
+    "wp",
+    "--path=/var/www/html",
+    "--user=admin",
+    "eval",
+    "echo home_url();",
+  ]);
+});
+
+test("exportVerifyTask rejects patterns that escape exportDir", async () => {
+  for (const pattern of ["../*/*.html", "/etc/**/*", "nested/../../*"]) {
+    const result = await runTask(
+      exportVerifyTask,
+      {
+        exportDir: "/shared-source/simply-static",
+        pattern,
+      },
+      {
+        dryRun: true,
+      },
+    );
+
+    expect(result).toMatchObject({
+      ok: false,
+      retryable: false,
+      errorCode: "input_invalid",
+    });
   }
 });
