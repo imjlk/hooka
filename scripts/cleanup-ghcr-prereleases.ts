@@ -106,14 +106,14 @@ export function classifyContainerTag(
       };
     }
 
-    const prereleaseMatch = prereleaseVersionPattern.exec(version);
-    if (prereleaseMatch) {
+    const baseVersion = prereleaseVersionPattern.exec(version)?.[1];
+    if (baseVersion) {
       return {
         kind: "immutable-prerelease",
         artifactTag,
         tag,
         version,
-        baseVersion: prereleaseMatch[1],
+        baseVersion,
       };
     }
 

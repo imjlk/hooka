@@ -1,19 +1,13 @@
-### Generate the HMAC header first with:
-### bun run examples/wordpress-webhook/sign-request.ts
+### 1. Generate a fresh signed request:
+###    bun run examples/wordpress-webhook/sign-request.ts
+### 2. Paste its x-hooka-timestamp and x-hooka-signature headers below, and
+###    replace the body with its `rawBody` string exactly as printed (one line).
+###    The signature covers `${timestamp}.${rawBody}` byte for byte, and the
+###    timestamp must be within five minutes of the server clock.
+###    Or run the printed `curl` command instead.
 POST http://localhost:3000/api/webhooks/task
 content-type: application/json
-x-hooka-timestamp: 1711411200
-x-hooka-signature: sha256=<replace-with-generated-signature>
+x-hooka-timestamp: <timestamp from sign-request.ts>
+x-hooka-signature: sha256=<signature from sign-request.ts>
 
-{
-  "taskId": "deploy.shared-volume.wrangler",
-  "input": {
-    "kind": "pages-deploy",
-    "project": "staging-site",
-    "sourcePath": "/shared-source/simply-static",
-    "branch": "main"
-  },
-  "eventId": "evt_001",
-  "source": "wordpress.webhook",
-  "triggeredAt": "2026-03-26T00:00:00.000Z"
-}
+<rawBody from sign-request.ts>
