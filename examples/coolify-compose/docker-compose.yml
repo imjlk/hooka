@@ -1,8 +1,10 @@
 services:
   hooka-server:
     image: ghcr.io/imjlk/hooka:webhook-server
-    ports:
-      - "3000:3000"
+    # Reach the server only through Coolify's proxy. HOOKA_TRUST_PROXY trusts
+    # X-Forwarded-For, which a client could forge on a directly published port.
+    expose:
+      - "3000"
     environment:
       HOOKA_DB_PATH: /data/hooka.sqlite
       # The server refuses to start without both secrets.
