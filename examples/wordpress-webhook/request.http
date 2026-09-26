@@ -1,7 +1,7 @@
 ### 1. Generate a fresh signed request:
 ###    bun run examples/wordpress-webhook/sign-request.ts
 ### 2. Paste its x-hooka-timestamp and x-hooka-signature headers below, and
-###    replace the body with its `rawBody` string exactly as printed (one line).
+###    replace the body with the printed rawBody line exactly as shown.
 ###    The signature covers `${timestamp}.${rawBody}` byte for byte, and the
 ###    timestamp must be within five minutes of the server clock.
 ###    Or run the printed `curl` command instead.
