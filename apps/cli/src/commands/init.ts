@@ -6,9 +6,8 @@ import { createTargetScaffold } from "@hooka/targets";
 import { join } from "node:path";
 import { z } from "zod";
 import {
-  booleanFlagSchema,
+  booleanFlag,
   createInstalledCapabilitiesManifest,
-  resolveBooleanFlag,
   resolveCliSourceRoot,
   writeInstalledCapabilitiesManifest,
 } from "../lib/shared";
@@ -24,16 +23,16 @@ export function createInitCommand() {
       preset: option(z.string().optional(), {
         description: "Preset id to scaffold for. Defaults to cf-pages.",
       }),
-      yes: option(booleanFlagSchema, {
+      yes: booleanFlag({
         description: "Use recommended defaults without prompting.",
       }),
-      force: option(booleanFlagSchema, {
+      force: booleanFlag({
         description: "Overwrite existing .env and manifest files.",
       }),
     },
     handler: async ({ flags }) => {
-      const yes = resolveBooleanFlag(flags.yes, "--yes");
-      const force = resolveBooleanFlag(flags.force, "--force");
+      const yes = flags.yes;
+      const force = flags.force;
       const presetId =
         flags.preset ??
         (yes ? defaultPresetId : await promptForPreset(defaultPresetId));

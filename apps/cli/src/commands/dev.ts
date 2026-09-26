@@ -1,4 +1,4 @@
-import { defineCommand, option } from "@bunli/core";
+import { defineCommand } from "@bunli/core";
 import {
   createServerConfig,
   createWorkerConfig,
@@ -8,11 +8,7 @@ import {
 import { installedCapabilitiesManifestSchema } from "@hooka/contracts";
 import { listCapabilities } from "@hooka/registry";
 import { findMissingCapabilityEnvRequirements } from "@hooka/runtime-contracts";
-import {
-  booleanFlagSchema,
-  resolveBooleanFlag,
-  resolveCliSourceRoot,
-} from "../lib/shared";
+import { booleanFlag, resolveCliSourceRoot } from "../lib/shared";
 
 export interface DevCommandSpec {
   name: "server" | "worker" | "ui";
@@ -32,12 +28,12 @@ export function createDevCommand() {
     description:
       "Run the Hooka server, worker, and UI together for local development.",
     options: {
-      "no-ui": option(booleanFlagSchema, {
+      "no-ui": booleanFlag({
         description: "Skip the Bun HMR admin UI process.",
       }),
     },
     handler: async ({ flags }) => {
-      const noUi = resolveBooleanFlag(flags["no-ui"], "--no-ui");
+      const noUi = flags["no-ui"];
       const issues = await validateDevSetup();
 
       if (issues.length > 0) {

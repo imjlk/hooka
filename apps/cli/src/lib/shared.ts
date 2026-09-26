@@ -1,7 +1,12 @@
+import { option } from "@bunli/core";
 import { ensureParentDir } from "@hooka/bun-utils";
-import { resolveHookaProjectRoot } from "@hooka/config";
+import {
+  createCliConfig,
+  defaultServerPort,
+  defaultWorkerHeartbeatIntervalMs,
+  resolveHookaProjectRoot,
+} from "@hooka/config";
 import type { InstalledCapabilitiesManifest } from "@hooka/contracts";
-import { createCliConfig } from "@hooka/config";
 import { createRunStore, type RunStore } from "@hooka/run-store";
 import { join } from "node:path";
 import { z } from "zod";
@@ -15,19 +20,37 @@ export interface CliDefaults {
 }
 
 export const cliDefaults: CliDefaults = createCliConfig();
-export const booleanFlagSchema = z
-  .preprocess((value) => (value === "" ? true : value), z.coerce.boolean())
-  .default(false);
 
-export function resolveBooleanFlag(
-  parsedValue: boolean,
-  flagName: string,
-): boolean {
-  return (
-    parsedValue ||
-    Bun.argv.includes(flagName) ||
-    Bun.argv.some((argument) => argument.startsWith(`${flagName}=`))
-  );
+/**
+ * A boolean switch: `--json`, `--json=true`, or `--json=false`. Declaring it as
+ * a flag makes Bunli treat the bare form as `true` without consuming the next
+ * argument. The previous argv scan turned `--yes=false` into `true`.
+ */
+export function booleanFlag(metadata: { description: string; short?: string }) {
+  return option(z.boolean().default(false), {
+    ...metadata,
+    argumentKind: "flag",
+  });
+}
+
+/**
+ * Default server URL for client commands. Only reads `HOOKA_PORT`, so an
+ * invalid server-only setting cannot break unrelated CLI commands.
+ */
+export function resolveDefaultServerUrl(
+  env: Record<string, string | undefined> = Bun.env,
+): string {
+  const port = Number(env["HOOKA_PORT"]);
+  return `http://127.0.0.1:${Number.isInteger(port) && port > 0 ? port : defaultServerPort}`;
+}
+
+export function resolveDefaultHeartbeatIntervalMs(
+  env: Record<string, string | undefined> = Bun.env,
+): number {
+  const intervalMs = Number(env["HOOKA_WORKER_HEARTBEAT_MS"]);
+  return Number.isInteger(intervalMs) && intervalMs > 0
+    ? intervalMs
+    : defaultWorkerHeartbeatIntervalMs;
 }
 
 export function parseFeatureList(value: string): string[] {

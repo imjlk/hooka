@@ -8,7 +8,7 @@ import {
 import { loadInstalledCapabilities } from "@hooka/runner-core";
 import { z } from "zod";
 import type { CliDefaults } from "../lib/shared";
-import { booleanFlagSchema, resolveBooleanFlag } from "../lib/shared";
+import { booleanFlag } from "../lib/shared";
 
 export function createDoctorCommand(defaults: CliDefaults) {
   return defineCommand({
@@ -18,12 +18,12 @@ export function createDoctorCommand(defaults: CliDefaults) {
       manifest: option(z.string().default(defaults.manifestPath), {
         description: "Path to the installed-capabilities manifest.",
       }),
-      json: option(booleanFlagSchema, {
+      json: booleanFlag({
         description: "Print raw JSON instead of a human-readable report.",
       }),
     },
     handler: async ({ flags }) => {
-      const json = resolveBooleanFlag(flags.json, "--json");
+      const json = flags.json;
       const manifest = await loadInstalledCapabilities(flags.manifest);
       const missingEnv = findMissingCapabilityEnv(
         manifest.installed,

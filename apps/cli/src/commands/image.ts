@@ -9,10 +9,9 @@ import { resolve } from "node:path";
 import { z } from "zod";
 import type { CliDefaults } from "../lib/shared";
 import {
-  booleanFlagSchema,
+  booleanFlag,
   createInstalledCapabilitiesManifest,
   parseFeatureList,
-  resolveBooleanFlag,
   writeInstalledCapabilitiesManifest,
 } from "../lib/shared";
 
@@ -104,12 +103,12 @@ export function createImageCommandGroup(defaults: CliDefaults) {
           image: option(z.string().default("hooka:custom"), {
             description: "Image label to write into the manifest.",
           }),
-          "dry-run": option(booleanFlagSchema, {
+          "dry-run": booleanFlag({
             description: "Print the installation plan without running scripts.",
           }),
         },
         handler: async ({ flags, shell }) => {
-          const dryRun = resolveBooleanFlag(flags["dry-run"], "--dry-run");
+          const dryRun = flags["dry-run"];
           const requested = parseFeatureList(flags.features);
           const installed = new Set<string>();
 

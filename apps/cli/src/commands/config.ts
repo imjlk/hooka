@@ -1,4 +1,4 @@
-import { defineCommand, option } from "@bunli/core";
+import { defineCommand } from "@bunli/core";
 import {
   createAdminUiDevConfig,
   createCliConfig,
@@ -10,7 +10,7 @@ import {
 } from "@hooka/config";
 import { loadInstalledCapabilities } from "@hooka/runner-core";
 import { loadTargets } from "@hooka/targets";
-import { booleanFlagSchema, resolveBooleanFlag } from "../lib/shared";
+import { booleanFlag } from "../lib/shared";
 
 export interface ConfigReport {
   dbPath: string;
@@ -93,12 +93,12 @@ export function createConfigCommand() {
     name: "config",
     description: "Show resolved Hooka configuration and manifest precedence.",
     options: {
-      json: option(booleanFlagSchema, {
+      json: booleanFlag({
         description: "Print raw JSON instead of a human-readable summary.",
       }),
     },
     handler: async ({ flags }) => {
-      const json = resolveBooleanFlag(flags.json, "--json");
+      const json = flags.json;
       const report = await collectConfigReport();
 
       if (json) {
