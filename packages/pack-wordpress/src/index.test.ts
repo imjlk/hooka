@@ -100,3 +100,37 @@ test("exportVerifyTask rejects patterns that escape exportDir", async () => {
     });
   }
 });
+
+test("exportVerifyTask never counts files outside exportDir", async () => {
+  if (exportVerifyTask.executor.kind !== "internal") {
+    throw new Error("exportVerifyTask should use the internal executor.");
+  }
+
+  const tempDir = join(
+    Bun.env["TMPDIR"] ?? "/tmp",
+    `hooka-export-contain-${crypto.randomUUID()}`,
+  );
+  await Bun.$`mkdir -p ${join(tempDir, "export")} ${join(tempDir, "secret")}`.quiet();
+  await Bun.write(join(tempDir, "export", "index.html"), "<html></html>");
+  await Bun.write(join(tempDir, "secret", "leak.html"), "<html></html>");
+
+  try {
+    // Calls the executor directly, bypassing the input schema that already
+    // rejects `..`, to pin the containment check itself.
+    const result = await exportVerifyTask.executor.run({
+      input: {
+        exportDir: join(tempDir, "export"),
+        pattern: "../secret/*.html",
+      },
+      dryRun: false,
+      env: {},
+    });
+
+    expect(result).toEqual({
+      exportDir: join(tempDir, "export"),
+      htmlFiles: 0,
+    });
+  } finally {
+    await Bun.$`rm -rf ${tempDir}`.quiet();
+  }
+});
