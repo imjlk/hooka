@@ -17,7 +17,7 @@ export function renderRunList(
         .map((run) => {
           const selected = run.id === activeRunId ? " selected" : "";
           return `
-            <button type="button" class="task-row run-row${selected}" data-run-id="${run.id}">
+            <button type="button" class="task-row run-row${selected}" data-run-id="${escapeHtml(run.id)}">
               <div>
                 <strong>${escapeHtml(run.taskId)}</strong>
                 <p>${escapeHtml(run.id)}</p>
@@ -57,7 +57,7 @@ export function renderRunDetail(run: RunDetail): string {
         </div>
         ${
           canRetry
-            ? `<div class="stack top-gap"><button type="button" class="action-button" data-run-retry-id="${run.id}">Retry Run</button></div>`
+            ? `<div class="stack top-gap"><button type="button" class="action-button" data-run-retry-id="${escapeHtml(run.id)}">Retry Run</button></div>`
             : ""
         }
       </div>

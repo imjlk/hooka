@@ -445,3 +445,92 @@ export function summarizeAuditContext(context: unknown): string | null {
     ? `${serialized.slice(0, 157)}...`
     : serialized;
 }
+
+export type TargetEditorState = {
+  /** Target the editor is bound to; null while drafting a new target. */
+  activeTargetId: string | null;
+  /** Drafting a scaffold that is not saved yet. */
+  creating: boolean;
+  /** The operator has typed into the editor since it was last filled. */
+  dirty: boolean;
+};
+
+/**
+ * Decides how a target panel refresh treats the editor. Live updates arrive
+ * every few seconds; they must neither discard unsaved edits nor rebind a
+ * draft scaffold to an existing target (which turned "Save" into a PUT that
+ * overwrote that target).
+ */
+export function resolveTargetEditorSync(
+  targets: Target[],
+  editor: TargetEditorState,
+  options: { explicit?: boolean } = {},
+): {
+  activeTargetId: string | null;
+  target: Target | null;
+  refillEditor: boolean;
+} {
+  if (editor.creating && !options.explicit) {
+    return {
+      activeTargetId: null,
+      target: null,
+      refillEditor: false,
+    };
+  }
+
+  const target = selectTarget(targets, editor.activeTargetId);
+
+  return {
+    activeTargetId: target?.id ?? null,
+    target,
+    refillEditor:
+      options.explicit === true ||
+      !editor.dirty ||
+      (target?.id ?? null) !== editor.activeTargetId,
+  };
+}
+
+/**
+ * Runs `task` at most once per `delayMs`, however often it is requested, and
+ * never twice at the same time. A request that arrives while a run is in
+ * flight triggers one more run afterwards.
+ */
+export function createCoalescedTask(
+  task: () => Promise<void>,
+  delayMs: number,
+): () => void {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let running = false;
+  let pending = false;
+
+  const run = async (): Promise<void> => {
+    timer = null;
+    if (running) {
+      pending = true;
+      return;
+    }
+
+    running = true;
+    try {
+      await task();
+    } finally {
+      running = false;
+      if (pending) {
+        pending = false;
+        schedule();
+      }
+    }
+  };
+
+  const schedule = (): void => {
+    if (timer) {
+      return;
+    }
+
+    timer = setTimeout(() => {
+      void run();
+    }, delayMs);
+  };
+
+  return schedule;
+}

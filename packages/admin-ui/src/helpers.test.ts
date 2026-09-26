@@ -1,12 +1,14 @@
 import { expect, test } from "bun:test";
 import {
   buildRunQuery,
+  createCoalescedTask,
   createTargetScaffold,
   describeTargetEditorValidation,
   describeWorkerHealth,
   deriveRunFilterOptions,
   formatCapabilityEnvRows,
   parseTargetEditorValue,
+  resolveTargetEditorSync,
   selectActiveRunId,
   selectPreset,
   selectTarget,
@@ -269,4 +271,78 @@ test("worker and audit helpers summarize freshness and context", () => {
       targetId: "pages-main",
     }),
   ).toContain("target_created");
+});
+
+test("live updates keep a draft scaffold unbound from existing targets", () => {
+  const existing = createTargetScaffold("shared-volume-pages");
+
+  // The draft scaffold shares the id `cf-pages-default` with the existing
+  // target. Rebinding it would turn Save into a PUT over that target.
+  expect(
+    resolveTargetEditorSync([existing], {
+      activeTargetId: null,
+      creating: true,
+      dirty: false,
+    }),
+  ).toEqual({
+    activeTargetId: null,
+    target: null,
+    refillEditor: false,
+  });
+});
+
+test("live updates keep unsaved edits until the operator picks a target", () => {
+  const first = createTargetScaffold("shared-volume-pages");
+  const second = createTargetScaffold("cache-purge-urls");
+  const editing = {
+    activeTargetId: second.id,
+    creating: false,
+    dirty: true,
+  };
+
+  expect(resolveTargetEditorSync([first, second], editing)).toMatchObject({
+    activeTargetId: second.id,
+    refillEditor: false,
+  });
+  expect(
+    resolveTargetEditorSync([first, second], editing, { explicit: true }),
+  ).toMatchObject({
+    activeTargetId: second.id,
+    refillEditor: true,
+  });
+  // The edited target was deleted elsewhere: fall back and refill.
+  expect(resolveTargetEditorSync([first], editing)).toMatchObject({
+    activeTargetId: first.id,
+    refillEditor: true,
+  });
+  expect(
+    resolveTargetEditorSync([first, second], { ...editing, dirty: false }),
+  ).toMatchObject({
+    refillEditor: true,
+  });
+});
+
+test("createCoalescedTask runs bursts once and never overlaps", async () => {
+  let runs = 0;
+  let active = 0;
+  let maxActive = 0;
+  const schedule = createCoalescedTask(async () => {
+    runs += 1;
+    active += 1;
+    maxActive = Math.max(maxActive, active);
+    await Bun.sleep(40);
+    active -= 1;
+  }, 10);
+
+  for (let index = 0; index < 20; index += 1) {
+    schedule();
+  }
+  await Bun.sleep(30);
+  // Requested while the first run is in flight: exactly one follow-up.
+  schedule();
+  schedule();
+  await Bun.sleep(150);
+
+  expect(runs).toBe(2);
+  expect(maxActive).toBe(1);
 });
