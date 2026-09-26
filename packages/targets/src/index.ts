@@ -14,7 +14,7 @@ import { ensureParentDir } from "@hooka/bun-utils";
 import type { Stats } from "node:fs";
 import { readdir, rename, stat } from "node:fs/promises";
 import { join, normalize } from "node:path/posix";
-import { realpath } from "node:fs/promises";
+import { lstat, realpath } from "node:fs/promises";
 
 const targetWriteLocks = new Map<string, Promise<void>>();
 
@@ -378,62 +378,83 @@ export function validateTargetPolicyInput(
  * whether an existing source path really resolves inside an allowed root (a
  * symlink inside the shared volume can point anywhere on the worker), then
  * artifact readiness.
+ *
+ * Returns the input the task should run with: the source path is replaced by
+ * the canonical path that was checked, so re-pointing a symlink after the
+ * check cannot redirect the task. Links inside the artifact tree are not
+ * followed by this check.
  */
 export async function validateTargetPreflight(
   target: Target,
   input: Record<string, unknown>,
   fields?: TaskPolicyInputFields,
-): Promise<TargetPreflightIssue[]> {
+): Promise<{
+  issues: TargetPreflightIssue[];
+  input: Record<string, unknown>;
+}> {
   const policyIssues = validateTargetPolicyInput(target, input, fields);
   if (policyIssues.length > 0) {
-    return policyIssues;
+    return { issues: policyIssues, input };
   }
 
-  const containmentIssues = await validateSourcePathContainment(
+  const containment = await validateSourcePathContainment(
     target,
     input,
     fields,
   );
-  if (containmentIssues.length > 0) {
-    return containmentIssues;
+  if (containment.issues.length > 0) {
+    return { issues: containment.issues, input };
   }
 
-  return validateArtifactReadiness(
-    input,
-    target.policy.artifactReadiness,
-    fields,
-  );
+  const checkedInput = containment.realSourcePath
+    ? {
+        ...input,
+        [resolvePolicyInputFields(fields).sourcePath]:
+          containment.realSourcePath,
+      }
+    : input;
+
+  return {
+    issues: await validateArtifactReadiness(
+      checkedInput,
+      target.policy.artifactReadiness,
+      fields,
+    ),
+    input: checkedInput,
+  };
 }
 
 async function validateSourcePathContainment(
   target: Target,
   input: Record<string, unknown>,
   fields?: TaskPolicyInputFields,
-): Promise<TargetPreflightIssue[]> {
+): Promise<{ issues: TargetPreflightIssue[]; realSourcePath?: string }> {
   const sourcePath = asTrimmedString(
     input[resolvePolicyInputFields(fields).sourcePath],
   );
 
   if (target.policy.allowedSourceRoots.length === 0 || !sourcePath) {
-    return [];
+    return { issues: [] };
   }
 
   let realSourcePath: string | null;
   try {
     realSourcePath = await resolveExistingRealPath(sourcePath);
   } catch (error) {
-    return [
-      {
-        code: "target_source_unresolvable",
-        message: `Target ${target.id} could not resolve sourcePath ${sourcePath}: ${describeError(error)}`,
-        retryable: false,
-      },
-    ];
+    return {
+      issues: [
+        {
+          code: "target_source_unresolvable",
+          message: `Target ${target.id} could not resolve sourcePath ${sourcePath}: ${describeError(error)}`,
+          retryable: false,
+        },
+      ],
+    };
   }
 
   if (!realSourcePath) {
     // Not produced yet; artifact readiness reports a missing source.
-    return [];
+    return { issues: [] };
   }
 
   const realRoots = await Promise.all(
@@ -449,16 +470,18 @@ async function validateSourcePathContainment(
   );
 
   if (realRoots.some((root) => isPathWithin(realSourcePath, root))) {
-    return [];
+    return { issues: [], realSourcePath };
   }
 
-  return [
-    {
-      code: "target_source_disallowed",
-      message: `Target ${target.id} does not allow sourcePath ${sourcePath}: it resolves to ${realSourcePath}, outside the allowed source roots.`,
-      retryable: false,
-    },
-  ];
+  return {
+    issues: [
+      {
+        code: "target_source_disallowed",
+        message: `Target ${target.id} does not allow sourcePath ${sourcePath}: it resolves to ${realSourcePath}, outside the allowed source roots.`,
+        retryable: false,
+      },
+    ],
+  };
 }
 
 export async function validateArtifactReadiness(
@@ -626,7 +649,17 @@ async function getLatestArtifactMtimeMs(
 
   for (const entry of await readdir(sourcePath, { withFileTypes: true })) {
     const entryPath = join(sourcePath, entry.name);
-    const entryStat = await getPathStat(entryPath);
+    // An entry that vanished or changed type since readdir means the export
+    // is still being written: let the error reach validateArtifactReadiness,
+    // which reports it as a retryable change instead of skipping the entry.
+    const entryStat = await stat(entryPath).catch(async (error: unknown) => {
+      const linkStat = await lstat(entryPath).catch(() => null);
+      if (linkStat?.isSymbolicLink()) {
+        // A dangling symlink is part of the export as written.
+        return null;
+      }
+      throw error;
+    });
 
     if (!entryStat) {
       continue;

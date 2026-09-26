@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { createTempDir, removeDir } from "@hooka/bun-utils";
-import { chmod, mkdir, symlink } from "node:fs/promises";
+import { chmod, mkdir, realpath, symlink, utimes } from "node:fs/promises";
 import { join } from "node:path";
 import {
   createTargetScaffold,
@@ -112,13 +112,20 @@ test("preflight rejects source paths that escape the root through a symlink", as
     });
 
     expect(
-      await validateTargetPreflight(policyTarget, inputFor(join(root, "site"))),
+      (
+        await validateTargetPreflight(
+          policyTarget,
+          inputFor(join(root, "site")),
+        )
+      ).issues,
     ).toEqual([]);
     expect(
-      await validateTargetPreflight(
-        policyTarget,
-        inputFor(join(root, "not-yet-exported")),
-      ),
+      (
+        await validateTargetPreflight(
+          policyTarget,
+          inputFor(join(root, "not-yet-exported")),
+        )
+      ).issues,
     ).toEqual([]);
     expect(
       (
@@ -126,7 +133,7 @@ test("preflight rejects source paths that escape the root through a symlink", as
           policyTarget,
           inputFor(join(root, "escape")),
         )
-      ).map((issue) => issue.code),
+      ).issues.map((issue) => issue.code),
     ).toEqual(["target_source_disallowed"]);
   } finally {
     await removeDir(tempDir);
@@ -171,6 +178,64 @@ test("readiness checks report unusable sources instead of throwing", async () =>
     }
   } finally {
     await chmod(lockedDir, 0o755).catch(() => {});
+    await removeDir(tempDir);
+  }
+});
+
+test("preflight hands the task the canonical path it checked", async () => {
+  const tempDir = await createTempDir("hooka-target-canonical");
+  const root = join(tempDir, "shared-source");
+  const releaseDir = join(root, "releases", "42");
+
+  try {
+    await mkdir(releaseDir, { recursive: true });
+    await symlink(releaseDir, join(root, "current"));
+
+    const target = createTargetScaffold("shared-volume-pages");
+    const result = await validateTargetPreflight(
+      {
+        ...target,
+        policy: {
+          ...target.policy,
+          allowedSourceRoots: [root],
+          artifactReadiness: { mode: "none" as const },
+        },
+      },
+      {
+        project: "change-me",
+        sourcePath: join(root, "current"),
+        branch: "main",
+      },
+    );
+
+    // Re-pointing `current` after the check can no longer redirect the task.
+    expect(result.issues).toEqual([]);
+    expect(result.input["sourcePath"]).toBe(await realpath(releaseDir));
+    expect(result.input["project"]).toBe("change-me");
+  } finally {
+    await removeDir(tempDir);
+  }
+});
+
+test("quiet-period scans skip dangling symlinks in the export", async () => {
+  const tempDir = await createTempDir("hooka-target-dangling");
+  const exportDir = join(tempDir, "export");
+
+  try {
+    await mkdir(exportDir, { recursive: true });
+    await Bun.write(join(exportDir, "index.html"), "<html></html>");
+    await symlink(join(tempDir, "missing"), join(exportDir, "dangling"));
+    const anHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    await utimes(join(exportDir, "index.html"), anHourAgo, anHourAgo);
+    await utimes(exportDir, anHourAgo, anHourAgo);
+
+    expect(
+      await validateArtifactReadiness(
+        { sourcePath: exportDir },
+        { mode: "quiet-period", quietPeriodMs: 0, recursive: true },
+      ),
+    ).toEqual([]);
+  } finally {
     await removeDir(tempDir);
   }
 });

@@ -364,7 +364,8 @@ async function executeTaskWithPreflight(
   options: ProcessNextRunOptions,
 ): Promise<TaskRunResult> {
   const payload = claimed.payload;
-  const preflightIssues = await getPreflightIssues(claimed, payload, task);
+  const preflight = await runTargetPreflight(claimed, payload, task);
+  const preflightIssues = preflight.issues;
 
   if (preflightIssues.length > 0) {
     const retryable = preflightIssues.every((issue) => issue.retryable);
@@ -408,7 +409,7 @@ async function executeTaskWithPreflight(
   }
 
   try {
-    return await runTask(task, payload, {
+    return await runTask(task, preflight.input, {
       installedCapabilities: options.installedCapabilities,
       manifestPath: options.manifestPath,
       commandRunner: options.commandRunner,
@@ -428,13 +429,13 @@ async function executeTaskWithPreflight(
   }
 }
 
-async function getPreflightIssues(
+async function runTargetPreflight(
   claimed: ClaimedRun,
   payload: unknown,
   task: NonNullable<ReturnType<typeof getTask>>,
 ) {
   if (!claimed.targetId || !claimed.targetPolicy) {
-    return [];
+    return { issues: [], input: payload };
   }
 
   const input =
