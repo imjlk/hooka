@@ -23,7 +23,11 @@ import {
   listWebhookAdapters,
 } from "@hooka/registry";
 import type { CompatibilityWebhookAdapter } from "@hooka/task-sdk";
-import type { RunStore } from "@hooka/run-store";
+import {
+  RunNotFoundError,
+  RunNotRetryableError,
+  type RunStore,
+} from "@hooka/run-store";
 import { loadInstalledCapabilities } from "@hooka/runner-core";
 import type { ResolvedTargetWebhook } from "@hooka/targets";
 import {
@@ -711,45 +715,30 @@ async function retryRun(
   options: HookaServerAppOptions,
   runId: string,
 ): Promise<Response> {
-  const run = options.runStore.getRun(runId);
-
-  if (!run) {
-    return json(
-      {
-        ok: false,
-        error: `Run not found: ${runId}`,
-      },
-      404,
-    );
-  }
-
-  if (
-    run.status !== "failed" &&
-    run.status !== "succeeded" &&
-    run.status !== "dead-lettered" &&
-    run.status !== "skipped"
-  ) {
-    return json(
-      {
-        ok: false,
-        error: `Only terminal runs can be retried. Current status: ${run.status}`,
-      },
-      409,
-    );
-  }
-
   const manifest = await getInstalledCapabilities(options);
-  const queued = options.runStore.enqueueRun({
-    taskId: run.taskId,
-    input: run.payload,
-    source: "api.retry",
-    capabilitySnapshot: manifest.installed,
-    targetId: run.targetId ?? undefined,
-    targetMaxConcurrentRuns: run.targetMaxConcurrentRuns ?? undefined,
-    maxAttempts: run.maxAttempts,
-  });
 
-  return json(queued.response, 202);
+  try {
+    const queued = options.runStore.retryRun(runId, {
+      source: "api.retry",
+      capabilitySnapshot: manifest.installed,
+    });
+    return json(queued.response, 202);
+  } catch (error) {
+    if (
+      error instanceof RunNotFoundError ||
+      error instanceof RunNotRetryableError
+    ) {
+      return json(
+        {
+          ok: false,
+          error: error.message,
+        },
+        error instanceof RunNotFoundError ? 404 : 409,
+      );
+    }
+
+    throw error;
+  }
 }
 
 async function enqueueRun(

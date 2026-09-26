@@ -60,6 +60,23 @@ const terminalRunStatuses = [
   "skipped",
 ] as const;
 
+export class RunNotFoundError extends Error {
+  constructor(runId: string) {
+    super(`Run not found: ${runId}`);
+    this.name = "RunNotFoundError";
+  }
+}
+
+export class RunNotRetryableError extends Error {
+  readonly status: string;
+
+  constructor(status: string) {
+    super(`Only terminal runs can be retried. Current status: ${status}`);
+    this.name = "RunNotRetryableError";
+    this.status = status;
+  }
+}
+
 export class RunStore {
   readonly db: Database;
   readonly now: () => Date;
@@ -158,6 +175,51 @@ export class RunStore {
         run: createdRun,
         created: true,
       };
+    });
+  }
+
+  /**
+   * Enqueues a new run that repeats a terminal run: same task and input, and
+   * the same target constraints (target id, concurrency limit, policy
+   * snapshot, and attempt budget) so a retry cannot skip the target's
+   * preflight checks or run alongside another deploy of that target.
+   */
+  retryRun(
+    runId: string,
+    input: { source: string; capabilitySnapshot?: string[] },
+  ): {
+    response: EnqueueRunResponse;
+    run: RunDetail;
+    created: boolean;
+  } {
+    const row = this.db
+      .query(`select * from runs where id = ? limit 1`)
+      .get(runId) as RunRow | null;
+
+    if (!row) {
+      throw new RunNotFoundError(runId);
+    }
+
+    if (
+      !terminalRunStatuses.includes(
+        row.status as (typeof terminalRunStatuses)[number],
+      )
+    ) {
+      throw new RunNotRetryableError(row.status);
+    }
+
+    return this.enqueueRun({
+      taskId: row.task_id,
+      input: JSON.parse(row.payload_json),
+      source: input.source,
+      capabilitySnapshot:
+        input.capabilitySnapshot ?? JSON.parse(row.capability_snapshot_json),
+      maxAttempts: row.max_attempts,
+      targetId: row.target_id ?? undefined,
+      targetMaxConcurrentRuns: row.target_max_concurrent_runs ?? undefined,
+      targetPolicy: row.target_policy_json
+        ? JSON.parse(row.target_policy_json)
+        : undefined,
     });
   }
 
