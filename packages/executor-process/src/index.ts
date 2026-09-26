@@ -14,6 +14,10 @@ export interface CommandRunnerInput {
   cwd?: string;
   env: Record<string, string | undefined>;
   timeoutMs?: number;
+  /** Defaults to `processKillGraceMs`. */
+  killGraceMs?: number;
+  /** Defaults to `processOutputDrainMs`. */
+  outputDrainMs?: number;
 }
 
 export type CommandRunner = (
@@ -25,48 +29,184 @@ export interface RunProcessTaskOptions {
   env?: Record<string, string | undefined>;
 }
 
-export const defaultProcessTaskTimeoutMs = 60_000;
+/**
+ * Upper bound for a process task that does not set its own `timeoutMs`. It
+ * stays below the default 15-minute run lease; deploy and sync tools such as
+ * wrangler and rclone routinely need more than a minute.
+ */
+export const defaultProcessTaskTimeoutMs = 10 * 60_000;
+/** How long a timed-out process group gets to exit before SIGKILL. */
+export const processKillGraceMs = 5_000;
+/** How long to wait for stdout/stderr to close after the child exits. */
+export const processOutputDrainMs = 2_000;
+/** Bytes kept from the start and the end of each output stream. */
+export const processOutputHeadBytes = 64 * 1024;
+export const processOutputTailBytes = 192 * 1024;
+
+/** Worker secrets that spawned tools never need. */
+const withheldEnvNames = ["HOOKA_ADMIN_TOKEN", "HOOKA_WEBHOOK_SECRET"];
 
 export const bunCommandRunner: CommandRunner = async ({
   command,
   cwd,
   env,
   timeoutMs,
+  killGraceMs = processKillGraceMs,
+  outputDrainMs = processOutputDrainMs,
 }) => {
+  // Run the command in its own process group so a timeout can stop the
+  // whole tree. Signalling only the direct child left grandchildren running
+  // and holding the output pipes open, so the task never returned.
   const subprocess = Bun.spawn({
     cmd: command,
     cwd,
     env,
     stdout: "pipe",
     stderr: "pipe",
+    detached: true,
   });
+  const stdout = readBoundedOutput(subprocess.stdout);
+  const stderr = readBoundedOutput(subprocess.stderr);
 
   let timedOut = false;
-  const timeoutId =
+  let killTimer: ReturnType<typeof setTimeout> | undefined;
+  const timeoutTimer =
     timeoutMs === undefined
       ? undefined
       : setTimeout(() => {
+          if (subprocess.exitCode !== null || subprocess.signalCode !== null) {
+            return;
+          }
+
           timedOut = true;
-          subprocess.kill();
+          signalProcessGroup(subprocess.pid, "SIGTERM");
+          killTimer = setTimeout(() => {
+            signalProcessGroup(subprocess.pid, "SIGKILL");
+          }, killGraceMs);
         }, timeoutMs);
 
-  const [stdout, stderr, exitCode] = await Promise.all([
-    new Response(subprocess.stdout).text(),
-    new Response(subprocess.stderr).text(),
-    subprocess.exited,
+  const exitCode = await subprocess.exited;
+  clearTimeout(timeoutTimer);
+  clearTimeout(killTimer);
+
+  // Descendants that outlive the child (for example `cmd &`) keep the pipes
+  // open. Give the output a short drain window, then stop what is left of the
+  // group and return whatever was captured.
+  const drained = await Promise.race([
+    Promise.all([stdout.done, stderr.done]).then(() => true),
+    Bun.sleep(outputDrainMs).then(() => false),
   ]);
 
-  if (timeoutId) {
-    clearTimeout(timeoutId);
+  if (!drained) {
+    signalProcessGroup(subprocess.pid, "SIGKILL");
+    stdout.cancel();
+    stderr.cancel();
   }
 
   return {
-    stdout,
-    stderr,
+    stdout: stdout.text(),
+    stderr: stderr.text(),
     exitCode,
     timedOut,
   };
 };
+
+function signalProcessGroup(pid: number, signal: NodeJS.Signals): void {
+  try {
+    process.kill(-pid, signal);
+  } catch {
+    // The group already exited.
+  }
+}
+
+interface BoundedOutput {
+  done: Promise<void>;
+  cancel(): void;
+  text(): string;
+}
+
+/**
+ * Captures a stream without holding all of it in memory: keeps the first
+ * `processOutputHeadBytes` and the last `processOutputTailBytes`, and replaces
+ * the middle with a marker. Tools still print their final status last.
+ */
+function readBoundedOutput(stream: ReadableStream<Uint8Array>): BoundedOutput {
+  const reader = stream.getReader();
+  const head: Uint8Array[] = [];
+  const tail: Uint8Array[] = [];
+  let headBytes = 0;
+  let tailBytes = 0;
+  let droppedBytes = 0;
+
+  const done = (async () => {
+    try {
+      while (true) {
+        const { done: finished, value } = await reader.read();
+        if (finished) {
+          return;
+        }
+
+        let chunk = value;
+        if (headBytes < processOutputHeadBytes) {
+          const taken = chunk.subarray(0, processOutputHeadBytes - headBytes);
+          head.push(taken);
+          headBytes += taken.byteLength;
+          chunk = chunk.subarray(taken.byteLength);
+        }
+
+        if (chunk.byteLength === 0) {
+          continue;
+        }
+
+        tail.push(chunk);
+        tailBytes += chunk.byteLength;
+        while (tailBytes > processOutputTailBytes) {
+          const first = tail[0];
+          if (!first) {
+            break;
+          }
+
+          const excess = tailBytes - processOutputTailBytes;
+          if (first.byteLength <= excess) {
+            tail.shift();
+            tailBytes -= first.byteLength;
+            droppedBytes += first.byteLength;
+          } else {
+            tail[0] = first.subarray(excess);
+            tailBytes -= excess;
+            droppedBytes += excess;
+          }
+        }
+      }
+    } catch {
+      // Cancelled or the pipe broke; keep what was read.
+    }
+  })();
+
+  return {
+    done,
+    cancel() {
+      void reader.cancel().catch(() => {});
+    },
+    text() {
+      const decode = (chunks: Uint8Array[]) =>
+        new TextDecoder().decode(Buffer.concat(chunks));
+      const marker =
+        droppedBytes > 0 ? `\n[... ${droppedBytes} bytes truncated ...]\n` : "";
+      return `${decode(head)}${marker}${decode(tail)}`;
+    },
+  };
+}
+
+function withoutWithheldEnv(
+  env: Record<string, string | undefined>,
+): Record<string, string | undefined> {
+  const childEnv = { ...env };
+  for (const name of withheldEnvNames) {
+    delete childEnv[name];
+  }
+  return childEnv;
+}
 
 export async function runProcessTask<TSchema extends TaskInputSchema>(
   task: HookaTask<TSchema>,
@@ -107,7 +247,7 @@ export async function runProcessTask<TSchema extends TaskInputSchema>(
       command,
       cwd: executor.cwd?.(context),
       env: {
-        ...env,
+        ...withoutWithheldEnv(env),
         ...executor.env?.(context),
       },
       timeoutMs,

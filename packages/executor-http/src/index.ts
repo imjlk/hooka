@@ -8,6 +8,15 @@ export interface RunHttpTaskOptions {
 
 export const defaultHttpTaskTimeoutMs = 30_000;
 
+/**
+ * Only timeouts, rate limits, and server errors can succeed on a retry. A 4xx
+ * such as an invalid token or an oversized purge request fails the same way
+ * every time, so retrying it only delays the dead letter.
+ */
+export function isRetryableHttpStatus(status: number): boolean {
+  return status === 408 || status === 425 || status === 429 || status >= 500;
+}
+
 export async function runHttpTask<TSchema extends TaskInputSchema>(
   task: HookaTask<TSchema>,
   input: z.output<TSchema>,
@@ -59,7 +68,7 @@ export async function runHttpTask<TSchema extends TaskInputSchema>(
       taskId: task.id,
       ok: response.ok,
       status: response.ok ? "succeeded" : "failed",
-      retryable: !response.ok,
+      retryable: !response.ok && isRetryableHttpStatus(response.status),
       errorCode: response.ok ? undefined : `http_status_${response.status}`,
       summary: `${executor.method} ${url} returned ${response.status}.`,
       durationMs: performance.now() - startedAt,

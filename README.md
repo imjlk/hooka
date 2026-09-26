@@ -111,6 +111,8 @@ GitHub Actions now cover both verification and GHCR publishing:
 - Target CRUD stays file-backed through `HOOKA_TARGETS_PATH`, but can now be managed through the admin API, CLI, and admin UI without hand-editing the JSON file.
 - Built-in target scaffolds cover shared-volume Pages deploys, cache purge targets, export verification, and a generic skeleton.
 - The worker applies retry backoff, dead-lettering, preflight validation, and heartbeat updates before and after task execution.
+- Process tasks run in their own process group and time out after 10 minutes unless the task sets `timeoutMs`. A timeout stops the whole group (SIGTERM, then SIGKILL after 5s), captured stdout/stderr keeps the first 64 KiB and last 192 KiB of each stream, and spawned tools never inherit `HOOKA_ADMIN_TOKEN` or `HOOKA_WEBHOOK_SECRET`.
+- HTTP tasks retry only timeouts, `408`, `425`, `429`, and `5xx` responses; other `4xx` responses fail immediately.
 - Optional targets in `.hooka/targets.json` provide policy-backed execution paths for shared-volume deploys and other reusable flows.
 - Audit events for auth failures, rate-limit rejections, policy rejections, and target mutations are stored in SQLite and surfaced in the admin UI and CLI.
 - Terminal runs, audit rows, and stale worker heartbeat rows can be pruned with `hooka cleanup`, and workers sweep old data automatically.
