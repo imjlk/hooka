@@ -28,6 +28,7 @@ export interface RunRow {
   next_retry_at: string | null;
   last_error_code: string | null;
   target_policy_json: string | null;
+  claim_token: string | null;
   created_at: string;
   queued_at: string | null;
   started_at: string | null;
@@ -80,6 +81,8 @@ export interface ClaimedRun {
   attemptCount: number;
   maxAttempts: number;
   targetPolicy: TargetPolicy | null;
+  /** Identifies this claim for lease renewal and final writes. */
+  claimToken: string;
 }
 
 export interface RunSummaryFilters {

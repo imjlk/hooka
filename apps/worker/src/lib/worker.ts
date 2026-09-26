@@ -120,7 +120,7 @@ function recordRunResult(
       if (attemptCount >= claimed.maxAttempts) {
         options.runStore.deadLetterRun(claimed.id, result, {
           attemptCount,
-          workerId: options.workerId,
+          claimToken: claimed.claimToken,
         });
         options.logger?.error("Run moved to dead-letter queue", {
           runId: claimed.id,
@@ -138,7 +138,7 @@ function recordRunResult(
         options.runStore.scheduleRetry(claimed.id, result, {
           attemptCount,
           nextRetryAt,
-          workerId: options.workerId,
+          claimToken: claimed.claimToken,
         });
         options.logger?.warn("Run retry scheduled", {
           runId: claimed.id,
@@ -153,7 +153,7 @@ function recordRunResult(
     } else {
       options.runStore.finishRun(claimed.id, result, {
         attemptCount,
-        workerId: options.workerId,
+        claimToken: claimed.claimToken,
       });
       const log = result.ok ? options.logger?.info : options.logger?.warn;
       log?.call(options.logger, "Run finished", {
@@ -203,7 +203,7 @@ function startRunKeepalive(
     try {
       const renewed = options.runStore.renewRunLease(
         claimed.id,
-        options.workerId,
+        claimed.claimToken,
         options.leaseMs,
       );
       options.runStore.upsertWorkerHeartbeat({

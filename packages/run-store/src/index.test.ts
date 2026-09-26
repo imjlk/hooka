@@ -588,7 +588,7 @@ test("cleanupRetention prunes old terminal runs and audit events", async () => {
   runStore.close();
 });
 
-test("final run writes are rejected once another worker owns the run", async () => {
+test("final run writes are rejected once the run was claimed again", async () => {
   let nowMs = Date.parse("2026-09-26T00:00:00.000Z");
   const runStore = await createRunStore({
     dbPath: ":memory:",
@@ -608,48 +608,50 @@ test("final run writes are rejected once another worker owns the run", async () 
     durationMs: 1,
   };
 
-  expect(runStore.claimNextQueuedRun("worker-a", 1_000)?.id).toBe(
-    queued.response.runId,
-  );
+  // Both replicas run with the same configured HOOKA_WORKER_ID, so only the
+  // per-claim token can tell the stale claim from the current one.
+  const staleClaim = runStore.claimNextQueuedRun("worker-shared", 1_000);
+  expect(staleClaim?.id).toBe(queued.response.runId);
 
-  // worker-a stalls past its lease; worker-b requeues and claims the run.
+  // The first replica stalls past its lease; the second requeues and claims.
   nowMs += 2_000;
   expect(runStore.requeueExpiredRuns()).toBe(1);
   expect(runStore.getRun(queued.response.runId)?.lastErrorCode).toBe(
     "lease_expired",
   );
-  expect(runStore.claimNextQueuedRun("worker-b", 1_000)?.id).toBe(
-    queued.response.runId,
-  );
+  const currentClaim = runStore.claimNextQueuedRun("worker-shared", 1_000);
+  expect(currentClaim?.id).toBe(queued.response.runId);
+  expect(currentClaim?.claimToken).not.toBe(staleClaim?.claimToken);
 
+  const staleToken = staleClaim?.claimToken ?? "";
   expect(() =>
     runStore.finishRun(queued.response.runId, result, {
       attemptCount: 1,
-      workerId: "worker-a",
+      claimToken: staleToken,
     }),
   ).toThrow(RunLeaseLostError);
   expect(() =>
     runStore.scheduleRetry(queued.response.runId, result, {
       attemptCount: 1,
       nextRetryAt: new Date(nowMs).toISOString(),
-      workerId: "worker-a",
+      claimToken: staleToken,
     }),
   ).toThrow(RunLeaseLostError);
   expect(() =>
     runStore.deadLetterRun(queued.response.runId, result, {
       attemptCount: 1,
-      workerId: "worker-a",
+      claimToken: staleToken,
     }),
   ).toThrow(RunLeaseLostError);
-
-  const stillRunning = runStore.getRun(queued.response.runId);
-  expect(stillRunning?.status).toBe("running");
-  expect(stillRunning?.workerId).toBe("worker-b");
+  expect(runStore.renewRunLease(queued.response.runId, staleToken, 1_000)).toBe(
+    false,
+  );
+  expect(runStore.getRun(queued.response.runId)?.status).toBe("running");
 
   expect(
     runStore.finishRun(queued.response.runId, result, {
       attemptCount: 2,
-      workerId: "worker-b",
+      claimToken: currentClaim?.claimToken,
     }).status,
   ).toBe("succeeded");
 
@@ -669,14 +671,15 @@ test("renewing a lease keeps the run away from the expired-lease sweep", async (
     capabilitySnapshot: [],
   });
 
-  runStore.claimNextQueuedRun("worker-a", 1_000);
+  const claim = runStore.claimNextQueuedRun("worker-a", 1_000);
+  const claimToken = claim?.claimToken ?? "";
   nowMs += 800;
-  expect(runStore.renewRunLease(queued.response.runId, "worker-a", 1_000)).toBe(
+  expect(runStore.renewRunLease(queued.response.runId, claimToken, 1_000)).toBe(
     true,
   );
-  expect(runStore.renewRunLease(queued.response.runId, "worker-b", 1_000)).toBe(
-    false,
-  );
+  expect(
+    runStore.renewRunLease(queued.response.runId, "not-the-claim", 1_000),
+  ).toBe(false);
 
   // Past the original lease, but inside the renewed one.
   nowMs += 800;
@@ -685,7 +688,7 @@ test("renewing a lease keeps the run away from the expired-lease sweep", async (
 
   nowMs += 1_000;
   expect(runStore.requeueExpiredRuns()).toBe(1);
-  expect(runStore.renewRunLease(queued.response.runId, "worker-a", 1_000)).toBe(
+  expect(runStore.renewRunLease(queued.response.runId, claimToken, 1_000)).toBe(
     false,
   );
 

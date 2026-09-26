@@ -489,7 +489,9 @@ test("worker discards its result when another worker took over the run", async (
   const commandRunner: CommandRunner = async () => {
     // This worker's lease lapsed mid-run and worker-b claimed the run.
     runStore.db
-      .query("update runs set worker_id = 'worker-b' where id = ?")
+      .query(
+        "update runs set worker_id = 'worker-b', claim_token = 'claim-b' where id = ?",
+      )
       .run(runId);
     return {
       stdout: "",

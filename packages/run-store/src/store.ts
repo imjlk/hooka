@@ -42,17 +42,15 @@ export const defaultHookaDbPath = "/data/hooka.sqlite";
 
 /**
  * Thrown when a worker records the outcome of a run it no longer owns, because
- * its lease expired and the run was requeued or claimed by another worker.
+ * its lease expired and the run was requeued or claimed again.
  */
 export class RunLeaseLostError extends Error {
   readonly runId: string;
-  readonly workerId: string;
 
-  constructor(runId: string, workerId: string) {
-    super(`Worker ${workerId} no longer holds the lease for run ${runId}.`);
+  constructor(runId: string) {
+    super(`The claim on run ${runId} is no longer current.`);
     this.name = "RunLeaseLostError";
     this.runId = runId;
-    this.workerId = workerId;
   }
 }
 const terminalRunStatuses = [
@@ -275,7 +273,8 @@ export class RunStore {
                    last_error_code = 'lease_expired',
                    finished_at = ?,
                    lease_expires_at = null,
-                   worker_id = null
+                   worker_id = null,
+                   claim_token = null
                where id = ?
                  and status = 'running'
                  and lease_expires_at <= ?`,
@@ -317,6 +316,7 @@ export class RunStore {
                  next_retry_at = null,
                  last_error_code = 'lease_expired',
                  worker_id = null,
+                 claim_token = null,
                  attempt_count = ?
              where id = ?
                and status = 'running'
@@ -341,11 +341,10 @@ export class RunStore {
   }
 
   /**
-   * Extends the lease of a run the worker still owns. Returns false when the
-   * run is no longer running under this worker, for example after its lease
-   * expired and another worker requeued it.
+   * Extends the lease of a run this claim still holds. Returns false once the
+   * run was requeued or claimed again, for example after the lease expired.
    */
-  renewRunLease(runId: string, workerId: string, leaseMs: number): boolean {
+  renewRunLease(runId: string, claimToken: string, leaseMs: number): boolean {
     const leaseExpiresAt = new Date(
       this.now().getTime() + leaseMs,
     ).toISOString();
@@ -358,9 +357,9 @@ export class RunStore {
              set lease_expires_at = ?
              where id = ?
                and status = 'running'
-               and worker_id = ?`,
+               and claim_token = ?`,
           )
-          .run(leaseExpiresAt, runId, workerId).changes > 0,
+          .run(leaseExpiresAt, runId, claimToken).changes > 0,
     );
   }
 
@@ -416,18 +415,28 @@ export class RunStore {
         const leaseExpiresAt = new Date(
           this.now().getTime() + leaseMs,
         ).toISOString();
+        // Unique per claim: worker ids can repeat across replicas or restarts,
+        // so they cannot prove which claim a late result belongs to.
+        const claimToken = crypto.randomUUID();
         const changes = this.db
           .query(
             `update runs
              set status = 'running',
                  worker_id = ?,
+                 claim_token = ?,
                  started_at = ?,
                  lease_expires_at = ?,
                  next_retry_at = null
              where id = ?
                and status = 'queued'`,
           )
-          .run(workerId, startedAt, leaseExpiresAt, queued.id).changes;
+          .run(
+            workerId,
+            claimToken,
+            startedAt,
+            leaseExpiresAt,
+            queued.id,
+          ).changes;
 
         if (changes === 0) {
           continue;
@@ -454,6 +463,7 @@ export class RunStore {
           targetPolicy: claimed.target_policy_json
             ? JSON.parse(claimed.target_policy_json)
             : null,
+          claimToken,
         };
       }
 
@@ -464,7 +474,7 @@ export class RunStore {
   finishRun(
     runId: string,
     result: TaskRunResult,
-    input: { attemptCount?: number; workerId?: string } = {},
+    input: { attemptCount?: number; claimToken?: string } = {},
   ): RunDetail {
     return this.withTransaction(() => {
       const finishedAt = this.timestamp();
@@ -472,7 +482,7 @@ export class RunStore {
         result.status === "failed" || result.status === "dead-lettered"
           ? (result.stderr ?? result.summary ?? null)
           : null;
-      const ownership = runOwnershipGuard(input.workerId);
+      const ownership = runOwnershipGuard(input.claimToken);
 
       const changes = this.db
         .query(
@@ -485,7 +495,8 @@ export class RunStore {
                next_retry_at = null,
                last_error_code = ?,
                finished_at = ?,
-               lease_expires_at = null
+               lease_expires_at = null,
+               claim_token = null
            where id = ?${ownership.sql}`,
         )
         .run(
@@ -499,7 +510,7 @@ export class RunStore {
           runId,
           ...ownership.params,
         ).changes;
-      assertRunOwnership(changes, runId, input.workerId);
+      assertRunOwnership(changes, runId, input.claimToken);
 
       this.insertEvent(
         runId,
@@ -522,10 +533,10 @@ export class RunStore {
   scheduleRetry(
     runId: string,
     result: TaskRunResult,
-    input: { attemptCount: number; nextRetryAt: string; workerId?: string },
+    input: { attemptCount: number; nextRetryAt: string; claimToken?: string },
   ): RunDetail {
     return this.withTransaction(() => {
-      const ownership = runOwnershipGuard(input.workerId);
+      const ownership = runOwnershipGuard(input.claimToken);
       const changes = this.db
         .query(
           `update runs
@@ -540,7 +551,8 @@ export class RunStore {
                started_at = null,
                finished_at = null,
                lease_expires_at = null,
-               worker_id = null
+               worker_id = null,
+               claim_token = null
            where id = ?${ownership.sql}`,
         )
         .run(
@@ -554,7 +566,7 @@ export class RunStore {
           runId,
           ...ownership.params,
         ).changes;
-      assertRunOwnership(changes, runId, input.workerId);
+      assertRunOwnership(changes, runId, input.claimToken);
 
       this.insertEvent(
         runId,
@@ -578,10 +590,10 @@ export class RunStore {
   deadLetterRun(
     runId: string,
     result: TaskRunResult,
-    input: { attemptCount: number; workerId?: string },
+    input: { attemptCount: number; claimToken?: string },
   ): RunDetail {
     return this.withTransaction(() => {
-      const ownership = runOwnershipGuard(input.workerId);
+      const ownership = runOwnershipGuard(input.claimToken);
       const changes = this.db
         .query(
           `update runs
@@ -593,7 +605,8 @@ export class RunStore {
                next_retry_at = null,
                last_error_code = ?,
                finished_at = ?,
-               lease_expires_at = null
+               lease_expires_at = null,
+               claim_token = null
            where id = ?${ownership.sql}`,
         )
         .run(
@@ -610,7 +623,7 @@ export class RunStore {
           runId,
           ...ownership.params,
         ).changes;
-      assertRunOwnership(changes, runId, input.workerId);
+      assertRunOwnership(changes, runId, input.claimToken);
 
       this.insertEvent(
         runId,
@@ -1028,25 +1041,29 @@ export class RunStore {
 }
 
 /**
- * Restricts a final run write to the worker that still holds the run, when a
- * worker id is given. Admin and test callers omit it to write unconditionally.
+ * Restricts a final run write to the claim that still holds the run, when a
+ * claim token is given. Admin and test callers omit it to write
+ * unconditionally.
  */
-function runOwnershipGuard(workerId: string | undefined): {
+function runOwnershipGuard(claimToken: string | undefined): {
   sql: string;
   params: string[];
 } {
-  return workerId === undefined
+  return claimToken === undefined
     ? { sql: "", params: [] }
-    : { sql: " and status = 'running' and worker_id = ?", params: [workerId] };
+    : {
+        sql: " and status = 'running' and claim_token = ?",
+        params: [claimToken],
+      };
 }
 
 function assertRunOwnership(
   changes: number,
   runId: string,
-  workerId: string | undefined,
+  claimToken: string | undefined,
 ): void {
-  if (changes === 0 && workerId !== undefined) {
-    throw new RunLeaseLostError(runId, workerId);
+  if (changes === 0 && claimToken !== undefined) {
+    throw new RunLeaseLostError(runId);
   }
 }
 
