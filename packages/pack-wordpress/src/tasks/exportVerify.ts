@@ -1,4 +1,5 @@
 import { defineTask } from "@hooka/task-sdk";
+import type { Stats } from "node:fs";
 import { stat } from "node:fs/promises";
 import { z } from "zod";
 
@@ -24,7 +25,7 @@ export const exportVerifyTask = defineTask({
         };
       }
 
-      let directoryStat: Awaited<ReturnType<typeof stat>> | null = null;
+      let directoryStat: Stats | null = null;
       try {
         directoryStat = await stat(input.exportDir);
       } catch {

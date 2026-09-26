@@ -22,7 +22,9 @@ bun run bake:generate
 bun run dockerfile:generate
 ```
 
-Generated Docker files must stay committed. CI will fail if either `docker/docker-bake.hcl` or the Dockerfile manifest-copy block drifts.
+Generated Docker files must stay committed. CI will fail if `docker/docker-bake.hcl`, the Dockerfile manifest-copy block, or the Dockerfile Bun base image drifts.
+
+The Bun version is pinned once through `packageManager` in the root `package.json`. CI reads it with `setup-bun`, and `bun run dockerfile:generate` copies it into the `oven/bun` base image. Shared dependency ranges such as `zod` live in the root `workspaces.catalog` and are referenced with `catalog:`.
 
 ## Repo conventions
 

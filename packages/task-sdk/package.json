@@ -8,6 +8,6 @@
   },
   "dependencies": {
     "@hooka/contracts": "workspace:*",
-    "zod": "^4.3.6"
+    "zod": "catalog:"
   }
 }
