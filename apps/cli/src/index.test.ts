@@ -670,6 +670,19 @@ test("run retry re-enqueues a completed run with cli.retry as the source", async
   const runStore = await createRunStore({
     dbPath,
   });
+  const targetPolicy = {
+    allowedProjects: ["retry-site"],
+    allowedSourceRoots: ["/shared-source"],
+    allowedDestinationPrefixes: [],
+    allowedBranches: ["main"],
+    allowedOverrideFields: [],
+    requiredEnv: [],
+    artifactReadiness: {
+      mode: "quiet-period" as const,
+      quietPeriodMs: 3_000,
+      recursive: true,
+    },
+  };
   const queued = runStore.enqueueRun({
     taskId: "deploy.shared-volume.wrangler",
     input: {
@@ -679,6 +692,10 @@ test("run retry re-enqueues a completed run with cli.retry as the source", async
     },
     source: "webhook",
     capabilitySnapshot: ["wrangler"],
+    targetId: "pages-main",
+    targetMaxConcurrentRuns: 1,
+    targetPolicy,
+    maxAttempts: 5,
   });
 
   runStore.finishRun(queued.response.runId, {
@@ -706,6 +723,15 @@ test("run retry re-enqueues a completed run with cli.retry as the source", async
   expect(runs).toHaveLength(2);
   expect(runs[0]?.source).toBe("cli.retry");
   expect(runs[0]?.taskId).toBe("deploy.shared-volume.wrangler");
+
+  const claimed = verifyStore.claimNextQueuedRun("worker-a", 60_000);
+  expect(claimed?.id).toBe(runs[0]?.id);
+  expect(claimed?.targetId).toBe("pages-main");
+  expect(claimed?.maxAttempts).toBe(5);
+  expect(claimed?.targetPolicy).toEqual(targetPolicy);
+  expect(verifyStore.getRun(runs[0]?.id ?? "")?.targetMaxConcurrentRuns).toBe(
+    1,
+  );
   verifyStore.close();
 });
 

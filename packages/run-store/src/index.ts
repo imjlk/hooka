@@ -5,3 +5,4 @@ export type {
   RunStoreOptions,
   RunSummaryFilters,
 } from "./rows";
+export { RunNotFoundError, RunNotRetryableError } from "./store";

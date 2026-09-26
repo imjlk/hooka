@@ -1112,6 +1112,94 @@ test("run retry API re-enqueues terminal runs", async () => {
   app.runStore.close();
 });
 
+test("run retry API keeps the target policy and limits of the original run", async () => {
+  const app = await createTestServerApp();
+  const targetPolicy = {
+    allowedProjects: ["retry-site"],
+    allowedSourceRoots: ["/shared-source"],
+    allowedDestinationPrefixes: [],
+    allowedBranches: ["main"],
+    allowedOverrideFields: [],
+    requiredEnv: [],
+    artifactReadiness: {
+      mode: "quiet-period" as const,
+      quietPeriodMs: 3_000,
+      recursive: true,
+    },
+  };
+  const queued = app.runStore.enqueueRun({
+    taskId: "deploy.shared-volume.wrangler",
+    input: {
+      kind: "pages-deploy",
+      project: "retry-site",
+      sourcePath: "/shared-source/retry",
+    },
+    source: "webhook",
+    capabilitySnapshot: ["wrangler"],
+    targetId: "pages-main",
+    targetMaxConcurrentRuns: 1,
+    targetPolicy,
+    maxAttempts: 4,
+  });
+  app.runStore.finishRun(queued.response.runId, {
+    taskId: "deploy.shared-volume.wrangler",
+    ok: false,
+    status: "dead-lettered",
+    summary: "quiet period pending",
+    durationMs: 10,
+  });
+
+  const response = await app.fetch(
+    new Request(`http://hooka.local/api/runs/${queued.response.runId}/retry`, {
+      method: "POST",
+      headers: createAdminHeaders(),
+    }),
+  );
+  const body = await response.json();
+
+  expect(response.status).toBe(202);
+  const claimed = app.runStore.claimNextQueuedRun("worker-a", 60_000);
+  expect(claimed?.id).toBe(body.runId);
+  expect(claimed?.targetId).toBe("pages-main");
+  expect(claimed?.maxAttempts).toBe(4);
+  expect(claimed?.targetPolicy).toEqual(targetPolicy);
+
+  app.runStore.close();
+});
+
+test("run retry API rejects unknown and non-terminal runs", async () => {
+  const app = await createTestServerApp();
+  const queued = app.runStore.enqueueRun({
+    taskId: "deploy.shared-volume.wrangler",
+    input: {
+      kind: "pages-deploy",
+      project: "staging-site",
+      sourcePath: "/shared-source/simply-static",
+    },
+    source: "webhook",
+    capabilitySnapshot: ["wrangler"],
+  });
+
+  const missing = await app.fetch(
+    new Request("http://hooka.local/api/runs/missing-run/retry", {
+      method: "POST",
+      headers: createAdminHeaders(),
+    }),
+  );
+  const active = await app.fetch(
+    new Request(`http://hooka.local/api/runs/${queued.response.runId}/retry`, {
+      method: "POST",
+      headers: createAdminHeaders(),
+    }),
+  );
+
+  expect(missing.status).toBe(404);
+  expect(active.status).toBe(409);
+  expect((await active.json()).error).toContain("Current status: queued");
+
+  app.runStore.close();
+});
+
 test("summary excludes stale worker heartbeats after retention cleanup", async () => {
   const app = await createTestServerApp();
 

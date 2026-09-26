@@ -28,31 +28,11 @@ export function createRunCommandGroup(defaults: CliDefaults) {
             throw new Error("Usage: hooka run retry <run-id>");
           }
 
-          const queued = await withRunStore(flags.db, (runStore) => {
-            const run = runStore.getRun(runId);
-
-            if (!run) {
-              throw new Error(`Run not found: ${runId}`);
-            }
-
-            if (
-              run.status !== "failed" &&
-              run.status !== "succeeded" &&
-              run.status !== "dead-lettered" &&
-              run.status !== "skipped"
-            ) {
-              throw new Error(
-                `Only terminal runs can be retried. Current status: ${run.status}`,
-              );
-            }
-
-            return runStore.enqueueRun({
-              taskId: run.taskId,
-              input: run.payload,
+          const queued = await withRunStore(flags.db, (runStore) =>
+            runStore.retryRun(runId, {
               source: "cli.retry",
-              capabilitySnapshot: run.capabilitySnapshot,
-            });
-          });
+            }),
+          );
 
           console.log(JSON.stringify(queued.response, null, 2));
         },
