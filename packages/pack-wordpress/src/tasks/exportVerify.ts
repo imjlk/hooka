@@ -4,7 +4,17 @@ import { z } from "zod";
 
 export const exportVerifyInput = z.object({
   exportDir: z.string().default("/shared-source/simply-static"),
-  pattern: z.string().default("**/*.html"),
+  pattern: z
+    .string()
+    .min(1)
+    .refine(
+      (value) => !value.startsWith("/") && !value.split(/[\\/]/).includes(".."),
+      {
+        message:
+          "pattern must be relative to exportDir and must not contain '..'.",
+      },
+    )
+    .default("**/*.html"),
 });
 
 export const exportVerifyTask = defineTask({

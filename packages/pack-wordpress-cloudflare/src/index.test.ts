@@ -35,14 +35,10 @@ test("shared-volume wrangler task forwards useful Pages deploy flags", async () 
     "pages",
     "deploy",
     "/shared-source/export",
-    "--project-name",
-    "staging-site",
-    "--branch",
-    "main",
-    "--commit-hash",
-    "abc123",
-    "--commit-message",
-    "deploy export",
+    "--project-name=staging-site",
+    "--branch=main",
+    "--commit-hash=abc123",
+    "--commit-message=deploy export",
     "--commit-dirty=true",
     "--skip-caching",
     "--no-bundle",
@@ -73,10 +69,8 @@ test("trailbase full static task deploys the shared TrailBase Pages root", async
     "pages",
     "deploy",
     "/shared-source/trailbase/uploads",
-    "--project-name",
-    "zero-three-three-assets",
-    "--branch",
-    "production",
+    "--project-name=zero-three-three-assets",
+    "--branch=production",
     "--no-bundle",
   ]);
 });
@@ -282,4 +276,75 @@ test("trailbase assets adapter can target configured policies", () => {
     source: "zero-three-three.asset_generation_drained",
     triggeredAt: undefined,
   });
+});
+
+test("shared-volume wrangler task keeps dash-prefixed values attached to their flag", async () => {
+  const result = await runTask(
+    sharedVolumeWranglerTask,
+    {
+      kind: "pages-deploy",
+      sourcePath: "/shared-source/export",
+      project: "staging-site",
+      branch: "main",
+      commitSha: "--branch=production",
+      commitMessage: "- fix typo",
+    },
+    {
+      dryRun: true,
+      installedCapabilities: ["wrangler"],
+    },
+  );
+
+  expect(result.command).toEqual([
+    "wrangler",
+    "pages",
+    "deploy",
+    "/shared-source/export",
+    "--project-name=staging-site",
+    "--branch=main",
+    "--commit-hash=--branch=production",
+    "--commit-message=- fix typo",
+  ]);
+});
+
+test("shared-volume wrangler task rejects a sourcePath that starts with a dash", async () => {
+  const result = await runTask(
+    sharedVolumeWranglerTask,
+    {
+      kind: "pages-deploy",
+      sourcePath: "--dry-run",
+      project: "staging-site",
+    },
+    {
+      dryRun: true,
+      installedCapabilities: ["wrangler"],
+    },
+  );
+
+  expect(result).toMatchObject({
+    ok: false,
+    retryable: false,
+    errorCode: "input_invalid",
+  });
+});
+
+test("webhook adapters accept triggeredAt timestamps with a UTC offset", () => {
+  const wordpress = wordpressSimplyStaticWebhookAdapter.normalize(
+    JSON.stringify({
+      eventId: "evt_offset",
+      project: "staging-site",
+      exportDir: "/shared-source/simply-static",
+      triggeredAt: "2026-09-26T21:00:00+09:00",
+    }),
+  );
+  const trailbase = trailbaseAssetsDrainedWebhookAdapter.normalize(
+    JSON.stringify({
+      idempotencyKey: "asset-drain:offset",
+      project: "zero-three-three-assets",
+      triggeredAt: "2026-09-26T12:00:00+00:00",
+    }),
+  );
+
+  expect(wordpress.triggeredAt).toBe("2026-09-26T21:00:00+09:00");
+  expect(trailbase.triggeredAt).toBe("2026-09-26T12:00:00+00:00");
 });

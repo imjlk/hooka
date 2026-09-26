@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { createTempDir } from "@hooka/bun-utils";
+import { targetedTaskWebhookSchema } from "@hooka/contracts";
 import { mkdir, utimes } from "node:fs/promises";
 import { join } from "node:path";
 import {
@@ -8,6 +9,7 @@ import {
   deleteTarget,
   listTargetScaffoldTemplates,
   loadTargets,
+  resolveTargetWebhook,
   validateArtifactReadiness,
   validateTargetPolicyInput,
   updateTarget,
@@ -271,4 +273,27 @@ test("quiet-period readiness can inspect nested artifact mtimes", async () => {
       retryable: true,
     }),
   ]);
+});
+
+test("target webhooks fall back to the target source when the payload omits it", () => {
+  const target = createTargetScaffold("shared-volume-pages");
+
+  const withoutSource = resolveTargetWebhook(
+    [target],
+    targetedTaskWebhookSchema.parse({
+      targetId: target.id,
+      eventId: "evt_target_source",
+    }),
+  );
+  const withSource = resolveTargetWebhook(
+    [target],
+    targetedTaskWebhookSchema.parse({
+      targetId: target.id,
+      eventId: "evt_payload_source",
+      source: "deployment.system",
+    }),
+  );
+
+  expect(withoutSource.source).toBe("target.cloudflare-pages");
+  expect(withSource.source).toBe("deployment.system");
 });

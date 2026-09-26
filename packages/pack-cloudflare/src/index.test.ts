@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { runProcessTask } from "@hooka/executor-process";
+import { runTask } from "@hooka/runner-core";
 import { pagesDeployTask } from "./index";
 
 test("pagesDeployTask dry run builds the expected wrangler command", async () => {
@@ -21,10 +22,28 @@ test("pagesDeployTask dry run builds the expected wrangler command", async () =>
       "pages",
       "deploy",
       "/shared-source/site",
-      "--project-name",
-      "docs-site",
-      "--branch",
-      "preview",
+      "--project-name=docs-site",
+      "--branch=preview",
     ],
+  });
+});
+
+test("pagesDeployTask rejects a directory that wrangler would parse as a flag", async () => {
+  const result = await runTask(
+    pagesDeployTask,
+    {
+      project: "docs-site",
+      directory: "--help",
+    },
+    {
+      dryRun: true,
+    },
+  );
+
+  expect(result).toMatchObject({
+    ok: false,
+    status: "failed",
+    retryable: false,
+    errorCode: "input_invalid",
   });
 });
