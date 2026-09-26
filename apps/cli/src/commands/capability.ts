@@ -1,6 +1,6 @@
-import { defineCommand, defineGroup, option } from "@bunli/core";
+import { defineCommand, defineGroup } from "@bunli/core";
 import { listCapabilities } from "@hooka/registry";
-import { booleanFlagSchema, resolveBooleanFlag } from "../lib/shared";
+import { booleanFlag } from "../lib/shared";
 
 export function createCapabilityCommandGroup() {
   return defineGroup({
@@ -11,12 +11,12 @@ export function createCapabilityCommandGroup() {
         name: "list",
         description: "List capabilities and their healthchecks.",
         options: {
-          json: option(booleanFlagSchema, {
+          json: booleanFlag({
             description: "Print raw JSON instead of a table.",
           }),
         },
         handler: async ({ flags }) => {
-          const json = resolveBooleanFlag(flags.json, "--json");
+          const json = flags.json;
           const capabilities = listCapabilities().map((capability) => ({
             id: capability.id,
             binaries: capability.binaries.join(", "),

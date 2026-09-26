@@ -5,11 +5,7 @@ import type { AnyTask } from "@hooka/task-sdk";
 import { listTasks } from "@hooka/registry";
 import { z } from "zod";
 import type { CliDefaults } from "../lib/shared";
-import {
-  booleanFlagSchema,
-  resolveBooleanFlag,
-  withRunStore,
-} from "../lib/shared";
+import { booleanFlag, withRunStore } from "../lib/shared";
 import {
   buildTaskInputFromFlags,
   taskToBunliOptions,
@@ -31,12 +27,12 @@ export function createTaskCommandGroup(defaults: CliDefaults) {
         name: "list",
         description: "List registered tasks and their capability contracts.",
         options: {
-          json: option(booleanFlagSchema, {
+          json: booleanFlag({
             description: "Print raw JSON instead of a table.",
           }),
         },
         handler: async ({ flags }) => {
-          const json = resolveBooleanFlag(flags.json, "--json");
+          const json = flags.json;
           const tasks = listTasks().map((task) => ({
             id: task.id,
             title: task.title,
@@ -101,10 +97,7 @@ function createTaskRunCommands(task: AnyTask, defaults: CliDefaults) {
           task,
           flags as Record<string, unknown>,
         );
-        const dryRun = resolveBooleanFlag(
-          Boolean((flags as Record<string, unknown>)["dry-run"]),
-          "--dry-run",
-        );
+        const dryRun = (flags as Record<string, unknown>)["dry-run"] === true;
         const result = await runTask(task, input, {
           dryRun,
           installedCapabilities: manifest.installed,

@@ -1,11 +1,10 @@
 import { defineCommand, defineGroup, option } from "@bunli/core";
-import { createServerConfig } from "@hooka/config";
 import type { AuditEvent } from "@hooka/contracts";
 import { z } from "zod";
-import { booleanFlagSchema, resolveBooleanFlag } from "../lib/shared";
+import { booleanFlag, resolveDefaultServerUrl } from "../lib/shared";
 
 export function createAuditCommandGroup() {
-  const defaultUrl = `http://127.0.0.1:${createServerConfig().port}`;
+  const defaultUrl = resolveDefaultServerUrl();
 
   return defineGroup({
     name: "audit",
@@ -37,12 +36,12 @@ export function createAuditCommandGroup() {
           limit: option(z.coerce.number().int().positive().default(20), {
             description: "Maximum number of audit events to fetch.",
           }),
-          json: option(booleanFlagSchema, {
+          json: booleanFlag({
             description: "Print raw JSON instead of a human-readable report.",
           }),
         },
         handler: async ({ flags }) => {
-          const json = resolveBooleanFlag(flags.json, "--json");
+          const json = flags.json;
           const auditEvents = await fetchAuditEvents(flags.url, {
             token: flags.token ?? Bun.env["HOOKA_ADMIN_TOKEN"],
             category: flags.category,

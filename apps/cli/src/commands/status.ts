@@ -1,14 +1,16 @@
 import { defineCommand, option } from "@bunli/core";
 import {
-  createServerConfig,
-  createWorkerConfig,
   getWorkerFreshness,
   getWorkerFreshnessThresholdMs,
   getWorkerLastSeenAgeMs,
 } from "@hooka/config";
 import type { RegistrySummary, RunSummary } from "@hooka/contracts";
 import { z } from "zod";
-import { booleanFlagSchema, resolveBooleanFlag } from "../lib/shared";
+import {
+  booleanFlag,
+  resolveDefaultHeartbeatIntervalMs,
+  resolveDefaultServerUrl,
+} from "../lib/shared";
 
 interface EndpointStatus<T> {
   ok: boolean;
@@ -42,8 +44,8 @@ export interface StatusReport {
 }
 
 export function createStatusCommand() {
-  const defaultUrl = `http://127.0.0.1:${createServerConfig().port}`;
-  const heartbeatIntervalMs = createWorkerConfig().heartbeatIntervalMs;
+  const defaultUrl = resolveDefaultServerUrl();
+  const heartbeatIntervalMs = resolveDefaultHeartbeatIntervalMs();
 
   return defineCommand({
     name: "status",
@@ -57,12 +59,12 @@ export function createStatusCommand() {
         description:
           "Admin bearer token. Falls back to HOOKA_ADMIN_TOKEN when omitted.",
       }),
-      json: option(booleanFlagSchema, {
+      json: booleanFlag({
         description: "Print raw JSON instead of a human-readable summary.",
       }),
     },
     handler: async ({ flags }) => {
-      const json = resolveBooleanFlag(flags.json, "--json");
+      const json = flags.json;
       const report = await collectStatusReport(
         flags.url,
         flags.token ?? Bun.env["HOOKA_ADMIN_TOKEN"],
@@ -124,7 +126,7 @@ export function createStatusCommand() {
 export async function collectStatusReport(
   baseUrl: string,
   adminToken?: string,
-  heartbeatIntervalMs = createWorkerConfig().heartbeatIntervalMs,
+  heartbeatIntervalMs = resolveDefaultHeartbeatIntervalMs(),
 ): Promise<StatusReport> {
   const url = baseUrl.replace(/\/$/, "");
   const authHeader =
@@ -151,22 +153,28 @@ export async function collectStatusReport(
   const freshnessThresholdMs =
     getWorkerFreshnessThresholdMs(heartbeatIntervalMs);
 
+  // Only a successful summary carries workers; a 401/429 or an HTML error
+  // page must not crash the report.
+  const workers =
+    summary.ok && Array.isArray(summary.body?.workers)
+      ? summary.body.workers
+      : [];
+
   return {
     url,
-    workers:
-      summary.body?.workers.map((worker) => ({
-        workerId: worker.workerId,
-        runtimeRole: worker.runtimeRole,
-        lastSeenAt: worker.lastSeenAt,
-        lastSeenAgeMs: getWorkerLastSeenAgeMs(worker.lastSeenAt, nowMs),
-        freshness: getWorkerFreshness(
-          worker.lastSeenAt,
-          heartbeatIntervalMs,
-          nowMs,
-        ),
-        freshnessThresholdMs,
-        currentRunId: worker.currentRunId,
-      })) ?? [],
+    workers: workers.map((worker) => ({
+      workerId: worker.workerId,
+      runtimeRole: worker.runtimeRole,
+      lastSeenAt: worker.lastSeenAt,
+      lastSeenAgeMs: getWorkerLastSeenAgeMs(worker.lastSeenAt, nowMs),
+      freshness: getWorkerFreshness(
+        worker.lastSeenAt,
+        heartbeatIntervalMs,
+        nowMs,
+      ),
+      freshnessThresholdMs,
+      currentRunId: worker.currentRunId,
+    })),
     health,
     ready,
     summary,

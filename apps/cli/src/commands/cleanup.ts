@@ -2,11 +2,7 @@ import { defineCommand, option } from "@bunli/core";
 import { defaultRetentionSweepIntervalHours } from "@hooka/config";
 import { z } from "zod";
 import type { CliDefaults } from "../lib/shared";
-import {
-  booleanFlagSchema,
-  resolveBooleanFlag,
-  withRunStore,
-} from "../lib/shared";
+import { booleanFlag, withRunStore } from "../lib/shared";
 
 const dayMs = 24 * 60 * 60 * 1000;
 const hourMs = 60 * 60 * 1000;
@@ -20,19 +16,19 @@ export function createCleanupCommand(defaults: CliDefaults) {
       db: option(z.string().default(defaults.dbPath), {
         description: "Path to the Hooka SQLite database.",
       }),
-      runDays: option(
+      "run-days": option(
         z.coerce.number().int().positive().default(defaults.retentionRunDays),
         {
           description: "Delete terminal runs older than this many days.",
         },
       ),
-      auditDays: option(
+      "audit-days": option(
         z.coerce.number().int().positive().default(defaults.retentionAuditDays),
         {
           description: "Delete audit events older than this many days.",
         },
       ),
-      workerHeartbeatHours: option(
+      "worker-heartbeat-hours": option(
         z.coerce
           .number()
           .int()
@@ -42,10 +38,10 @@ export function createCleanupCommand(defaults: CliDefaults) {
           description: "Delete worker heartbeats older than this many hours.",
         },
       ),
-      vacuum: option(booleanFlagSchema, {
+      vacuum: booleanFlag({
         description: "Run SQLite VACUUM after deleting old rows.",
       }),
-      json: option(booleanFlagSchema, {
+      json: booleanFlag({
         description: "Print raw JSON instead of a summary line.",
       }),
     },
@@ -54,19 +50,19 @@ export function createCleanupCommand(defaults: CliDefaults) {
       const result = await withRunStore(flags.db, (runStore) => {
         return runStore.cleanupRetention({
           runFinishedBefore: new Date(
-            now - flags.runDays * dayMs,
+            now - flags["run-days"] * dayMs,
           ).toISOString(),
           auditCreatedBefore: new Date(
-            now - flags.auditDays * dayMs,
+            now - flags["audit-days"] * dayMs,
           ).toISOString(),
           workerHeartbeatSeenBefore: new Date(
-            now - flags.workerHeartbeatHours * hourMs,
+            now - flags["worker-heartbeat-hours"] * hourMs,
           ).toISOString(),
-          vacuum: resolveBooleanFlag(flags.vacuum, "--vacuum"),
+          vacuum: flags.vacuum,
         });
       });
 
-      if (resolveBooleanFlag(flags.json, "--json")) {
+      if (flags.json) {
         console.log(JSON.stringify(result, null, 2));
         return;
       }

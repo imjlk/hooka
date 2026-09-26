@@ -1,11 +1,10 @@
 import { option, type CLIOption } from "@bunli/core";
 import type { AnyTask } from "@hooka/task-sdk";
 import { z } from "zod";
-import { booleanFlagSchema } from "./shared";
+import { booleanFlag } from "./shared";
 
 const payloadJsonSchema = z.string().optional();
 const payloadFileSchema = z.string().optional();
-const dryRunSchema = booleanFlagSchema;
 
 export interface TaskOptionConfig {
   includeDryRun?: boolean;
@@ -27,7 +26,7 @@ export function taskToBunliOptions(
       }),
       ...(includeDryRun
         ? {
-            "dry-run": option(dryRunSchema, {
+            "dry-run": booleanFlag({
               description: "Validate and plan the task without executing it.",
             }),
           }
@@ -49,6 +48,10 @@ export function taskToBunliOptions(
           toKebabCase(key),
           option(cliSchema, {
             description: `${task.id} input: ${key}`,
+            // Bare `--no-bundle` means true; `--no-bundle=false` stays false.
+            ...(unwrapSchema(schema).base instanceof z.ZodBoolean
+              ? { argumentKind: "flag" as const }
+              : {}),
           }),
         ],
       ];
@@ -65,7 +68,7 @@ export function taskToBunliOptions(
     }),
     ...(includeDryRun
       ? {
-          "dry-run": option(dryRunSchema, {
+          "dry-run": booleanFlag({
             description: "Validate and plan the task without executing it.",
           }),
         }
@@ -106,7 +109,8 @@ function toCliScalarSchema(schema: z.ZodTypeAny): z.ZodTypeAny | null {
   } else if (details.base instanceof z.ZodNumber) {
     cliSchema = z.coerce.number();
   } else if (details.base instanceof z.ZodBoolean) {
-    cliSchema = z.coerce.boolean();
+    // z.coerce.boolean() turned "false" into true.
+    cliSchema = z.boolean();
   } else if (details.base instanceof z.ZodLiteral) {
     cliSchema = z.literal(details.base.value);
   }

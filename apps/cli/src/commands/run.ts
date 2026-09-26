@@ -1,11 +1,7 @@
 import { defineCommand, defineGroup, option } from "@bunli/core";
 import { z } from "zod";
 import type { CliDefaults } from "../lib/shared";
-import {
-  booleanFlagSchema,
-  resolveBooleanFlag,
-  withRunStore,
-} from "../lib/shared";
+import { booleanFlag, withRunStore } from "../lib/shared";
 
 export function createRunCommandGroup(defaults: CliDefaults) {
   return defineGroup({
@@ -120,12 +116,12 @@ export function createRunCommandGroup(defaults: CliDefaults) {
           limit: option(z.coerce.number().int().positive().default(20), {
             description: "Maximum number of runs to return.",
           }),
-          json: option(booleanFlagSchema, {
+          json: booleanFlag({
             description: "Print raw JSON instead of a table.",
           }),
         },
         handler: async ({ flags }) => {
-          const json = resolveBooleanFlag(flags.json, "--json");
+          const json = flags.json;
           const runs = await withRunStore(flags.db, (runStore) => {
             return runStore.listRuns(flags.limit);
           });

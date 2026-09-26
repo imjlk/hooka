@@ -1,4 +1,5 @@
 import { createCLI } from "@bunli/core";
+import packageJson from "../../../package.json" with { type: "json" };
 import { createAuditCommandGroup } from "./commands/audit";
 import { createCapabilityCommandGroup } from "./commands/capability";
 import { createCleanupCommand } from "./commands/cleanup";
@@ -16,7 +17,7 @@ import { cliDefaults } from "./lib/shared";
 
 const cli = await createCLI({
   name: "hooka",
-  version: "1.0.0",
+  version: packageJson.version,
   description:
     "Composable task, capability, and preset control plane for Hooka.",
   commands: {

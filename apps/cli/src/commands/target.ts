@@ -11,7 +11,7 @@ import {
 } from "@hooka/targets";
 import { z } from "zod";
 import type { CliDefaults } from "../lib/shared";
-import { booleanFlagSchema, resolveBooleanFlag } from "../lib/shared";
+import { booleanFlag } from "../lib/shared";
 
 export function createTargetCommandGroup(defaults: CliDefaults) {
   return defineGroup({
@@ -58,13 +58,13 @@ export function createTargetCommandGroup(defaults: CliDefaults) {
           targets: option(z.string().default(defaults.targetsPath), {
             description: "Path to the Hooka targets file.",
           }),
-          json: option(booleanFlagSchema, {
+          json: booleanFlag({
             description: "Print raw JSON instead of a table.",
           }),
         },
         handler: async ({ flags }) => {
           const targets = await loadTargets(flags.targets);
-          const json = resolveBooleanFlag(flags.json, "--json");
+          const json = flags.json;
 
           if (json) {
             console.log(JSON.stringify(targets, null, 2));
@@ -162,13 +162,13 @@ export function createTargetCommandGroup(defaults: CliDefaults) {
           targets: option(z.string().default(defaults.targetsPath), {
             description: "Path to the Hooka targets file.",
           }),
-          yes: option(booleanFlagSchema, {
+          yes: booleanFlag({
             description: "Confirm deletion without an interactive prompt.",
           }),
         },
         handler: async ({ flags, positional }) => {
           const targetId = positional[0];
-          const yes = resolveBooleanFlag(flags.yes, "--yes");
+          const yes = flags.yes;
 
           if (!targetId) {
             throw new Error("Usage: hooka target delete <target-id> [--yes]");
