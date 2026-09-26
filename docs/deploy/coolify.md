@@ -51,10 +51,13 @@ them out of the worker environment so the tools it runs (`wrangler`, `rclone`,
 
 ## Minimal stack
 
+Pin both services to the same Hooka release. The settings below match `1.1.1`;
+older releases such as `1.0.0` only accept HMAC-signed webhooks.
+
 ```yaml
 services:
   hookaserver:
-    image: ghcr.io/imjlk/hooka:1.0.0-webhook-server
+    image: ghcr.io/imjlk/hooka:1.1.1-webhook-server
     restart: unless-stopped
     environment:
       - SERVICE_URL_HOOKASERVER_3000
@@ -81,7 +84,7 @@ services:
       retries: 3
 
   hookaworker:
-    image: ghcr.io/imjlk/hooka:1.0.0-cf-pages
+    image: ghcr.io/imjlk/hooka:1.1.1-cf-pages
     restart: unless-stopped
     # Let an in-flight deploy finish before Docker sends SIGKILL.
     stop_grace_period: 2m
