@@ -40,6 +40,7 @@ test("createServerConfig applies defaults and resolves cwd-based paths", () => {
     adminToken: undefined,
     maxAttempts: 3,
     trustProxy: false,
+    trustedProxyHops: 0,
     rateLimitWindowMs: defaultRateLimitWindowMs,
     apiRateLimit: defaultApiRateLimit,
     webhookRateLimit: defaultWebhookRateLimit,

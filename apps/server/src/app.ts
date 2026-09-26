@@ -44,6 +44,8 @@ import {
   isPublicServerRoute,
 } from "./lib/auth";
 import {
+  AuditThrottle,
+  type ClientIpOptions,
   InMemoryRateLimiter,
   createServerRateLimitContext,
 } from "./lib/rate-limit";
@@ -71,6 +73,8 @@ export interface HookaServerAppOptions {
   runStore: RunStore;
   targetsPath: string;
   trustProxy: boolean;
+  /** Trusted reverse proxies in front of Hooka; defaults to 1 when trusted. */
+  trustedProxyHops?: number;
   uiDistDir: string;
   webhookRateLimit: number;
   webhookSecret?: string;
@@ -78,6 +82,15 @@ export interface HookaServerAppOptions {
 
 class NotFoundError extends Error {}
 class PayloadTooLargeError extends Error {}
+
+/** The part of Bun's `Server` the handler uses to read the peer address. */
+export interface RequestAddressSource {
+  requestIP(request: Request): { address: string } | null;
+}
+
+// Socket addresses of in-flight requests, for rate-limit keys and audit rows.
+const requestSocketIps = new WeakMap<Request, string>();
+const auditThrottles = new WeakMap<HookaServerAppOptions, AuditThrottle>();
 
 type RouteHandler = (
   request: Request,
@@ -128,8 +141,16 @@ export function createHookaFetchHandler(options: HookaServerAppOptions) {
   });
   const eventStreamTickets = new Map<string, EventStreamTicketEntry>();
   const exactRoutes = createExactRoutes(options, eventStreamTickets);
+  auditThrottles.set(options, new AuditThrottle(options.rateLimitWindowMs));
 
-  return async function fetch(request: Request): Promise<Response> {
+  return async function fetch(
+    request: Request,
+    server?: RequestAddressSource,
+  ): Promise<Response> {
+    const socketIp = server?.requestIP(request)?.address;
+    if (socketIp) {
+      requestSocketIps.set(request, socketIp);
+    }
     const url = new URL(request.url);
     const respond = (response: Response): Response => {
       return applyCorsHeaders(
@@ -1037,9 +1058,10 @@ function checkRateLimit(
     return null;
   }
 
-  const context = createServerRateLimitContext(request, {
-    trustProxy: options.trustProxy,
-  });
+  const context = createServerRateLimitContext(
+    request,
+    getClientIpOptions(options, request),
+  );
   const rateLimiter =
     context.bucket === "webhook" ? webhookRateLimiter : apiRateLimiter;
   const globalRateLimiter =
@@ -1047,14 +1069,17 @@ function checkRateLimit(
       ? globalWebhookRateLimiter
       : globalApiRateLimiter;
   const clientDecision = rateLimiter.check(context.clientKey);
-  const globalDecision = globalRateLimiter.check(context.globalKey);
-  const decision = clientDecision.ok ? globalDecision : clientDecision;
+  // A client that is over its own limit must not also spend the global budget
+  // that every other caller shares.
+  const decision = clientDecision.ok
+    ? globalRateLimiter.check(context.globalKey)
+    : clientDecision;
 
   if (decision.ok) {
     return null;
   }
 
-  appendAuditEvent(options, {
+  const audited = appendAuditEvent(options, {
     category: "security",
     action: "rate_limit_rejected",
     outcome: "rejected",
@@ -1069,14 +1094,16 @@ function checkRateLimit(
       retryAfterSeconds: decision.retryAfterSeconds,
     },
   });
-  options.logger?.warn("Rate limit rejected", {
-    pathname: context.pathname,
-    clientIp: context.clientIp,
-    bucket: context.bucket,
-    key: decision.key,
-    scope: clientDecision.ok ? "global" : "client",
-    retryAfterSeconds: decision.retryAfterSeconds,
-  });
+  if (audited) {
+    options.logger?.warn("Rate limit rejected", {
+      pathname: context.pathname,
+      clientIp: context.clientIp,
+      bucket: context.bucket,
+      key: decision.key,
+      scope: clientDecision.ok ? "global" : "client",
+      retryAfterSeconds: decision.retryAfterSeconds,
+    });
+  }
 
   return json(
     {
@@ -1300,12 +1327,31 @@ function appendAuditEvent(
     message: string;
     context?: unknown;
   },
-): void {
+): boolean {
   const rateLimitContext = input.request
-    ? createServerRateLimitContext(input.request, {
-        trustProxy: options.trustProxy,
-      })
+    ? createServerRateLimitContext(
+        input.request,
+        getClientIpOptions(options, input.request),
+      )
     : null;
+  const clientIp = input.clientIp ?? rateLimitContext?.clientIp ?? null;
+  let context = input.context;
+
+  if (input.category === "security" && input.outcome === "rejected") {
+    const suppressed = auditThrottles
+      .get(options)
+      ?.admit(`${input.action}:${clientIp ?? "unknown"}`);
+    if (suppressed === null) {
+      return false;
+    }
+
+    if (suppressed !== undefined && suppressed > 0) {
+      context = {
+        ...(context && typeof context === "object" ? context : {}),
+        suppressedSinceLastAudit: suppressed,
+      };
+    }
+  }
 
   options.runStore.appendAuditEvent({
     category: input.category,
@@ -1313,11 +1359,23 @@ function appendAuditEvent(
     outcome: input.outcome,
     subjectType: input.subjectType,
     subjectId: input.subjectId ?? null,
-    clientIp: input.clientIp ?? rateLimitContext?.clientIp ?? null,
+    clientIp,
     requestPath: input.requestPath ?? rateLimitContext?.pathname ?? null,
     message: input.message,
-    context: input.context,
+    context,
   });
+  return true;
+}
+
+function getClientIpOptions(
+  options: HookaServerAppOptions,
+  request: Request,
+): ClientIpOptions {
+  return {
+    trustProxy: options.trustProxy,
+    trustedProxyHops: options.trustedProxyHops,
+    socketIp: requestSocketIps.get(request),
+  };
 }
 
 function handleTargetWriteError(error: unknown): Response {
