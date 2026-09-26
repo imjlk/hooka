@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { createRunStore } from "./index";
+import { createRunStore, RunLeaseLostError } from "./index";
 
 test("enqueue run stores queued record and queued event", async () => {
   const runStore = await createRunStore({
@@ -584,6 +584,135 @@ test("cleanupRetention prunes old terminal runs and audit events", async () => {
   expect(result.deletedWorkerHeartbeats).toBe(0);
   expect(runStore.getRun(oldRun.response.runId)).toBeNull();
   expect(runStore.getRun(newRun.response.runId)?.status).toBe("succeeded");
+
+  runStore.close();
+});
+
+test("final run writes are rejected once another worker owns the run", async () => {
+  let nowMs = Date.parse("2026-09-26T00:00:00.000Z");
+  const runStore = await createRunStore({
+    dbPath: ":memory:",
+    now: () => new Date(nowMs),
+  });
+  const queued = runStore.enqueueRun({
+    taskId: "deploy.shared-volume.wrangler",
+    input: {},
+    source: "test",
+    capabilitySnapshot: [],
+    maxAttempts: 5,
+  });
+  const result = {
+    taskId: "deploy.shared-volume.wrangler",
+    ok: true,
+    status: "succeeded" as const,
+    durationMs: 1,
+  };
+
+  expect(runStore.claimNextQueuedRun("worker-a", 1_000)?.id).toBe(
+    queued.response.runId,
+  );
+
+  // worker-a stalls past its lease; worker-b requeues and claims the run.
+  nowMs += 2_000;
+  expect(runStore.requeueExpiredRuns()).toBe(1);
+  expect(runStore.getRun(queued.response.runId)?.lastErrorCode).toBe(
+    "lease_expired",
+  );
+  expect(runStore.claimNextQueuedRun("worker-b", 1_000)?.id).toBe(
+    queued.response.runId,
+  );
+
+  expect(() =>
+    runStore.finishRun(queued.response.runId, result, {
+      attemptCount: 1,
+      workerId: "worker-a",
+    }),
+  ).toThrow(RunLeaseLostError);
+  expect(() =>
+    runStore.scheduleRetry(queued.response.runId, result, {
+      attemptCount: 1,
+      nextRetryAt: new Date(nowMs).toISOString(),
+      workerId: "worker-a",
+    }),
+  ).toThrow(RunLeaseLostError);
+  expect(() =>
+    runStore.deadLetterRun(queued.response.runId, result, {
+      attemptCount: 1,
+      workerId: "worker-a",
+    }),
+  ).toThrow(RunLeaseLostError);
+
+  const stillRunning = runStore.getRun(queued.response.runId);
+  expect(stillRunning?.status).toBe("running");
+  expect(stillRunning?.workerId).toBe("worker-b");
+
+  expect(
+    runStore.finishRun(queued.response.runId, result, {
+      attemptCount: 2,
+      workerId: "worker-b",
+    }).status,
+  ).toBe("succeeded");
+
+  runStore.close();
+});
+
+test("renewing a lease keeps the run away from the expired-lease sweep", async () => {
+  let nowMs = Date.parse("2026-09-26T00:00:00.000Z");
+  const runStore = await createRunStore({
+    dbPath: ":memory:",
+    now: () => new Date(nowMs),
+  });
+  const queued = runStore.enqueueRun({
+    taskId: "deploy.shared-volume.wrangler",
+    input: {},
+    source: "test",
+    capabilitySnapshot: [],
+  });
+
+  runStore.claimNextQueuedRun("worker-a", 1_000);
+  nowMs += 800;
+  expect(runStore.renewRunLease(queued.response.runId, "worker-a", 1_000)).toBe(
+    true,
+  );
+  expect(runStore.renewRunLease(queued.response.runId, "worker-b", 1_000)).toBe(
+    false,
+  );
+
+  // Past the original lease, but inside the renewed one.
+  nowMs += 800;
+  expect(runStore.requeueExpiredRuns()).toBe(0);
+  expect(runStore.getRun(queued.response.runId)?.status).toBe("running");
+
+  nowMs += 1_000;
+  expect(runStore.requeueExpiredRuns()).toBe(1);
+  expect(runStore.renewRunLease(queued.response.runId, "worker-a", 1_000)).toBe(
+    false,
+  );
+
+  runStore.close();
+});
+
+test("a lease that expires on the last attempt dead-letters with a lease error code", async () => {
+  let nowMs = Date.parse("2026-09-26T00:00:00.000Z");
+  const runStore = await createRunStore({
+    dbPath: ":memory:",
+    now: () => new Date(nowMs),
+  });
+  const queued = runStore.enqueueRun({
+    taskId: "deploy.shared-volume.wrangler",
+    input: {},
+    source: "test",
+    capabilitySnapshot: [],
+    maxAttempts: 1,
+  });
+
+  runStore.claimNextQueuedRun("worker-a", 1_000);
+  nowMs += 2_000;
+  expect(runStore.requeueExpiredRuns()).toBe(1);
+
+  const run = runStore.getRun(queued.response.runId);
+  expect(run?.status).toBe("dead-lettered");
+  expect(run?.lastErrorCode).toBe("lease_expired");
 
   runStore.close();
 });

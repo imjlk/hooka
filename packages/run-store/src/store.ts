@@ -39,6 +39,22 @@ import {
 import { initializeRunStoreSchema } from "./schema";
 
 export const defaultHookaDbPath = "/data/hooka.sqlite";
+
+/**
+ * Thrown when a worker records the outcome of a run it no longer owns, because
+ * its lease expired and the run was requeued or claimed by another worker.
+ */
+export class RunLeaseLostError extends Error {
+  readonly runId: string;
+  readonly workerId: string;
+
+  constructor(runId: string, workerId: string) {
+    super(`Worker ${workerId} no longer holds the lease for run ${runId}.`);
+    this.name = "RunLeaseLostError";
+    this.runId = runId;
+    this.workerId = workerId;
+  }
+}
 const terminalRunStatuses = [
   "succeeded",
   "failed",
@@ -209,31 +225,46 @@ export class RunStore {
   }
 
   requeueExpiredRuns(): number {
-    const now = this.timestamp();
-    const rows = this.db
+    const hasExpiredLeases = this.db
       .query(
-        `select id, attempt_count, max_attempts from runs
+        `select 1 from runs
          where status = 'running'
            and lease_expires_at is not null
            and lease_expires_at <= ?
-         order by lease_expires_at asc`,
+         limit 1`,
       )
-      .all(now) as Array<{
-      id: string;
-      attempt_count: number;
-      max_attempts: number;
-    }>;
+      .get(this.timestamp());
 
-    if (rows.length === 0) {
+    if (!hasExpiredLeases) {
       return 0;
     }
 
+    // Select and update inside one immediate transaction, and re-check the
+    // expired-running state in each UPDATE. Otherwise two workers can read the
+    // same expired lease, one requeues and re-claims the run, and the other's
+    // stale UPDATE resets it to queued so a third worker runs it concurrently.
     return this.withTransaction(() => {
+      const now = this.timestamp();
+      const rows = this.db
+        .query(
+          `select id, attempt_count, max_attempts from runs
+           where status = 'running'
+             and lease_expires_at is not null
+             and lease_expires_at <= ?
+           order by lease_expires_at asc`,
+        )
+        .all(now) as Array<{
+        id: string;
+        attempt_count: number;
+        max_attempts: number;
+      }>;
+      let requeued = 0;
+
       for (const row of rows) {
         const nextAttemptCount = row.attempt_count + 1;
 
         if (nextAttemptCount >= row.max_attempts) {
-          this.db
+          const changes = this.db
             .query(
               `update runs
                set status = 'dead-lettered',
@@ -241,10 +272,13 @@ export class RunStore {
                    error_text = ?,
                    attempt_count = ?,
                    next_retry_at = null,
+                   last_error_code = 'lease_expired',
                    finished_at = ?,
                    lease_expires_at = null,
                    worker_id = null
-               where id = ?`,
+               where id = ?
+                 and status = 'running'
+                 and lease_expires_at <= ?`,
             )
             .run(
               "Run lease expired too many times and was moved to the dead-letter queue.",
@@ -252,8 +286,14 @@ export class RunStore {
               nextAttemptCount,
               now,
               row.id,
-            );
+              now,
+            ).changes;
 
+          if (changes === 0) {
+            continue;
+          }
+
+          requeued += 1;
           this.insertEvent(
             row.id,
             "dead-lettered",
@@ -266,7 +306,7 @@ export class RunStore {
           continue;
         }
 
-        this.db
+        const changes = this.db
           .query(
             `update runs
              set status = 'queued',
@@ -275,12 +315,20 @@ export class RunStore {
                  finished_at = null,
                  lease_expires_at = null,
                  next_retry_at = null,
+                 last_error_code = 'lease_expired',
                  worker_id = null,
                  attempt_count = ?
-             where id = ?`,
+             where id = ?
+               and status = 'running'
+               and lease_expires_at <= ?`,
           )
-          .run(now, nextAttemptCount, row.id);
+          .run(now, nextAttemptCount, row.id, now).changes;
 
+        if (changes === 0) {
+          continue;
+        }
+
+        requeued += 1;
         this.insertEvent(
           row.id,
           "requeued",
@@ -288,8 +336,32 @@ export class RunStore {
         );
       }
 
-      return rows.length;
+      return requeued;
     });
+  }
+
+  /**
+   * Extends the lease of a run the worker still owns. Returns false when the
+   * run is no longer running under this worker, for example after its lease
+   * expired and another worker requeued it.
+   */
+  renewRunLease(runId: string, workerId: string, leaseMs: number): boolean {
+    const leaseExpiresAt = new Date(
+      this.now().getTime() + leaseMs,
+    ).toISOString();
+
+    return this.withBusyRetry(
+      () =>
+        this.db
+          .query(
+            `update runs
+             set lease_expires_at = ?
+             where id = ?
+               and status = 'running'
+               and worker_id = ?`,
+          )
+          .run(leaseExpiresAt, runId, workerId).changes > 0,
+    );
   }
 
   claimNextQueuedRun(
@@ -392,7 +464,7 @@ export class RunStore {
   finishRun(
     runId: string,
     result: TaskRunResult,
-    input: { attemptCount?: number } = {},
+    input: { attemptCount?: number; workerId?: string } = {},
   ): RunDetail {
     return this.withTransaction(() => {
       const finishedAt = this.timestamp();
@@ -400,8 +472,9 @@ export class RunStore {
         result.status === "failed" || result.status === "dead-lettered"
           ? (result.stderr ?? result.summary ?? null)
           : null;
+      const ownership = runOwnershipGuard(input.workerId);
 
-      this.db
+      const changes = this.db
         .query(
           `update runs
            set status = ?,
@@ -413,7 +486,7 @@ export class RunStore {
                last_error_code = ?,
                finished_at = ?,
                lease_expires_at = null
-           where id = ?`,
+           where id = ?${ownership.sql}`,
         )
         .run(
           result.status,
@@ -424,7 +497,9 @@ export class RunStore {
           result.errorCode ?? null,
           finishedAt,
           runId,
-        );
+          ...ownership.params,
+        ).changes;
+      assertRunOwnership(changes, runId, input.workerId);
 
       this.insertEvent(
         runId,
@@ -447,10 +522,11 @@ export class RunStore {
   scheduleRetry(
     runId: string,
     result: TaskRunResult,
-    input: { attemptCount: number; nextRetryAt: string },
+    input: { attemptCount: number; nextRetryAt: string; workerId?: string },
   ): RunDetail {
     return this.withTransaction(() => {
-      this.db
+      const ownership = runOwnershipGuard(input.workerId);
+      const changes = this.db
         .query(
           `update runs
            set status = 'queued',
@@ -465,7 +541,7 @@ export class RunStore {
                finished_at = null,
                lease_expires_at = null,
                worker_id = null
-           where id = ?`,
+           where id = ?${ownership.sql}`,
         )
         .run(
           JSON.stringify(result),
@@ -476,7 +552,9 @@ export class RunStore {
           result.errorCode ?? null,
           this.timestamp(),
           runId,
-        );
+          ...ownership.params,
+        ).changes;
+      assertRunOwnership(changes, runId, input.workerId);
 
       this.insertEvent(
         runId,
@@ -500,10 +578,11 @@ export class RunStore {
   deadLetterRun(
     runId: string,
     result: TaskRunResult,
-    input: { attemptCount: number },
+    input: { attemptCount: number; workerId?: string },
   ): RunDetail {
     return this.withTransaction(() => {
-      this.db
+      const ownership = runOwnershipGuard(input.workerId);
+      const changes = this.db
         .query(
           `update runs
            set status = 'dead-lettered',
@@ -515,7 +594,7 @@ export class RunStore {
                last_error_code = ?,
                finished_at = ?,
                lease_expires_at = null
-           where id = ?`,
+           where id = ?${ownership.sql}`,
         )
         .run(
           JSON.stringify({
@@ -529,7 +608,9 @@ export class RunStore {
           result.errorCode ?? null,
           this.timestamp(),
           runId,
-        );
+          ...ownership.params,
+        ).changes;
+      assertRunOwnership(changes, runId, input.workerId);
 
       this.insertEvent(
         runId,
@@ -943,6 +1024,29 @@ export class RunStore {
     }
 
     throw new Error("Unreachable SQLite retry state.");
+  }
+}
+
+/**
+ * Restricts a final run write to the worker that still holds the run, when a
+ * worker id is given. Admin and test callers omit it to write unconditionally.
+ */
+function runOwnershipGuard(workerId: string | undefined): {
+  sql: string;
+  params: string[];
+} {
+  return workerId === undefined
+    ? { sql: "", params: [] }
+    : { sql: " and status = 'running' and worker_id = ?", params: [workerId] };
+}
+
+function assertRunOwnership(
+  changes: number,
+  runId: string,
+  workerId: string | undefined,
+): void {
+  if (changes === 0 && workerId !== undefined) {
+    throw new RunLeaseLostError(runId, workerId);
   }
 }
 

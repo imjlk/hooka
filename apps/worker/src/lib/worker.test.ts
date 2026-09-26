@@ -397,3 +397,179 @@ test("worker loop backs off after repeated errors", async () => {
   runStore.requeueExpiredRuns = original;
   runStore.close();
 });
+
+function readLeaseExpiresAt(
+  runStore: Awaited<ReturnType<typeof createRunStore>>,
+  runId: string,
+): string | null {
+  const row = runStore.db
+    .query("select lease_expires_at from runs where id = ?")
+    .get(runId) as { lease_expires_at: string | null } | null;
+  return row?.lease_expires_at ?? null;
+}
+
+test("worker renews the run lease and heartbeat while a task runs", async () => {
+  const runStore = await createRunStore({
+    dbPath: ":memory:",
+  });
+  const queued = runStore.enqueueRun({
+    taskId: "deploy.shared-volume.wrangler",
+    input: {
+      kind: "pages-deploy",
+      project: "staging-site",
+      sourcePath: "/shared-source/simply-static",
+    },
+    source: "test",
+    capabilitySnapshot: ["wrangler"],
+  });
+  const runId = queued.response.runId;
+  const seenLeases: Array<string | null> = [];
+  const seenHeartbeats: Array<string | undefined> = [];
+  const readHeartbeat = () =>
+    runStore
+      .listWorkerHeartbeats()
+      .find((heartbeat) => heartbeat.workerId === "worker-a");
+
+  const commandRunner: CommandRunner = async () => {
+    seenLeases.push(readLeaseExpiresAt(runStore, runId));
+    seenHeartbeats.push(readHeartbeat()?.lastSeenAt);
+    await Bun.sleep(150);
+    seenLeases.push(readLeaseExpiresAt(runStore, runId));
+    seenHeartbeats.push(readHeartbeat()?.lastSeenAt);
+    expect(readHeartbeat()?.currentRunId).toBe(runId);
+    return {
+      stdout: "ok",
+      stderr: "",
+      exitCode: 0,
+    };
+  };
+
+  await processNextRun({
+    commandRunner,
+    heartbeatIntervalMs: 20,
+    installedCapabilities: ["wrangler"],
+    manifestPath: "/tmp/manifest.json",
+    runtimeRole: "worker:test",
+    runStore,
+    workerId: "worker-a",
+    leaseMs: 60_000,
+    retryBaseDelayMs: 1000,
+  });
+
+  const [leaseAtStart, leaseLater] = seenLeases;
+  const [heartbeatAtStart, heartbeatLater] = seenHeartbeats;
+  expect(leaseAtStart).toBeTruthy();
+  expect(heartbeatAtStart).toBeTruthy();
+  // ISO-8601 UTC timestamps order lexicographically.
+  expect((leaseLater ?? "") > (leaseAtStart ?? "")).toBe(true);
+  expect((heartbeatLater ?? "") > (heartbeatAtStart ?? "")).toBe(true);
+  expect(runStore.getRun(runId)?.status).toBe("succeeded");
+  expect(readHeartbeat()?.currentRunId).toBeNull();
+
+  runStore.close();
+});
+
+test("worker discards its result when another worker took over the run", async () => {
+  const runStore = await createRunStore({
+    dbPath: ":memory:",
+  });
+  const queued = runStore.enqueueRun({
+    taskId: "deploy.shared-volume.wrangler",
+    input: {
+      kind: "pages-deploy",
+      project: "staging-site",
+      sourcePath: "/shared-source/simply-static",
+    },
+    source: "test",
+    capabilitySnapshot: ["wrangler"],
+  });
+  const runId = queued.response.runId;
+  const warnings: string[] = [];
+
+  const commandRunner: CommandRunner = async () => {
+    // This worker's lease lapsed mid-run and worker-b claimed the run.
+    runStore.db
+      .query("update runs set worker_id = 'worker-b' where id = ?")
+      .run(runId);
+    return {
+      stdout: "",
+      stderr: "boom",
+      exitCode: 1,
+    };
+  };
+
+  await processNextRun({
+    commandRunner,
+    installedCapabilities: ["wrangler"],
+    logger: {
+      info() {},
+      warn(message) {
+        warnings.push(message);
+      },
+      error() {},
+    },
+    manifestPath: "/tmp/manifest.json",
+    runtimeRole: "worker:test",
+    runStore,
+    workerId: "worker-a",
+    leaseMs: 60_000,
+    retryBaseDelayMs: 1000,
+  });
+
+  const run = runStore.getRun(runId);
+  expect(run?.status).toBe("running");
+  expect(run?.workerId).toBe("worker-b");
+  expect(run?.events.map((event) => event.type)).toEqual(["queued", "started"]);
+  expect(warnings).toContain("Run lease lost before the result was recorded");
+
+  runStore.close();
+});
+
+test("worker settles a claimed run when bookkeeping after the claim throws", async () => {
+  const runStore = await createRunStore({
+    dbPath: ":memory:",
+  });
+  const queued = runStore.enqueueRun({
+    taskId: "deploy.shared-volume.wrangler",
+    input: {
+      kind: "pages-deploy",
+      project: "forbidden-site",
+      sourcePath: "/shared-source/forbidden-site",
+    },
+    source: "test",
+    capabilitySnapshot: ["wrangler"],
+    targetId: "pages-main",
+    targetPolicy: {
+      allowedProjects: ["main-site"],
+      allowedSourceRoots: ["/shared-source"],
+      allowedDestinationPrefixes: [],
+      allowedBranches: ["main"],
+      allowedOverrideFields: [],
+      requiredEnv: [],
+      artifactReadiness: {
+        mode: "none",
+      },
+    },
+  });
+  runStore.appendEvent = () => {
+    throw new Error("disk I/O error");
+  };
+
+  await processNextRun({
+    installedCapabilities: ["wrangler"],
+    manifestPath: "/tmp/manifest.json",
+    runtimeRole: "worker:test",
+    runStore,
+    workerId: "worker-a",
+    leaseMs: 60_000,
+    retryBaseDelayMs: 1000,
+  });
+
+  const run = runStore.getRun(queued.response.runId);
+  expect(run?.status).toBe("queued");
+  expect(run?.lastErrorCode).toBe("worker_execution_failed");
+  expect(run?.summary).toContain("disk I/O error");
+  expect(run?.nextRetryAt).not.toBeNull();
+
+  runStore.close();
+});

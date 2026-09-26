@@ -332,6 +332,7 @@ Hooka's default model is `signed webhook -> queue -> worker -> wrangler CLI`. Wo
 - Non-retryable validation, policy, and auth failures stay terminal.
 - Retryable failures that exceed `maxAttempts` become `dead-lettered`.
 - Lease-expired runs also consume retry budget and can end up dead-lettered.
+- A busy worker renews its run lease and heartbeat while the task runs, so `HOOKA_RUN_LEASE_MS` bounds how long a crashed worker's run stays claimed rather than how long a task may take. A worker that lost its lease discards its result instead of overwriting the run's new owner.
 
 ## Dev UI
 
