@@ -3,6 +3,20 @@ import type { Database } from "bun:sqlite";
 export function initializeRunStoreSchema(db: Database): void {
   db.exec("pragma journal_mode = WAL;");
   db.exec("pragma busy_timeout = 5000;");
+  // A server and a worker often start together against the same file. Run the
+  // DDL in one immediate transaction so the second process waits and then sees
+  // the migrated columns instead of failing with "duplicate column name".
+  db.exec("begin immediate");
+  try {
+    createRunStoreTables(db);
+    db.exec("commit");
+  } catch (error) {
+    db.exec("rollback");
+    throw error;
+  }
+}
+
+function createRunStoreTables(db: Database): void {
   db.exec(`
     create table if not exists runs (
       id text primary key,
@@ -76,6 +90,9 @@ export function initializeRunStoreSchema(db: Database): void {
   );
   db.exec(
     "create index if not exists idx_runs_target_running on runs(target_id, status);",
+  );
+  db.exec(
+    "create index if not exists idx_runs_created_at on runs(created_at);",
   );
   db.exec(
     "create index if not exists idx_run_events_run_id_created_at on run_events(run_id, created_at);",

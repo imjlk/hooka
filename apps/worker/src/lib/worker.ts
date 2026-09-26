@@ -9,7 +9,11 @@ import {
 import type { CommandRunner } from "@hooka/executor-process";
 import type { Logger } from "@hooka/logger";
 import { getTask, listTasks } from "@hooka/registry";
-import type { ClaimedRun, RunStore } from "@hooka/run-store";
+import {
+  type ClaimedRun,
+  RunLeaseLostError,
+  type RunStore,
+} from "@hooka/run-store";
 import { runTask } from "@hooka/runner-core";
 import {
   validateArtifactReadiness,
@@ -27,6 +31,11 @@ export {
 
 export interface ProcessNextRunOptions {
   commandRunner?: CommandRunner;
+  /**
+   * How often a busy worker renews its run lease and heartbeat. Capped at a
+   * third of the lease so a slow tick cannot let the lease lapse.
+   */
+  heartbeatIntervalMs?: number;
   installedCapabilities: string[];
   logger?: Logger;
   manifestPath: string;
@@ -38,7 +47,6 @@ export interface ProcessNextRunOptions {
 }
 
 export interface WorkerLoopOptions extends ProcessNextRunOptions {
-  heartbeatIntervalMs?: number;
   logger?: Logger;
   retentionAuditDays?: number;
   retentionRunDays?: number;
@@ -70,18 +78,49 @@ export async function processNextRun(
     installedCapabilities: options.installedCapabilities,
     currentRunId: claimed.id,
   });
+  const stopKeepalive = startRunKeepalive(claimed, options);
 
   try {
-    const task = getTask(claimed.taskId);
-    const result = task
-      ? await executeTaskWithPreflight(task, claimed, options)
-      : missingTaskResult(claimed.taskId);
+    let result: TaskRunResult;
+    try {
+      const task = getTask(claimed.taskId);
+      result = task
+        ? await executeTaskWithPreflight(task, claimed, options)
+        : missingTaskResult(claimed.taskId);
+    } catch (error) {
+      // Anything thrown after the claim (preflight I/O, runner bugs) must still
+      // settle the run; otherwise it stays `running` until the lease expires
+      // and the real error only reaches the worker log.
+      result = unexpectedWorkerErrorResult(claimed.taskId, error);
+    }
+    stopKeepalive();
 
-    const attemptCount = claimed.attemptCount + 1;
+    recordRunResult(claimed, result, options);
+  } finally {
+    stopKeepalive();
+    options.runStore.upsertWorkerHeartbeat({
+      workerId: options.workerId,
+      runtimeRole: options.runtimeRole,
+      installedCapabilities: options.installedCapabilities,
+      currentRunId: null,
+    });
+  }
+  return true;
+}
+
+function recordRunResult(
+  claimed: ClaimedRun,
+  result: TaskRunResult,
+  options: ProcessNextRunOptions,
+): void {
+  const attemptCount = claimed.attemptCount + 1;
+
+  try {
     if (result.status === "failed" && result.retryable) {
       if (attemptCount >= claimed.maxAttempts) {
         options.runStore.deadLetterRun(claimed.id, result, {
           attemptCount,
+          workerId: options.workerId,
         });
         options.logger?.error("Run moved to dead-letter queue", {
           runId: claimed.id,
@@ -99,6 +138,7 @@ export async function processNextRun(
         options.runStore.scheduleRetry(claimed.id, result, {
           attemptCount,
           nextRetryAt,
+          workerId: options.workerId,
         });
         options.logger?.warn("Run retry scheduled", {
           runId: claimed.id,
@@ -113,6 +153,7 @@ export async function processNextRun(
     } else {
       options.runStore.finishRun(claimed.id, result, {
         attemptCount,
+        workerId: options.workerId,
       });
       const log = result.ok ? options.logger?.info : options.logger?.warn;
       log?.call(options.logger, "Run finished", {
@@ -125,15 +166,70 @@ export async function processNextRun(
         errorCode: result.errorCode ?? null,
       });
     }
-  } finally {
-    options.runStore.upsertWorkerHeartbeat({
-      workerId: options.workerId,
-      runtimeRole: options.runtimeRole,
-      installedCapabilities: options.installedCapabilities,
-      currentRunId: null,
+  } catch (error) {
+    if (!(error instanceof RunLeaseLostError)) {
+      throw error;
+    }
+
+    // Another worker already owns this run again (the lease lapsed), so this
+    // result must not overwrite its state.
+    options.logger?.warn("Run lease lost before the result was recorded", {
+      runId: claimed.id,
+      taskId: claimed.taskId,
+      targetId: claimed.targetId,
+      status: result.status,
+      errorCode: result.errorCode ?? null,
     });
   }
-  return true;
+}
+
+/**
+ * Renews the run lease and the worker heartbeat while a task executes, so long
+ * deploys are neither requeued onto another worker nor reported as stale.
+ */
+function startRunKeepalive(
+  claimed: ClaimedRun,
+  options: ProcessNextRunOptions,
+): () => void {
+  const intervalMs = Math.max(
+    10,
+    Math.min(
+      options.heartbeatIntervalMs ?? defaultWorkerHeartbeatIntervalMs,
+      Math.floor(options.leaseMs / 3),
+    ),
+  );
+  let leaseLost = false;
+  const timer = setInterval(() => {
+    try {
+      const renewed = options.runStore.renewRunLease(
+        claimed.id,
+        options.workerId,
+        options.leaseMs,
+      );
+      options.runStore.upsertWorkerHeartbeat({
+        workerId: options.workerId,
+        runtimeRole: options.runtimeRole,
+        installedCapabilities: options.installedCapabilities,
+        currentRunId: renewed ? claimed.id : null,
+      });
+
+      if (!renewed && !leaseLost) {
+        leaseLost = true;
+        options.logger?.warn("Run lease lost during execution", {
+          runId: claimed.id,
+          taskId: claimed.taskId,
+          targetId: claimed.targetId,
+        });
+      }
+    } catch (error) {
+      options.logger?.error("Run keepalive failed", {
+        runId: claimed.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }, intervalMs);
+
+  return () => clearInterval(timer);
 }
 
 export async function startWorkerLoop(
@@ -227,6 +323,23 @@ function missingTaskResult(taskId: string): TaskRunResult {
     retryable: false,
     errorCode: "task_not_found",
     summary: `Task not found: ${taskId}.`,
+    durationMs: 0,
+  };
+}
+
+function unexpectedWorkerErrorResult(
+  taskId: string,
+  error: unknown,
+): TaskRunResult {
+  return {
+    taskId,
+    ok: false,
+    status: "failed",
+    retryable: true,
+    errorCode: "worker_execution_failed",
+    summary: error instanceof Error ? error.message : String(error),
+    stderr:
+      error instanceof Error ? (error.stack ?? error.message) : String(error),
     durationMs: 0,
   };
 }

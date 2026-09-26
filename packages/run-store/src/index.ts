@@ -1,4 +1,9 @@
-export { createRunStore, defaultHookaDbPath, RunStore } from "./store";
+export {
+  createRunStore,
+  defaultHookaDbPath,
+  RunLeaseLostError,
+  RunStore,
+} from "./store";
 export type {
   ClaimedRun,
   EnqueueRunInput,
