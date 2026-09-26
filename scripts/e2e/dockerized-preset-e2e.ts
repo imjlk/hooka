@@ -17,11 +17,7 @@ const mockBinDir = resolve(repoRoot, "docker/e2e/mock-bin");
 const defaultPath =
   "/mock-bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin";
 const $ = Bun.$.cwd(repoRoot);
-const cfPagesSpec = getWorkerPresetBuildSpec("cf-pages");
-
-if (!cfPagesSpec) {
-  throw new Error("Missing active worker preset spec for cf-pages.");
-}
+const cfPagesSpec = requireWorkerPresetBuildSpec("cf-pages");
 
 await ensureDocker();
 await buildImages();
@@ -52,6 +48,16 @@ try {
 }
 
 console.log("Dockerized preset E2E passed.");
+
+function requireWorkerPresetBuildSpec(presetId: string) {
+  const spec = getWorkerPresetBuildSpec(presetId);
+
+  if (!spec) {
+    throw new Error(`Missing active worker preset spec for ${presetId}.`);
+  }
+
+  return spec;
+}
 
 async function ensureDocker(): Promise<void> {
   await $`docker version`.quiet();
@@ -127,9 +133,16 @@ async function runScenario(input: {
         `${input.name}: mock wrangler was not called with pages deploy.`,
       );
     }
+  } catch (error) {
+    // The containers are removed below; print their logs while they exist so
+    // a failed CI run shows why.
+    for (const containerName of [serverName, workerName]) {
+      const logs = await $`docker logs ${containerName}`.quiet().nothrow();
+      console.error(`--- docker logs ${containerName}`);
+      console.error(logs.stdout.toString() + logs.stderr.toString());
+    }
+    throw error;
   } finally {
-    await $`docker logs ${serverName}`.quiet().nothrow();
-    await $`docker logs ${workerName}`.quiet().nothrow();
     await $`docker rm -f ${serverName}`.quiet().nothrow();
     await $`docker rm -f ${workerName}`.quiet().nothrow();
     await removeDir(tempDir);

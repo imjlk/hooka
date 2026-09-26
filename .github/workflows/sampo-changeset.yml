@@ -18,6 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       HOOKA_PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+      HOOKA_PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
 
     steps:
       - name: Check out repository

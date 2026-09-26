@@ -1,6 +1,7 @@
-const uiPort = Number(Bun.env.HOOKA_UI_PORT ?? 4310);
-const apiPort = Number(Bun.env.HOOKA_UI_SMOKE_API_PORT ?? 3000);
-const apiOrigin = Bun.env.HOOKA_UI_API_ORIGIN ?? `http://127.0.0.1:${apiPort}`;
+const uiPort = Number(Bun.env["HOOKA_UI_PORT"] ?? 4310);
+const apiPort = Number(Bun.env["HOOKA_UI_SMOKE_API_PORT"] ?? 3000);
+const apiOrigin =
+  Bun.env["HOOKA_UI_API_ORIGIN"] ?? `http://127.0.0.1:${apiPort}`;
 
 const apiServer = Bun.serve({
   port: apiPort,
