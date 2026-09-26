@@ -104,28 +104,6 @@ jobs:
           ' CHANGELOG.md > release-notes.md
           test -s release-notes.md
 
-      - name: Create Hooka release tag
-        if: steps.hooka_release.outputs.should_publish == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag -a "${{ steps.hooka_release.outputs.tag }}" -m "Hooka ${{ steps.hooka_release.outputs.version }}"
-          git push origin "${{ steps.hooka_release.outputs.tag }}"
-          git remote set-url origin "https://github.com/${GITHUB_REPOSITORY}.git"
-
-      - name: Create GitHub release
-        if: steps.hooka_release.outputs.should_publish == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release create "${{ steps.hooka_release.outputs.tag }}" \
-            --title "Hooka ${{ steps.hooka_release.outputs.version }}" \
-            --notes-file release-notes.md \
-            --latest
-
       - name: Install dependencies
         if: steps.hooka_release.outputs.should_publish == 'true'
         run: bun install --frozen-lockfile
@@ -185,6 +163,31 @@ jobs:
           REGISTRY: ghcr.io/${{ steps.image_repo.outputs.value }}
           HOOKA_IMAGE_VERSION: ${{ steps.hooka_release.outputs.version }}
         run: bun run scripts/publish-versioned-tags.ts
+
+      # Tag and announce the release only after its images are published. If the
+      # image build fails, no tag exists yet, so re-running the workflow publishes
+      # the images instead of seeing the tag and skipping the release entirely.
+      - name: Create Hooka release tag
+        if: steps.hooka_release.outputs.should_publish == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "${{ steps.hooka_release.outputs.tag }}" -m "Hooka ${{ steps.hooka_release.outputs.version }}"
+          git push origin "${{ steps.hooka_release.outputs.tag }}"
+          git remote set-url origin "https://github.com/${GITHUB_REPOSITORY}.git"
+
+      - name: Create GitHub release
+        if: steps.hooka_release.outputs.should_publish == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ steps.hooka_release.outputs.tag }}" \
+            --title "Hooka ${{ steps.hooka_release.outputs.version }}" \
+            --notes-file release-notes.md \
+            --latest
 
       - name: Cleanup matching GHCR prerelease aliases
         if: steps.hooka_release.outputs.should_publish == 'true' && !contains(steps.hooka_release.outputs.version, '-')

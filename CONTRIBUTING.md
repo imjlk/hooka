@@ -53,6 +53,7 @@ The Bun version is pinned once through `packageManager` in the root `package.jso
 - CI also requires a changeset for `.sampo/config.toml` and `.github/workflows/sampo-release.yml` changes.
 - After changesets merge to `main`, the Sampo workflow opens or updates the `Release Hooka` PR.
 - Merge the release PR to publish the GitHub release, `vX.Y.Z` tag, and immutable GHCR image aliases.
+- The release workflow publishes the images and immutable aliases first and only then creates the `vX.Y.Z` tag and GitHub release, so a failed image build leaves no tag behind and can be retried by re-running the workflow.
 
 ## Pull requests
 
