@@ -1,6 +1,12 @@
 .git
 .github
 .hooka
+# Local env files hold real secrets. `COPY . .` would bake them into the image
+# layers, and Bun auto-loads /app/.env at runtime, silently filling in any
+# setting the operator did not pass to the container.
+.env
+.env.*
+!.env.example
 node_modules
 coverage
 .cache

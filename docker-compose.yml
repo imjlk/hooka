@@ -13,6 +13,7 @@ services:
       HOOKA_TARGETS_PATH: /app/.hooka/targets.json
       HOOKA_INSTALLED_CAPABILITIES: wrangler
       HOOKA_PORT: "3000"
+      HOOKA_RUN_MAX_ATTEMPTS: "${HOOKA_RUN_MAX_ATTEMPTS:-3}"
     volumes:
       - hooka-data:/data
       - ./.hooka:/app/.hooka
@@ -39,12 +40,14 @@ services:
         HOOKA_IMAGE_LABEL: hooka:local-cf-pages
         HOOKA_RUNTIME_ROLE: cf-pages
         HOOKA_INSTALLED_CAPABILITIES: wrangler
+    # Let an in-flight deploy finish before Docker sends SIGKILL.
+    stop_grace_period: 2m
+    # The worker never reads HOOKA_WEBHOOK_SECRET or HOOKA_ADMIN_TOKEN; keep
+    # them away from the tools it runs.
     environment:
       HOOKA_DB_PATH: /data/hooka.sqlite
-      HOOKA_WEBHOOK_SECRET: ${HOOKA_WEBHOOK_SECRET}
       HOOKA_POLL_INTERVAL_MS: "2000"
       HOOKA_RUN_LEASE_MS: "900000"
-      HOOKA_RUN_MAX_ATTEMPTS: "${HOOKA_RUN_MAX_ATTEMPTS:-3}"
       HOOKA_RETRY_BASE_DELAY_MS: "${HOOKA_RETRY_BASE_DELAY_MS:-5000}"
       HOOKA_WORKER_HEARTBEAT_MS: "${HOOKA_WORKER_HEARTBEAT_MS:-10000}"
       HOOKA_TARGETS_PATH: /app/.hooka/targets.json

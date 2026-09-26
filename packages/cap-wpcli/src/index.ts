@@ -12,7 +12,19 @@ export const wpcliCapability = defineCapability({
   docker: {
     feature: "wpcli",
     installScript: "docker/features/wpcli.sh",
-    packages: ["php-cli", "curl", "bash"],
+    packages: [
+      "php-cli",
+      "php-phar",
+      "php-mysqli",
+      "php-mbstring",
+      "php-openssl",
+      "php-curl",
+      "php-iconv",
+      "php-ctype",
+      "php-tokenizer",
+      "curl",
+      "bash",
+    ],
   },
   tasks: ["wordpress.wpcli.eval"],
 });
