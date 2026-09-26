@@ -84,6 +84,10 @@ async function runScenario(input: {
   const secret = "e2e-secret";
   const adminToken = "e2e-admin-token";
 
+  // Create the bind-mounted data dir as the host user. Otherwise Docker creates
+  // it as root, and on Linux the host cannot delete the root-owned SQLite and
+  // mock-wrangler files the containers write into it.
+  await ensureDir(dataDir);
   await ensureDir(exportDir);
   await Bun.write(join(exportDir, "index.html"), "<html>ok</html>");
   await Bun.write(join(exportDir, "about.html"), "<html>about</html>");
