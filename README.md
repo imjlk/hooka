@@ -196,7 +196,7 @@ Manifest resolution precedence:
 2. Otherwise `HOOKA_MANIFEST_PATH` is used when set.
 3. Otherwise Hooka reads a generated repo-local manifest at `.hooka/installed-capabilities.json`.
 
-The tracked file under [`docker/manifests/installed-capabilities.example.json`](/Users/imjlk/repos/imjlk/hooka/docker/manifests/installed-capabilities.example.json) is now example-only and should not be used as a writable runtime target.
+The tracked file under [`docker/manifests/installed-capabilities.example.json`](./docker/manifests/installed-capabilities.example.json) is now example-only and should not be used as a writable runtime target.
 
 Targets resolve from `.hooka/targets.json` by default, or from `HOOKA_TARGETS_PATH` when set.
 
@@ -236,7 +236,7 @@ Planned presets are documented but not published in registry APIs or GHCR releas
 - `GET /api/ready` returns readiness for deployment platforms and fails when the SQLite store is not ready.
 - `POST /api/runs` enqueues a task run. This route requires the admin bearer token and rejects oversized bodies with `413`.
 - `POST /api/runs/:id/retry` retries a terminal run by enqueueing a new run.
-- `POST /api/webhooks/task` verifies an HMAC-signed generic or target-based webhook and enqueues any registered task.
+- `POST /api/webhooks/task` verifies an HMAC-signed generic or target-based webhook and enqueues any registered task. Webhook routes also accept the raw `HOOKA_WEBHOOK_SECRET` as `Authorization: Bearer <secret>` or `x-hooka-webhook-secret` for internal producers such as TrailBase; that path skips the HMAC timestamp window, so prefer HMAC signatures for producers on untrusted networks.
 - `POST /api/webhooks/wordpress/simply-static` remains as a compatibility alias for the first producer example.
 - `GET /api/runs` returns recent runs.
 - `GET /api/runs/:id` returns run detail and event history.
@@ -247,7 +247,7 @@ Planned presets are documented but not published in registry APIs or GHCR releas
 - `GET /api/events/stream` emits SSE updates for run events and worker heartbeats when called with a valid ticket.
 - `GET /api/openapi.json` exposes a machine-readable OpenAPI 3.1 document.
 - All admin/read APIs except `/api/health` and `/api/ready` require `Authorization: Bearer <HOOKA_ADMIN_TOKEN>`.
-- If `HOOKA_ADMIN_TOKEN` or `HOOKA_WEBHOOK_SECRET` is missing, the affected routes now return `503` so deployment misconfiguration is distinguishable from bad client credentials.
+- The server refuses to start when `HOOKA_ADMIN_TOKEN` or `HOOKA_WEBHOOK_SECRET` is missing. When the fetch handler is embedded without one of them, the affected routes return `503` so deployment misconfiguration is distinguishable from bad client credentials.
 - API routes are protected by in-memory per-client and global rate limiting by default.
 - Cross-origin API access is disabled by default and can be enabled with `HOOKA_CORS_ORIGINS`.
 - `HOOKA_TRUST_PROXY=true` should only be enabled when Hooka is behind a trusted reverse proxy that sets `X-Forwarded-For`. When it is `false`, Hooka ignores forwarded client IP headers entirely.
@@ -317,7 +317,7 @@ Hooka's default model is `signed webhook -> queue -> worker -> wrangler CLI`. Wo
 
 ## Role Tags
 
-- `webhook-server` serves the webhook ingress, admin UI, and run APIs. It only needs `/data`, `HOOKA_WEBHOOK_SECRET`, and optionally `HOOKA_INSTALLED_CAPABILITIES` so the UI mirrors the paired worker role.
+- `webhook-server` serves the webhook ingress, admin UI, and run APIs. It needs `/data`, `HOOKA_WEBHOOK_SECRET`, `HOOKA_ADMIN_TOKEN`, and optionally `HOOKA_INSTALLED_CAPABILITIES` so the UI mirrors the paired worker role. Workers do not read either secret, so keep both out of worker environments.
 - `cf-pages` is the lean worker for `deploy.shared-volume.wrangler` and `cloudflare.pages.deploy`. It needs `/data`, `/shared-source`, `CLOUDFLARE_API_TOKEN`, and `CLOUDFLARE_ACCOUNT_ID`.
 - `cf-cache` is the lean worker for `cloudflare.cache.purge.urls`. It needs `CLOUDFLARE_API_TOKEN`, and the task receives `zoneId` plus a URL list payload.
 - `rclone-sync` is the lean worker for `rclone.copy.directory`. It needs `RCLONE_CONFIG` or `RCLONE_CONFIG_FILE`, and the task copies a local directory to a configured remote destination.

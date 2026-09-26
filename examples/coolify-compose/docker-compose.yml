@@ -5,9 +5,13 @@ services:
       - "3000:3000"
     environment:
       HOOKA_DB_PATH: /data/hooka.sqlite
-      HOOKA_WEBHOOK_SECRET: change-me
+      # The server refuses to start without both secrets.
+      HOOKA_WEBHOOK_SECRET: ${HOOKA_WEBHOOK_SECRET:?}
+      HOOKA_ADMIN_TOKEN: ${HOOKA_ADMIN_TOKEN:?}
       HOOKA_INSTALLED_CAPABILITIES: wrangler
       HOOKA_PORT: "3000"
+      # Coolify fronts the service with its reverse proxy.
+      HOOKA_TRUST_PROXY: "true"
     volumes:
       - hooka-data:/data
 
@@ -15,13 +19,14 @@ services:
     # configure GHCR registry credentials in Coolify before pulling this image.
   hooka-worker:
     image: ghcr.io/imjlk/hooka:cf-pages
+    # Give an in-flight deploy time to finish before Docker sends SIGKILL.
+    stop_grace_period: 2m
     environment:
       HOOKA_DB_PATH: /data/hooka.sqlite
-      HOOKA_WEBHOOK_SECRET: change-me
       HOOKA_POLL_INTERVAL_MS: "2000"
       HOOKA_RUN_LEASE_MS: "900000"
-      CLOUDFLARE_API_TOKEN: ${CLOUDFLARE_API_TOKEN}
-      CLOUDFLARE_ACCOUNT_ID: ${CLOUDFLARE_ACCOUNT_ID}
+      CLOUDFLARE_API_TOKEN: ${CLOUDFLARE_API_TOKEN:?}
+      CLOUDFLARE_ACCOUNT_ID: ${CLOUDFLARE_ACCOUNT_ID:?}
     volumes:
       - hooka-data:/data
       - shared-source:/shared-source
