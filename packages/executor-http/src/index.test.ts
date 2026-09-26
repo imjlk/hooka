@@ -175,3 +175,35 @@ test("runHttpTask reports timeout failures as retryable", async () => {
     summary: "HTTP execution for test.http.task timed out after 5ms.",
   });
 });
+
+test("runHttpTask only retries statuses that can succeed later", async () => {
+  const outcomes: Array<[number, boolean]> = [];
+
+  for (const status of [400, 401, 403, 404, 408, 429, 500, 502, 503]) {
+    globalThis.fetch = (async () =>
+      new Response("response", {
+        status,
+      })) as unknown as typeof fetch;
+
+    const result = await runHttpTask(
+      httpTask,
+      {
+        project: "site-a",
+      },
+      false,
+    );
+    outcomes.push([status, result.retryable ?? false]);
+  }
+
+  expect(outcomes).toEqual([
+    [400, false],
+    [401, false],
+    [403, false],
+    [404, false],
+    [408, true],
+    [429, true],
+    [500, true],
+    [502, true],
+    [503, true],
+  ]);
+});
