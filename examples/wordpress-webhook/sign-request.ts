@@ -23,27 +23,23 @@ const signature = createHmac("sha256", webhookSecret)
   .update(`${timestamp}.${rawBody}`)
   .digest("hex");
 
+// Print plain text rather than JSON: JSON-escaping would add backslashes to
+// every quote, and a copied body would no longer match the signature.
+console.log(`endpoint: ${baseUrl}/api/webhooks/task`);
+console.log(`x-hooka-timestamp: ${timestamp}`);
+console.log(`x-hooka-signature: sha256=${signature}`);
+console.log("");
+console.log("rawBody (send exactly this line):");
+console.log(rawBody);
+console.log("");
+console.log("curl:");
 console.log(
-  JSON.stringify(
-    {
-      endpoint: "/api/webhooks/task",
-      headers: {
-        "x-hooka-timestamp": timestamp,
-        "x-hooka-signature": `sha256=${signature}`,
-      },
-      // Send this string byte for byte; re-serializing the JSON changes the
-      // signature input.
-      rawBody,
-      curl: [
-        "curl -sS -X POST",
-        `'${baseUrl}/api/webhooks/task'`,
-        "-H 'content-type: application/json'",
-        `-H 'x-hooka-timestamp: ${timestamp}'`,
-        `-H 'x-hooka-signature: sha256=${signature}'`,
-        `--data-raw '${rawBody}'`,
-      ].join(" "),
-    },
-    null,
-    2,
-  ),
+  [
+    "curl -sS -X POST",
+    `'${baseUrl}/api/webhooks/task'`,
+    "-H 'content-type: application/json'",
+    `-H 'x-hooka-timestamp: ${timestamp}'`,
+    `-H 'x-hooka-signature: sha256=${signature}'`,
+    `--data-raw '${rawBody}'`,
+  ].join(" "),
 );
