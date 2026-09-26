@@ -470,7 +470,11 @@ export function resolveTargetEditorSync(
   target: Target | null;
   refillEditor: boolean;
 } {
-  if (editor.creating && !options.explicit) {
+  // An edited editor that is not bound to a target is a draft too, for
+  // example the scaffold shown while no targets existed.
+  const unboundDraft =
+    editor.creating || (editor.dirty && editor.activeTargetId === null);
+  if (unboundDraft && !options.explicit) {
     return {
       activeTargetId: null,
       target: null,
@@ -491,17 +495,18 @@ export function resolveTargetEditorSync(
 }
 
 /**
- * Runs `task` at most once per `delayMs`, however often it is requested, and
- * never twice at the same time. A request that arrives while a run is in
- * flight triggers one more run afterwards.
+ * Runs `task` soon after it is requested, but starts it at most once per
+ * `minIntervalMs` and never twice at the same time. Requests in between are
+ * merged into one follow-up run.
  */
 export function createCoalescedTask(
   task: () => Promise<void>,
-  delayMs: number,
+  minIntervalMs: number,
 ): () => void {
   let timer: ReturnType<typeof setTimeout> | null = null;
   let running = false;
   let pending = false;
+  let lastStartedAt = Number.NEGATIVE_INFINITY;
 
   const run = async (): Promise<void> => {
     timer = null;
@@ -511,6 +516,7 @@ export function createCoalescedTask(
     }
 
     running = true;
+    lastStartedAt = Date.now();
     try {
       await task();
     } finally {
@@ -527,10 +533,59 @@ export function createCoalescedTask(
       return;
     }
 
+    const waitMs = Math.max(0, lastStartedAt + minIntervalMs - Date.now());
     timer = setTimeout(() => {
       void run();
-    }, delayMs);
+    }, waitMs);
   };
 
   return schedule;
+}
+
+export type EventStreamUpdate = {
+  events: unknown[];
+  auditSequence: number;
+  workers: Summary["workers"];
+};
+
+export function parseEventStreamUpdate(data: string): EventStreamUpdate | null {
+  try {
+    const parsed = JSON.parse(data) as Partial<EventStreamUpdate>;
+    if (
+      !Array.isArray(parsed.events) ||
+      typeof parsed.auditSequence !== "number" ||
+      !Array.isArray(parsed.workers)
+    ) {
+      return null;
+    }
+
+    return parsed as EventStreamUpdate;
+  } catch {
+    return null;
+  }
+}
+
+/** Reads `auditSequence` from a `ready` or `update` event payload. */
+export function readAuditSequence(data: string): number | null {
+  try {
+    const parsed = JSON.parse(data) as { auditSequence?: unknown };
+    return typeof parsed.auditSequence === "number"
+      ? parsed.auditSequence
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Most live updates only carry fresher worker heartbeats. Those can be applied
+ * from the event itself instead of refetching the whole dashboard.
+ */
+export function isHeartbeatOnlyUpdate(
+  update: EventStreamUpdate,
+  lastAuditSequence: number | null,
+): boolean {
+  return (
+    update.events.length === 0 && update.auditSequence === lastAuditSequence
+  );
 }
