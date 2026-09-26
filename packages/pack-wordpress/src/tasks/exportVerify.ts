@@ -2,6 +2,7 @@ import { defineTask } from "@hooka/task-sdk";
 import type { Stats } from "node:fs";
 import { stat } from "node:fs/promises";
 import { z } from "zod";
+import { isAbsolute, relative, resolve } from "node:path";
 
 export const exportVerifyInput = z.object({
   exportDir: z.string().default("/shared-source/simply-static"),
@@ -47,10 +48,18 @@ export const exportVerifyTask = defineTask({
       }
 
       let htmlFiles = 0;
-      for await (const _match of new Bun.Glob(input.pattern).scan({
+      for await (const match of new Bun.Glob(input.pattern).scan({
         cwd: input.exportDir,
         absolute: false,
       })) {
+        // Count only files inside exportDir, whatever the pattern expands to.
+        const pathFromExport = relative(
+          input.exportDir,
+          resolve(input.exportDir, match),
+        );
+        if (pathFromExport.startsWith("..") || isAbsolute(pathFromExport)) {
+          continue;
+        }
         htmlFiles += 1;
       }
 
