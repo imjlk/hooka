@@ -12,7 +12,24 @@ const webhookIngressResponses = {
   503: { description: "Server is missing HOOKA_WEBHOOK_SECRET." },
 };
 
-export function createOpenApiDocument() {
+export interface OpenApiDocumentOptions {
+  webhookAdapters?: Array<{ id: string; routePath: string }>;
+}
+
+export function createOpenApiDocument(options: OpenApiDocumentOptions = {}) {
+  const adapterPaths = Object.fromEntries(
+    (options.webhookAdapters ?? []).map((adapter) => [
+      adapter.routePath,
+      {
+        post: {
+          summary: `Compatibility webhook for ${adapter.id}`,
+          security: [{ webhookSignature: [] }],
+          responses: webhookIngressResponses,
+        },
+      },
+    ]),
+  );
+
   return {
     openapi: "3.1.0",
     info: {
@@ -236,7 +253,7 @@ export function createOpenApiDocument() {
           summary: "Create a target",
           security: [{ bearerAuth: [] }],
           responses: {
-            200: { description: "Target created" },
+            201: { description: "Target created" },
             400: { description: "Invalid target" },
             409: { description: "Target conflict" },
             ...adminAuthResponses,
@@ -365,13 +382,7 @@ export function createOpenApiDocument() {
           responses: webhookIngressResponses,
         },
       },
-      "/api/webhooks/wordpress/simply-static": {
-        post: {
-          summary: "Compatibility alias for WordPress Simply Static webhooks",
-          security: [{ webhookSignature: [] }],
-          responses: webhookIngressResponses,
-        },
-      },
+      ...adapterPaths,
     },
   };
 }
