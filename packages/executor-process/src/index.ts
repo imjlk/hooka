@@ -89,13 +89,25 @@ export const bunCommandRunner: CommandRunner = async ({
   clearTimeout(timeoutTimer);
   clearTimeout(killTimer);
 
+  if (timedOut) {
+    // The group leader is gone, but a descendant that ignores SIGTERM (and
+    // may have closed its output) would keep running after the task has
+    // already been reported as timed out.
+    signalProcessGroup(subprocess.pid, "SIGKILL");
+  }
+
   // Descendants that outlive the child (for example `cmd &`) keep the pipes
   // open. Give the output a short drain window, then stop what is left of the
-  // group and return whatever was captured.
+  // group and return whatever was captured. The timer is cleared as soon as
+  // the output closes so it cannot keep a short-lived process (the CLI) alive.
+  let drainTimer: ReturnType<typeof setTimeout> | undefined;
   const drained = await Promise.race([
     Promise.all([stdout.done, stderr.done]).then(() => true),
-    Bun.sleep(outputDrainMs).then(() => false),
+    new Promise<false>((resolve) => {
+      drainTimer = setTimeout(() => resolve(false), outputDrainMs);
+    }),
   ]);
+  clearTimeout(drainTimer);
 
   if (!drained) {
     signalProcessGroup(subprocess.pid, "SIGKILL");
@@ -246,10 +258,12 @@ export async function runProcessTask<TSchema extends TaskInputSchema>(
     const result = await (options.commandRunner ?? bunCommandRunner)({
       command,
       cwd: executor.cwd?.(context),
-      env: {
-        ...withoutWithheldEnv(env),
+      // Filter the merged env so an executor.env override that spreads the
+      // worker env cannot bring the withheld secrets back.
+      env: withoutWithheldEnv({
+        ...env,
         ...executor.env?.(context),
-      },
+      }),
       timeoutMs,
     });
 

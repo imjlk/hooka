@@ -316,3 +316,85 @@ test("runProcessTask withholds Hooka secrets from spawned tools", async () => {
     CLOUDFLARE_API_TOKEN: "cf-token",
   });
 });
+
+test("bunCommandRunner kills descendants that outlive a timed-out leader", async () => {
+  // The leader dies on SIGTERM; the background subshell ignores SIGTERM and
+  // closes its output, so neither the exit nor the output drain waits on it.
+  const result = await bunCommandRunner({
+    command: [
+      "sh",
+      "-c",
+      "(trap '' TERM; exec >/dev/null 2>&1; while :; do sleep 0.05; done) & echo $!; wait",
+    ],
+    env: Bun.env as Record<string, string | undefined>,
+    timeoutMs: 200,
+    killGraceMs: 10_000,
+  });
+  const descendantPid = Number(result.stdout.trim());
+
+  expect(result.timedOut).toBe(true);
+  expect(Number.isInteger(descendantPid) && descendantPid > 0).toBe(true);
+  await Bun.sleep(100);
+  expect(isProcessAlive(descendantPid)).toBe(false);
+});
+
+test("bunCommandRunner does not keep a short-lived caller alive", async () => {
+  const runnerModule = new URL("./index.ts", import.meta.url).pathname;
+  const startedAt = performance.now();
+  const child = Bun.spawn(
+    [
+      process.execPath,
+      "-e",
+      `const { bunCommandRunner } = await import(${JSON.stringify(runnerModule)}); await bunCommandRunner({ command: ["true"], env: {}, timeoutMs: 10_000 });`,
+    ],
+    { stdout: "pipe", stderr: "pipe" },
+  );
+
+  expect(await child.exited).toBe(0);
+  // Without clearing the drain timer the caller lingered for outputDrainMs (2s).
+  expect(performance.now() - startedAt).toBeLessThan(1_500);
+});
+
+test("runProcessTask withholds Hooka secrets even from executor env overrides", async () => {
+  let childEnv: Record<string, string | undefined> = {};
+  const overrideTask = defineTask({
+    id: processTask.id,
+    title: processTask.title,
+    input: processTask.input,
+    requires: processTask.requires,
+    executor: {
+      kind: "process",
+      command: "wrangler",
+      args: ({ input }) => ["pages", "deploy", input.exportDir],
+      env: ({ env }) => ({ ...env, EXTRA: "1" }),
+    },
+  });
+
+  await runProcessTask(
+    overrideTask,
+    {
+      exportDir: "/shared-source/site",
+    },
+    false,
+    {
+      env: {
+        PATH: "/usr/bin",
+        HOOKA_ADMIN_TOKEN: "admin-token",
+        HOOKA_WEBHOOK_SECRET: "webhook-secret",
+      },
+      commandRunner: async ({ env }) => {
+        childEnv = env;
+        return {
+          stdout: "",
+          stderr: "",
+          exitCode: 0,
+        };
+      },
+    },
+  );
+
+  expect(childEnv).toEqual({
+    PATH: "/usr/bin",
+    EXTRA: "1",
+  });
+});
