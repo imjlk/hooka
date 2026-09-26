@@ -38,6 +38,7 @@ const serverConfigSchema = z.object({
   adminToken: z.string().min(1).optional(),
   maxAttempts: z.number().int().positive(),
   trustProxy: z.boolean(),
+  trustedProxyHops: z.number().int().nonnegative(),
   rateLimitWindowMs: z.number().int().positive(),
   apiRateLimit: z.number().int().positive(),
   webhookRateLimit: z.number().int().positive(),
@@ -197,6 +198,7 @@ export function createServerConfig(
 ): ServerConfig {
   const cwd = input.cwd ?? process.cwd();
   const env = input.env ?? (Bun.env as EnvRecord);
+  const trustedProxyHops = parseTrustProxyEnv(env["HOOKA_TRUST_PROXY"]);
 
   return serverConfigSchema.parse({
     port: parseNumberEnv(env["HOOKA_PORT"], defaultServerPort, "HOOKA_PORT"),
@@ -209,11 +211,8 @@ export function createServerConfig(
       defaultRunMaxAttempts,
       "HOOKA_RUN_MAX_ATTEMPTS",
     ),
-    trustProxy: parseBooleanEnv(
-      env["HOOKA_TRUST_PROXY"],
-      false,
-      "HOOKA_TRUST_PROXY",
-    ),
+    trustProxy: trustedProxyHops > 0,
+    trustedProxyHops,
     rateLimitWindowMs: parseNumberEnv(
       env["HOOKA_RATE_LIMIT_WINDOW_MS"],
       defaultRateLimitWindowMs,
@@ -361,26 +360,31 @@ function parseNumberEnv(
   return parsed;
 }
 
-function parseBooleanEnv(
-  raw: string | undefined,
-  fallback: boolean,
-  envName: string,
-): boolean {
+/**
+ * `HOOKA_TRUST_PROXY` is off (`false`/`0`), one trusted reverse proxy
+ * (`true`/`1`), or the number of trusted proxies in front of Hooka (`2`, …),
+ * for example Cloudflare in front of Coolify's proxy.
+ */
+function parseTrustProxyEnv(raw: string | undefined): number {
   if (!raw || raw.trim().length === 0) {
-    return fallback;
+    return 0;
   }
 
   const normalized = raw.trim().toLowerCase();
-  if (normalized === "true" || normalized === "1") {
-    return true;
+  if (normalized === "true") {
+    return 1;
   }
 
-  if (normalized === "false" || normalized === "0") {
-    return false;
+  if (normalized === "false") {
+    return 0;
+  }
+
+  if (/^\d+$/.test(normalized)) {
+    return Number(normalized);
   }
 
   throw new Error(
-    `Invalid boolean value for ${envName}: ${raw}. Use true/false or 1/0.`,
+    `Invalid value for HOOKA_TRUST_PROXY: ${raw}. Use true/false, or the number of trusted proxies in front of Hooka.`,
   );
 }
 

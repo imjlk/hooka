@@ -17,6 +17,7 @@ async function createTestServerApp(
     maxBodyBytes?: number;
     corsOrigins?: string[];
     webhookSecret?: string | null;
+    trustedProxyHops?: number;
   } = {},
 ) {
   const tempDir = await createTempDir("hooka-server-test");
@@ -66,6 +67,7 @@ async function createTestServerApp(
       runStore,
       targetsPath,
       trustProxy: input.trustProxy ?? false,
+      trustedProxyHops: input.trustedProxyHops,
       uiDistDir,
       webhookRateLimit: input.webhookRateLimit ?? 60,
       webhookSecret,
@@ -994,6 +996,7 @@ test("rate limit rejections are audited", async () => {
   const app = await createTestServerApp({
     apiRateLimit: 1,
     trustProxy: true,
+    trustedProxyHops: 2,
   });
 
   const first = await app.fetch(

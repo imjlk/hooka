@@ -113,7 +113,7 @@ volumes:
 - read/admin APIs use `Authorization: Bearer <HOOKA_ADMIN_TOKEN>`
 - the admin UI shell is static, but it cannot read protected data without the admin token
 - the admin UI now gets a short-lived SSE ticket from `POST /api/events/ticket` before connecting to `/api/events/stream`
-- set `HOOKA_TRUST_PROXY=true` when Hooka is behind Coolify's public reverse proxy so rate limiting uses the forwarded client IP
+- set `HOOKA_TRUST_PROXY=true` when Hooka is behind Coolify's public reverse proxy so rate limiting uses the forwarded client IP; if Cloudflare (or another proxy) sits in front of Coolify, set it to the number of proxies, for example `HOOKA_TRUST_PROXY=2`
 - leave `HOOKA_CORS_ORIGINS` empty unless the admin UI is intentionally hosted on a different origin
 - target scaffolds can be generated locally with `hooka target scaffold --template shared-volume-pages`
 - audit events are available through the admin UI and `hooka audit list`

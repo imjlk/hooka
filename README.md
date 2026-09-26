@@ -175,8 +175,8 @@ HOOKA_RETENTION_SWEEP_INTERVAL_HOURS=24
 ```
 
 Startup validation is strict for numeric and boolean env values. For example,
-`HOOKA_TRUST_PROXY` must be `true`, `false`, `1`, or `0`, and invalid numeric
-values now fail startup instead of silently falling back.
+`HOOKA_TRUST_PROXY` must be `true`, `false`, or a number of trusted proxies, and
+invalid numeric values now fail startup instead of silently falling back.
 
 Recommended shared source mount:
 
@@ -252,7 +252,7 @@ Planned presets are documented but not published in registry APIs or GHCR releas
 - The server refuses to start when `HOOKA_ADMIN_TOKEN` or `HOOKA_WEBHOOK_SECRET` is missing. When the fetch handler is embedded without one of them, the affected routes return `503` so deployment misconfiguration is distinguishable from bad client credentials.
 - API routes are protected by in-memory per-client and global rate limiting by default.
 - Cross-origin API access is disabled by default and can be enabled with `HOOKA_CORS_ORIGINS`.
-- `HOOKA_TRUST_PROXY=true` should only be enabled when Hooka is behind a trusted reverse proxy that sets `X-Forwarded-For`. When it is `false`, Hooka ignores forwarded client IP headers entirely.
+- `HOOKA_TRUST_PROXY` is `false` by default: rate limits and audit rows use the connecting socket address and ignore forwarded headers. Set it to `true` behind one trusted reverse proxy, or to the number of trusted proxies in front of Hooka (for example `2` for Cloudflare in front of Coolify's proxy). Hooka takes the client address from that position at the right end of `X-Forwarded-For`, so entries a client forges on the left are ignored. Per-client limits are keyed by that address, and repeated security rejections from one client are audited once per rate-limit window with a suppressed count.
 - SSE tickets are single-use and short-lived. A reused or expired ticket returns `401` and is audited with a rejection reason.
 - Unknown `/api/*` paths return a JSON `404` (or `405` with an `Allow` header for a known path), never the admin UI shell, and `HEAD` is answered for every `GET` route. Invalid request data returns `400`; failures reading server-side state such as a corrupt `targets.json` return a logged `500`.
 
