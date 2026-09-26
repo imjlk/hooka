@@ -145,27 +145,20 @@ export function createHookaFetchHandler(options: HookaServerAppOptions) {
 
   return async function fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
-    // HEAD is served by the matching GET route without a body. The event
-    // stream is excluded: it would consume a ticket and open a stream.
+    // HEAD is served by the matching GET route; Bun.serve drops the body but
+    // keeps the GET representation's headers, including Content-Length. The
+    // event stream is excluded: it would consume a ticket and open a stream.
     const routeMethod =
       request.method === "HEAD" && url.pathname !== eventStreamPath
         ? "GET"
         : request.method;
     const respond = (response: Response): Response => {
-      const corsResponse = applyCorsHeaders(
+      return applyCorsHeaders(
         request,
         url.pathname,
         response,
         options.corsOrigins,
       );
-
-      return request.method === "HEAD"
-        ? new Response(null, {
-            status: corsResponse.status,
-            statusText: corsResponse.statusText,
-            headers: corsResponse.headers,
-          })
-        : corsResponse;
     };
 
     try {
@@ -1252,7 +1245,7 @@ function createCorsPreflightResponse(
     status: 204,
     headers: withSecurityHeaders({
       "access-control-allow-origin": origin,
-      "access-control-allow-methods": "GET,POST,PUT,DELETE,OPTIONS",
+      "access-control-allow-methods": "GET,HEAD,POST,PUT,DELETE,OPTIONS",
       "access-control-allow-headers": "authorization,content-type",
       "access-control-max-age": "600",
       vary: "origin",

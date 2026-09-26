@@ -11,7 +11,11 @@ const adminHeaders = {
 };
 
 async function createRoutingTestApp(
-  input: { eventStreamKeepaliveMs?: number; logger?: Logger } = {},
+  input: {
+    corsOrigins?: string[];
+    eventStreamKeepaliveMs?: number;
+    logger?: Logger;
+  } = {},
 ) {
   const tempDir = await createTempDir("hooka-server-routing");
   const manifestPath = join(tempDir, "installed-capabilities.json");
@@ -41,7 +45,7 @@ async function createRoutingTestApp(
       adminToken: "admin-token",
       apiRateLimit: 1_000,
       capabilityManifestPath: manifestPath,
-      corsOrigins: [],
+      corsOrigins: input.corsOrigins ?? [],
       defaultMaxAttempts: 3,
       eventStreamKeepaliveMs: input.eventStreamKeepaliveMs,
       globalApiRateLimit: 10_000,
@@ -110,24 +114,56 @@ test("known API paths with the wrong method return 405 with Allow", async () => 
   app.runStore.close();
 });
 
-test("HEAD requests follow the GET route without a body", async () => {
+test("HEAD requests follow the GET route and keep its Content-Length", async () => {
   const app = await createRoutingTestApp();
+  // Bun.serve drops the body of HEAD responses while keeping their headers,
+  // so exercise the handler through a real server.
+  const server = Bun.serve({ port: 0, fetch: app.fetch });
 
-  const health = await app.fetch(
-    new Request("http://hooka.local/api/health", {
+  try {
+    const get = await fetch(`http://127.0.0.1:${server.port}/api/health`);
+    const getBody = await get.text();
+    const head = await fetch(`http://127.0.0.1:${server.port}/api/health`, {
       method: "HEAD",
+    });
+
+    expect(head.status).toBe(200);
+    expect(await head.text()).toBe("");
+    expect(head.headers.get("content-length")).toBe(
+      String(Buffer.byteLength(getBody)),
+    );
+
+    app.runStore.close();
+    const ready = await fetch(`http://127.0.0.1:${server.port}/api/ready`, {
+      method: "HEAD",
+    });
+    expect(ready.status).toBe(503);
+  } finally {
+    server.stop(true);
+  }
+});
+
+test("CORS preflights allow HEAD", async () => {
+  const app = await createRoutingTestApp({
+    corsOrigins: ["https://admin.example.com"],
+  });
+
+  const preflight = await app.fetch(
+    new Request("http://hooka.local/api/runs", {
+      method: "OPTIONS",
+      headers: {
+        origin: "https://admin.example.com",
+        "access-control-request-method": "HEAD",
+      },
     }),
   );
-  expect(health.status).toBe(200);
-  expect(await health.text()).toBe("");
+
+  expect(preflight.status).toBe(204);
+  expect(preflight.headers.get("access-control-allow-methods")).toContain(
+    "HEAD",
+  );
 
   app.runStore.close();
-  const ready = await app.fetch(
-    new Request("http://hooka.local/api/ready", {
-      method: "HEAD",
-    }),
-  );
-  expect(ready.status).toBe(503);
 });
 
 test("invalid request data is a 400, corrupt server state is a logged 500", async () => {
