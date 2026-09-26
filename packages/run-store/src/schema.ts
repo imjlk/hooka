@@ -36,6 +36,7 @@ function createRunStoreTables(db: Database): void {
       next_retry_at text,
       last_error_code text,
       target_policy_json text,
+      claim_token text,
       created_at text not null,
       queued_at text,
       started_at text,
@@ -121,6 +122,7 @@ function migrateRunsTable(db: Database): void {
   ensureColumn(db, columns, "next_retry_at", "text");
   ensureColumn(db, columns, "last_error_code", "text");
   ensureColumn(db, columns, "target_policy_json", "text");
+  ensureColumn(db, columns, "claim_token", "text");
 }
 
 function ensureColumn(
