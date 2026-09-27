@@ -43,6 +43,9 @@ version.
 
 The release workflow runs the Sampo GitHub Action `v0.19.0` and sets up Bun
 before it, because Sampo refuses to prepare a release without Bun on `PATH`.
+Sampo versions each crate separately, so compare releases rather than version
+numbers: action `v0.19.0` shipped in the same release as the Sampo CLI
+`v0.21.0`, and both are built on `sampo-core` `v0.17.0`.
 
 While preparing the release PR, Sampo refreshes `bun.lock` with
 `bun update --lockfile-only --no-save`, which re-resolves every dependency to
