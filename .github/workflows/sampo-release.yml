@@ -27,6 +27,13 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      # Sampo 0.19+ refuses to prepare a release unless Bun is on PATH, because
+      # it refreshes bun.lock while bumping versions.
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: package.json
+
       - name: Configure git credentials for Sampo
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -49,7 +56,7 @@ jobs:
       - name: Run Sampo release automation
         if: steps.changesets.outputs.count != '0'
         id: sampo
-        uses: bruits/sampo/crates/sampo-github-action@537fa0a578ca5c60a6885c5477f3cc7ce161be82 # cargo-sampo-github-action-v0.16.0
+        uses: bruits/sampo/crates/sampo-github-action@d3f4020892ba2a8fd56298e417053bb86736fa88 # cargo-sampo-github-action-v0.19.0
         with:
           command: auto
           base-branch: main
@@ -60,14 +67,39 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # Sampo refreshes bun.lock with `bun update --lockfile-only`, which
+      # re-resolves every dependency to its newest in-range version. Release PRs
+      # are opened with GITHUB_TOKEN, so CI never runs on them, and the release
+      # images would ship those untested resolutions. A release only bumps
+      # Hooka's private root version, so the lockfile the release branch started
+      # from stays valid: restore it on the release PR.
+      - name: Keep the base lockfile on the release PR
+        if: steps.sampo.outputs.released == 'true'
+        shell: bash
+        run: |
+          git fetch --quiet origin \
+            +refs/heads/main:refs/remotes/origin/main \
+            +refs/heads/codex/release:refs/remotes/origin/codex/release
+          # The commit the release branch was cut from, even if main moved on.
+          base="$(git merge-base refs/remotes/origin/main refs/remotes/origin/codex/release)"
+          release_tree="${RUNNER_TEMP}/release-pr"
+          git worktree add --detach "${release_tree}" refs/remotes/origin/codex/release
+          cd "${release_tree}"
+          if git diff --quiet "${base}" HEAD -- bun.lock; then
+            echo "The release PR already uses its base lockfile."
+          else
+            git checkout "${base}" -- bun.lock
+            git -c user.name="github-actions[bot]" \
+              -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+              commit -m "chore(release): keep the base lockfile"
+            git push origin HEAD:codex/release
+          fi
+          cd - >/dev/null
+          git worktree remove --force "${release_tree}"
+
       - name: Clear Sampo git credentials
         if: always()
         run: git remote set-url origin "https://github.com/${GITHUB_REPOSITORY}.git"
-
-      - name: Set up Bun
-        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        with:
-          bun-version-file: package.json
 
       - name: Read Hooka release state
         id: hooka_release
