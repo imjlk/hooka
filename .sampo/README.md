@@ -41,10 +41,14 @@ version.
 
 ## Tooling Notes
 
-The release workflow intentionally pins the Sampo GitHub Action to
-`v0.16.0`. Sampo `0.19+` refreshes `bun.lock` with
-`bun update --lockfile-only --no-save` while it prepares a release, which
-re-resolves every dependency to the newest in-range version. Release PRs are
-opened with `GITHUB_TOKEN`, so CI does not run on them, and those untested
-lockfile upgrades would ship straight into the release images. Upgrade Sampo
-only together with a guard for that behavior.
+The release workflow runs the Sampo GitHub Action `v0.19.0` and sets up Bun
+before it, because Sampo refuses to prepare a release without Bun on `PATH`.
+
+While preparing the release PR, Sampo refreshes `bun.lock` with
+`bun update --lockfile-only --no-save`, which re-resolves every dependency to
+the newest in-range version. Release PRs are opened with `GITHUB_TOKEN`, so CI
+never runs on them, and the release images would ship those untested
+resolutions. The workflow therefore restores the lockfile the release branch
+was cut from ("Keep the base lockfile on the release PR"). A release only
+bumps Hooka's private root version, so that lockfile stays valid. Update
+dependencies through regular PRs, where CI runs.
