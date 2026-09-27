@@ -215,6 +215,30 @@ function isProcessAlive(pid: number): boolean {
   }
 }
 
+async function isZombieProcess(pid: number): Promise<boolean> {
+  const result = await Bun.$`ps -o stat= -p ${pid}`.quiet().nothrow();
+  return result.stdout.toString().trim().startsWith("Z");
+}
+
+/**
+ * A killed process stays visible to `kill(pid, 0)` as a zombie until init
+ * reaps it, which can take a few milliseconds after the runner returns. Wait
+ * for it to be gone (or only a zombie) instead of checking once.
+ */
+async function waitForProcessToStop(
+  pid: number,
+  timeoutMs = 2_000,
+): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (isProcessAlive(pid) && !(await isZombieProcess(pid))) {
+    if (Date.now() >= deadline) {
+      return false;
+    }
+    await Bun.sleep(20);
+  }
+  return true;
+}
+
 test("bunCommandRunner stops the whole process group on timeout", async () => {
   const startedAt = performance.now();
   // The shell prints the pid of a background sleep, then waits on it. Only
@@ -230,7 +254,7 @@ test("bunCommandRunner stops the whole process group on timeout", async () => {
   expect(result.timedOut).toBe(true);
   expect(elapsedMs).toBeLessThan(3_000);
   expect(Number.isInteger(backgroundPid) && backgroundPid > 0).toBe(true);
-  expect(isProcessAlive(backgroundPid)).toBe(false);
+  expect(await waitForProcessToStop(backgroundPid)).toBe(true);
 });
 
 test("bunCommandRunner escalates to SIGKILL when the group ignores SIGTERM", async () => {
@@ -334,8 +358,7 @@ test("bunCommandRunner kills descendants that outlive a timed-out leader", async
 
   expect(result.timedOut).toBe(true);
   expect(Number.isInteger(descendantPid) && descendantPid > 0).toBe(true);
-  await Bun.sleep(100);
-  expect(isProcessAlive(descendantPid)).toBe(false);
+  expect(await waitForProcessToStop(descendantPid)).toBe(true);
 });
 
 test("bunCommandRunner does not keep a short-lived caller alive", async () => {
