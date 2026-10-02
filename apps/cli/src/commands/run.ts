@@ -1,21 +1,21 @@
 import { defineCommand, defineGroup, option } from "@bunli/core";
+import { taskRunStatusSchema } from "@hooka/contracts";
 import { z } from "zod";
+import { createRunClient } from "../lib/run-client";
 import type { CliDefaults } from "../lib/shared";
-import { booleanFlag, withRunStore } from "../lib/shared";
+import { booleanFlag } from "../lib/shared";
 
 export function createRunCommandGroup(defaults: CliDefaults) {
   return defineGroup({
     name: "run",
-    description: "Inspect queued and completed runs from SQLite.",
+    description: "Inspect and retry runs from SQLite or a remote Hooka server.",
     commands: [
       defineCommand({
         name: "retry",
         description:
           "Retry a completed run by enqueueing the same task payload again.",
         options: {
-          db: option(z.string().default(defaults.dbPath), {
-            description: "Path to the Hooka SQLite database.",
-          }),
+          ...createConnectionOptions(defaults),
         },
         handler: async ({ flags, positional }) => {
           const runId = positional[0];
@@ -24,22 +24,16 @@ export function createRunCommandGroup(defaults: CliDefaults) {
             throw new Error("Usage: hooka run retry <run-id>");
           }
 
-          const queued = await withRunStore(flags.db, (runStore) =>
-            runStore.retryRun(runId, {
-              source: "cli.retry",
-            }),
-          );
+          const queued = await clientFromFlags(flags).retryRun(runId);
 
-          console.log(JSON.stringify(queued.response, null, 2));
+          console.log(JSON.stringify(queued, null, 2));
         },
       }),
       defineCommand({
         name: "watch",
         description: "Poll one run until it reaches a terminal state.",
         options: {
-          db: option(z.string().default(defaults.dbPath), {
-            description: "Path to the Hooka SQLite database.",
-          }),
+          ...createConnectionOptions(defaults),
           interval: option(z.coerce.number().int().positive().default(1000), {
             description: "Polling interval in milliseconds.",
           }),
@@ -51,12 +45,11 @@ export function createRunCommandGroup(defaults: CliDefaults) {
             throw new Error("Usage: hooka run watch <run-id>");
           }
 
+          const client = clientFromFlags(flags);
           let lastStatus: string | null = null;
 
           while (true) {
-            const run = await withRunStore(flags.db, (runStore) => {
-              return runStore.getRun(runId);
-            });
+            const run = await client.getRun(runId);
 
             if (!run) {
               throw new Error(`Run not found: ${runId}`);
@@ -90,11 +83,18 @@ export function createRunCommandGroup(defaults: CliDefaults) {
         name: "list",
         description: "List recent queued or completed runs.",
         options: {
-          db: option(z.string().default(defaults.dbPath), {
-            description: "Path to the Hooka SQLite database.",
-          }),
+          ...createConnectionOptions(defaults),
           limit: option(z.coerce.number().int().positive().default(20), {
             description: "Maximum number of runs to return.",
+          }),
+          status: option(taskRunStatusSchema.optional(), {
+            description: "Filter runs by queue or terminal status.",
+          }),
+          "task-id": option(z.string().min(1).optional(), {
+            description: "Filter runs by task id.",
+          }),
+          source: option(z.string().min(1).optional(), {
+            description: "Filter runs by source.",
           }),
           json: booleanFlag({
             description: "Print raw JSON instead of a table.",
@@ -102,8 +102,11 @@ export function createRunCommandGroup(defaults: CliDefaults) {
         },
         handler: async ({ flags }) => {
           const json = flags.json;
-          const runs = await withRunStore(flags.db, (runStore) => {
-            return runStore.listRuns(flags.limit);
+          const runs = await clientFromFlags(flags).listRuns({
+            limit: flags.limit,
+            status: flags.status,
+            taskId: flags["task-id"],
+            source: flags.source,
           });
 
           if (json) {
@@ -126,9 +129,7 @@ export function createRunCommandGroup(defaults: CliDefaults) {
         name: "show",
         description: "Show one run with payload, result, and events.",
         options: {
-          db: option(z.string().default(defaults.dbPath), {
-            description: "Path to the Hooka SQLite database.",
-          }),
+          ...createConnectionOptions(defaults),
         },
         handler: async ({ flags, positional }) => {
           const runId = positional[0];
@@ -137,9 +138,7 @@ export function createRunCommandGroup(defaults: CliDefaults) {
             throw new Error("Usage: hooka run show <run-id>");
           }
 
-          const run = await withRunStore(flags.db, (runStore) => {
-            return runStore.getRun(runId);
-          });
+          const run = await clientFromFlags(flags).getRun(runId);
 
           if (!run) {
             throw new Error(`Run not found: ${runId}`);
@@ -149,5 +148,51 @@ export function createRunCommandGroup(defaults: CliDefaults) {
         },
       }),
     ],
+  });
+}
+
+function createConnectionOptions(defaults: CliDefaults) {
+  return {
+    db: option(z.string().default(defaults.dbPath), {
+      description: "Path to the local SQLite database when --url is omitted.",
+    }),
+    url: option(
+      z
+        .string()
+        .url()
+        .refine((value) => /^https?:\/\//i.test(value), {
+          message: "Hooka server URL must use HTTP or HTTPS.",
+        })
+        .optional(),
+      {
+        description: "Hooka server base URL. Selects remote API mode.",
+      },
+    ),
+    token: option(z.string().min(1).optional(), {
+      description:
+        "Admin bearer token for --url. Falls back to HOOKA_ADMIN_TOKEN.",
+    }),
+    "request-timeout": option(
+      z.coerce.number().int().positive().default(10_000),
+      { description: "Timeout for each remote API request in milliseconds." },
+    ),
+  };
+}
+
+function clientFromFlags(flags: {
+  db: string;
+  url?: string;
+  token?: string;
+  "request-timeout": number;
+}) {
+  if (flags.token && !flags.url) {
+    throw new Error("--token requires --url to select a remote Hooka server.");
+  }
+
+  return createRunClient({
+    dbPath: flags.db,
+    url: flags.url,
+    token: flags.token ?? Bun.env["HOOKA_ADMIN_TOKEN"],
+    requestTimeoutMs: flags["request-timeout"],
   });
 }
