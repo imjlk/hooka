@@ -13,6 +13,7 @@ interface RunClientOptions {
   url?: string;
   token?: string;
   requestTimeoutMs: number;
+  allowInsecureHttp: boolean;
 }
 
 /** An explicit URL selects the API; request failures never open the local DB. */
@@ -22,6 +23,22 @@ export function createRunClient(options: RunClientOptions) {
     schema: z.ZodType<T>,
     method: "GET" | "POST" = "GET",
   ): Promise<T> {
+    const target = new URL(path, options.url);
+    const loopback =
+      target.hostname === "localhost" ||
+      target.hostname === "[::1]" ||
+      /^127(?:\.\d{1,3}){3}$/.test(target.hostname);
+    if (
+      options.token &&
+      target.protocol === "http:" &&
+      !loopback &&
+      !options.allowInsecureHttp
+    ) {
+      throw new Error(
+        "Refusing to send the admin token over remote HTTP. Use an HTTPS URL or explicitly set --allow-insecure-http for a trusted network.",
+      );
+    }
+
     const signal = AbortSignal.timeout(options.requestTimeoutMs);
     const headers = new Headers({ accept: "application/json" });
     if (options.token) {
@@ -29,7 +46,7 @@ export function createRunClient(options: RunClientOptions) {
     }
 
     try {
-      const response = await fetch(new URL(path, options.url), {
+      const response = await fetch(target, {
         method,
         headers,
         signal,
