@@ -176,6 +176,10 @@ function createConnectionOptions(defaults: CliDefaults) {
       z.coerce.number().int().positive().default(10_000),
       { description: "Timeout for each remote API request in milliseconds." },
     ),
+    "allow-insecure-http": booleanFlag({
+      description:
+        "Allow sending the admin token over non-loopback HTTP on a trusted network.",
+    }),
   };
 }
 
@@ -184,6 +188,7 @@ function clientFromFlags(flags: {
   url?: string;
   token?: string;
   "request-timeout": number;
+  "allow-insecure-http": boolean;
 }) {
   if (flags.token && !flags.url) {
     throw new Error("--token requires --url to select a remote Hooka server.");
@@ -194,5 +199,6 @@ function clientFromFlags(flags: {
     url: flags.url,
     token: flags.token ?? Bun.env["HOOKA_ADMIN_TOKEN"],
     requestTimeoutMs: flags["request-timeout"],
+    allowInsecureHttp: flags["allow-insecure-http"],
   });
 }

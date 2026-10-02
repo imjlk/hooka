@@ -340,6 +340,11 @@ server already queued the retry; check the run list before submitting again.
 `run list` supports `--status`, `--task-id`, and `--source` filters in both local
 and remote modes. `--json` keeps the same array output in either mode.
 
+Authenticated remote connections require HTTPS by default. Loopback HTTP
+(`localhost`, `127.x.x.x`, or `[::1]`) is supported for local development. For
+a trusted internal HTTP server, explicitly pass `--allow-insecure-http` to send
+the admin token without transport encryption.
+
 ## Producer examples
 
 Hooka's default model is `signed webhook -> queue -> worker -> wrangler CLI`. WordPress is documented as the first producer example only. In that setup, WordPress owns the export directory and the Hooka worker mounts the same volume at `/shared-source`. See [examples/wordpress-webhook/README.md](./examples/wordpress-webhook/README.md) for a signed generic webhook payload and PHP snippet that you can call after a Simply Static export zip is generated or after a local deploy completes.

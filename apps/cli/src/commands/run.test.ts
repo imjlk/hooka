@@ -393,6 +393,23 @@ test("remote retry does not follow a redirect to another server", async () => {
 });
 
 test.each([
+  { flags: [], mode: "default" },
+  { flags: ["--allow-insecure-http=false"], mode: "explicit false" },
+])("remote HTTP token protection applies with $mode", async ({ flags }) => {
+  const result = await runCli([
+    "list",
+    "--url",
+    "http://hooka.example.invalid",
+    "--token",
+    "admin-token",
+    ...flags,
+  ]);
+
+  expect(result.exitCode).not.toBe(0);
+  expect(result.stderr).toContain("Refusing to send the admin token");
+});
+
+test.each([
   { args: ["list", "--status", "unknown"] },
   { args: ["list", "--url", "ftp://hooka.example.com"] },
   { args: ["list", "--token", "admin-token"] },
