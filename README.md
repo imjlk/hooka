@@ -73,6 +73,7 @@ bun run apps/cli/src/index.ts task enqueue deploy.shared-volume.wrangler --proje
 bun run apps/cli/src/index.ts run list
 bun run apps/cli/src/index.ts run watch <run-id>
 bun run apps/cli/src/index.ts run retry <run-id>
+bun run apps/cli/src/index.ts run list --url https://hooka.example.com --status failed --task-id deploy.shared-volume.wrangler --json
 bun run bake:generate
 bun run dockerfile:generate
 bun run test:e2e:docker
@@ -313,6 +314,31 @@ bun run apps/cli/src/index.ts webhook test \
 Hooka uses Bun's built-in `.env` loading, so the default local flow is to copy
 `.env.example` once and then use the CLI commands above without repeating long
 inline env prefixes.
+
+### Remote run operations
+
+`run list`, `run show`, `run watch`, and `run retry` accept `--url` to use a
+remote server's admin API. Set `HOOKA_ADMIN_TOKEN` or pass `--token` for bearer
+authentication:
+
+```bash
+export HOOKA_ADMIN_TOKEN=your-admin-token
+bun run apps/cli/src/index.ts run list --url https://hooka.example.com --status failed --source wordpress.webhook --json
+bun run apps/cli/src/index.ts run show <run-id> --url https://hooka.example.com
+bun run apps/cli/src/index.ts run watch <run-id> --url https://hooka.example.com
+bun run apps/cli/src/index.ts run retry <run-id> --url https://hooka.example.com
+```
+
+Without `--url`, these commands use the local SQLite database selected by
+`--db` or `HOOKA_DB_PATH`. With `--url`, the database path is ignored and API
+errors fail the command; requests are never retried automatically. Each API
+request has a 10-second timeout, configurable with `--request-timeout` in
+milliseconds. `run watch` polls until the run is terminal and exits with status
+1 for failed or dead-lettered runs. A timeout during `run retry` can mean the
+server already queued the retry; check the run list before submitting again.
+
+`run list` supports `--status`, `--task-id`, and `--source` filters in both local
+and remote modes. `--json` keeps the same array output in either mode.
 
 ## Producer examples
 
