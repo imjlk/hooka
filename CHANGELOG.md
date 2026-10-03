@@ -8,6 +8,16 @@ Historical release notes before Sampo adoption live in:
 - [`1.0.0`](./docs/releases/1.0.0.md)
 - [`1.0.0-rc.1`](./docs/releases/1.0.0-rc.1.md)
 
+## 1.2.0 — 2026-10-03
+
+### Minor changes
+
+- [6f73c0c](https://github.com/imjlk/hooka/commit/6f73c0c6c9af61fcf88d1edf1c859adfc9315b1d) Inspect, watch, and retry runs on a remote Hooka server with `run list/show/watch/retry --url`, admin token authentication, and bounded request timeouts. Authenticated remote connections require HTTPS unless `--allow-insecure-http` is explicitly set; local loopback HTTP remains supported. Filter run lists by status, task id, and source in both local SQLite and remote API modes. — Thanks @imjlk!
+
+### Changed
+
+- [1c88681](https://github.com/imjlk/hooka/commit/1c886810045ad48e6c2e3830e6bf5386b151d5ac) Run releases with the Sampo GitHub Action 0.19.0. Release PRs now keep the lockfile they were cut from, instead of the dependency re-resolution Sampo performs while bumping versions, so release images never ship dependency versions that CI has not tested. Also fix a flaky process executor test. — Thanks @imjlk!
+
 ## 1.1.2 — 2026-09-27
 
 ### Fixed
