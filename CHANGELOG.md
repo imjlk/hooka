@@ -8,6 +8,12 @@ Historical release notes before Sampo adoption live in:
 - [`1.0.0`](./docs/releases/1.0.0.md)
 - [`1.0.0-rc.1`](./docs/releases/1.0.0-rc.1.md)
 
+## 1.4.0 — 2026-10-04
+
+### Minor changes
+
+- [8f9d163](https://github.com/imjlk/hooka/commit/8f9d163242a6deb6e6ee6bc0d6a659a9ee64ed43) Add offline Sharelink config validation, matching previews, sanitized operational status, bounded refresh planning and idempotent scheduler ticks. Coalesce active queue work across ticks with an additive SQLite column, renew product detail caches before expiry, and provide a fail-closed consumer reader. Cover signed webhooks, two app queues sharing product volumes, crash recovery and quota pause with an isolated Docker Compose E2E harness. — Thanks @imjlk!
+
 ## 1.3.0 — 2026-10-04
 
 ### Minor changes
