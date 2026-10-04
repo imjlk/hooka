@@ -1,4 +1,4 @@
-# Proposal/example: publish the preset release before pulling these image tags.
+# Requires released Hooka 1.4.0+; see .env.example and the deployment guide.
 # Copy the same template into each consumer stack. Queue volumes remain local;
 # the product store and output volumes are shared on the SAME Docker host.
 services:
@@ -21,7 +21,12 @@ services:
       - sharelink_queue:/data
       - sharelink_private:/sharelink-private
       - sharelink_results:/sharelink-results
-      - ./sharelink-config:/sharelink-config:ro
+      - type: bind
+        source: ${SHARELINK_CONFIG_DIR:-./sharelink-config}
+        target: /sharelink-config
+        read_only: true
+        bind:
+          create_host_path: false
     environment:
       HOOKA_DB_PATH: /data/hooka.sqlite
       HOOKA_RUN_MAX_ATTEMPTS: "5"

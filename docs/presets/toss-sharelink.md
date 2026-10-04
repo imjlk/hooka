@@ -6,10 +6,10 @@ The preset is independent of TrailBase, Cloudflare Pages, quiz rounds, and UI fr
 
 ## Delivery and scope
 
-After this change is merged and images are published, the rolling image is
-`ghcr.io/imjlk/hooka:toss-sharelink`. Prefer the corresponding released
-`ghcr.io/imjlk/hooka:<version>-toss-sharelink` image (or a digest) in production.
-This document does not imply that a new image has already been published.
+The preset is released in Hooka 1.3.0; its operational CLI requires 1.4.0.
+The rolling image is `ghcr.io/imjlk/hooka:toss-sharelink`. Prefer the released
+`ghcr.io/imjlk/hooka:1.4.0-toss-sharelink` image (or a digest) in production.
+See the [deployment guide](./toss-sharelink-deployment.md) for a pinned starter.
 
 The preset includes `@hooka/cap-toss-sharelink` and `@hooka/pack-toss-sharelink`.
 It uses Bun fetch and SQLite and installs no additional command-line tools.
