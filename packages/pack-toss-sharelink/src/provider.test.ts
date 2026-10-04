@@ -209,3 +209,47 @@ test.each([
     expect(new URL(urls[1] ?? "https://invalid.local").pathname).toBe(path);
   },
 );
+
+test("near-expiry details are renewed before the scheduler window", async () => {
+  const transport = fetchResponses([
+    token(),
+    success({ items: [testProduct()] }),
+  ]);
+  await withProvider(async (provider, store) => {
+    store.put(
+      testAccount.accountId,
+      "detail:123",
+      {
+        product: {
+          id: "123",
+          title: "베개",
+          categoryIds: ["10"],
+          soldOut: false,
+        },
+        checkedAt: Date.now() - 600000,
+        expiresAt: Date.now() + 240000,
+      },
+      Date.now() + 240000,
+    );
+    const detail = await provider.detail("123");
+    expect(detail?.expiresAt).toBeGreaterThan(Date.now() + 14 * 60000);
+  });
+  expect(transport).toHaveBeenCalledTimes(2);
+});
+
+test("an insufficient local budget persists a daily scheduler pause even with a nonzero remainder", async () => {
+  const transport = fetchResponses([token()]);
+  await withProvider(async (provider, store) => {
+    store.reserve({ ...testAccount, productBudget: 20 }, 1, 0);
+    await expect(provider.list("10")).rejects.toMatchObject({
+      code: "sharelink_local_daily_budget",
+    });
+    const state = store.db
+      .query<{ blocked_until: number }, []>(
+        "SELECT blocked_until FROM sharelink_accounts",
+      )
+      .get();
+    expect(state?.blocked_until).toBeGreaterThan(Date.now());
+  });
+  expect(transport).toHaveBeenCalledTimes(1);
+});

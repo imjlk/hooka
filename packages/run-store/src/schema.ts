@@ -81,6 +81,9 @@ function createRunStoreTables(db: Database): void {
   `);
   migrateRunsTable(db);
   db.exec(
+    "create index if not exists idx_runs_coalesce on runs(task_id, coalesce_key, status);",
+  );
+  db.exec(
     "create index if not exists idx_runs_status_queued on runs(status, queued_at, created_at);",
   );
   db.exec(
@@ -123,6 +126,7 @@ function migrateRunsTable(db: Database): void {
   ensureColumn(db, columns, "last_error_code", "text");
   ensureColumn(db, columns, "target_policy_json", "text");
   ensureColumn(db, columns, "claim_token", "text");
+  ensureColumn(db, columns, "coalesce_key", "text");
 }
 
 function ensureColumn(

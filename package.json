@@ -34,7 +34,8 @@
     "bake:generate": "bun run scripts/generate-docker-bake.ts",
     "dockerfile:generate": "bun run scripts/generate-dockerfile-manifests.ts",
     "image:install-features": "bun run apps/cli/src/index.ts image install-features",
-    "sharelink:schemas": "bun run scripts/generate-sharelink-schemas.ts && biome format --write docs/contracts/toss-sharelink"
+    "sharelink:schemas": "bun run scripts/generate-sharelink-schemas.ts && biome format --write docs/contracts/toss-sharelink",
+    "test:e2e:sharelink": "bun run scripts/e2e/sharelink-e2e.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.14",

@@ -121,6 +121,22 @@ export class RunStore {
         }
       }
 
+      if (input.coalesceKey) {
+        const active = this.db
+          .query<{ id: string }, [string, string]>(
+            "SELECT id FROM runs WHERE task_id=? AND coalesce_key=? AND status IN ('queued','running') ORDER BY created_at LIMIT 1",
+          )
+          .get(input.taskId, input.coalesceKey);
+        if (active) {
+          const run = this.requireRun(active.id);
+          return {
+            response: toEnqueueResponse(run, true),
+            run,
+            created: false,
+          };
+        }
+      }
+
       this.db
         .query(
           `insert into runs (
@@ -164,6 +180,10 @@ export class RunStore {
           queuedAt,
         );
 
+      if (input.coalesceKey)
+        this.db
+          .query("UPDATE runs SET coalesce_key=? WHERE id=?")
+          .run(input.coalesceKey, runId);
       this.insertEvent(runId, "queued", `Run queued for ${input.taskId}.`, {
         source: input.source,
         sourceEventId: input.sourceEventId ?? null,

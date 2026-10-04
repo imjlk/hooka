@@ -1,4 +1,5 @@
 import { cli } from "gunshi";
+import { createSharelinkCommandGroup } from "./commands/sharelink";
 import packageJson from "../../../package.json" with { type: "json" };
 import { createAuditCommandGroup } from "./commands/audit";
 import { createCapabilityCommandGroup } from "./commands/capability";
@@ -17,6 +18,7 @@ import { defineGroup } from "./lib/command";
 import { cliDefaults } from "./lib/shared";
 
 const commands = [
+  createSharelinkCommandGroup(cliDefaults),
   createTaskCommandGroup(cliDefaults),
   createCapabilityCommandGroup(),
   createCleanupCommand(cliDefaults),

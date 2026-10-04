@@ -1,0 +1,23 @@
+{
+  "categories": [{ "id": "12345", "children": [] }],
+  "products": [
+    {
+      "id": "101",
+      "title": "편안한 베개",
+      "categoryIds": ["12345"],
+      "soldOut": false
+    },
+    {
+      "id": "102",
+      "title": "베개 커버",
+      "categoryIds": ["12345"],
+      "soldOut": false
+    },
+    {
+      "id": "103",
+      "title": "품절 베개",
+      "categoryIds": ["12345"],
+      "soldOut": true
+    }
+  ]
+}
