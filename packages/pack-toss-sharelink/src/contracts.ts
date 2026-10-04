@@ -14,6 +14,7 @@ const cleanText = z
   .regex(/^[^\p{Cc}]*$/u);
 const keyword = cleanText.max(40).min(2);
 
+/** Accept issued HTTPS destinations without credentials, ports, control characters or lookalike hosts. */
 export function isIssuedLink(value: string): boolean {
   if (value.length > 4096 || /[\s\\\p{Cc}]/u.test(value)) return false;
   try {

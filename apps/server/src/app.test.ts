@@ -1337,6 +1337,7 @@ test("registry APIs expose canonical task and preset ids", async () => {
     "wp-ops",
     "rclone-sync",
     "wp-wrangler",
+    "toss-sharelink",
   ]);
   expect(presets.map((preset) => preset.id)).not.toContain("webhook-wrangler");
   expect(presets.map((preset) => preset.id)).not.toContain("cf-wrangler");

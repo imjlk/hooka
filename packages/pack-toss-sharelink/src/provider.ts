@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isTaskExecutionError } from "@hooka/task-sdk";
 import type { Account } from "./contracts";
 import { isIssuedLink, providerIdSchema } from "./contracts";
 import { failure } from "./errors";
@@ -56,6 +57,7 @@ export class SharelinkProvider {
     this.tokenKey = `oauth:${digest([accessKey, secretKey])}`;
   }
 
+  /** Enforce partner pacing and bounded transport while preserving retry classifications. */
   private async request(
     url: string,
     init: RequestInit,
@@ -103,6 +105,7 @@ export class SharelinkProvider {
           response.status >= 500,
       );
     }
+    let bodyComplete = false;
     try {
       const reader = response.body?.getReader();
       if (!reader) throw failure("invalid_response");
@@ -118,15 +121,23 @@ export class SharelinkProvider {
         }
         chunks.push(value);
       }
+      bodyComplete = true;
       this.guard();
       return z
         .record(z.string(), z.unknown())
         .parse(JSON.parse(Buffer.concat(chunks).toString("utf8")));
-    } catch {
+    } catch (error) {
+      if (isTaskExecutionError(error)) throw error;
+      if (!bodyComplete) {
+        this.guard();
+        this.store.block(this.account.accountId, Date.now() + 60000);
+        throw failure("transport", true);
+      }
       throw failure("invalid_response");
     }
   }
 
+  /** Cache tokens by credential fingerprint so secret rotation cannot reuse an old token. */
   private async token(): Promise<string> {
     const cached = this.store.get<string>(
       this.account.accountId,
@@ -159,6 +170,7 @@ export class SharelinkProvider {
     return parsed.data.access_token;
   }
 
+  /** Treat provider-level failures inside HTTP 200 as failures and persist global cooldowns. */
   private async api(
     path: string,
     options: { body?: unknown; products?: number; links?: number } = {},
@@ -206,6 +218,7 @@ export class SharelinkProvider {
     return parsed.data;
   }
 
+  /** Normalize a bounded category tree shared by every consumer using this account. */
   async categories(): Promise<Category[]> {
     const key = "categories";
     const cached = this.store.get<Category[]>(this.account.accountId, key);
@@ -243,6 +256,7 @@ export class SharelinkProvider {
     return categories;
   }
 
+  /** Cache the first provider page for the explicitly selected source; never fall back between sources. */
   async list(
     categoryId: string,
     source: "category-best" | "today-deals" | "overall-best" = "category-best",
@@ -281,6 +295,7 @@ export class SharelinkProvider {
     return products;
   }
 
+  /** Recheck availability independently from the longer-lived category ranking cache. */
   async detail(productId: string): Promise<FreshProduct | null> {
     const key = `detail:${productId}`;
     const cached = this.store.get<FreshProduct | null>(
@@ -307,6 +322,7 @@ export class SharelinkProvider {
     return value;
   }
 
+  /** Register or restore the configured channel only when explicitly requested by an operator. */
   async ensureSubTag(subTagId: string): Promise<void> {
     const raw = await this.api("/sub-tags/create", {
       body: { subTags: [{ subTagId }] },
@@ -327,6 +343,7 @@ export class SharelinkProvider {
       throw failure("subtag_registration_failed");
   }
 
+  /** Read one app-scoped metrics page without consuming the product-return budget. */
   async reportPage(
     kind: "performance" | "settlement",
     query: {
@@ -357,6 +374,7 @@ export class SharelinkProvider {
     );
   }
 
+  /** Reuse provider-issued URLs only after validating product, publisher and exact destination host. */
   async issue(productId: string, subTagId: string): Promise<string> {
     const key = `link:${this.account.publisherId}:${subTagId}:${productId}`;
     const cached = this.store.get<string>(this.account.accountId, key);
@@ -388,6 +406,7 @@ export class SharelinkProvider {
   }
 }
 
+/** Discard malformed provider products instead of guessing category or availability. */
 function normalizeProduct(raw: unknown): Product | null {
   const parsed = productSchema.safeParse(raw);
   if (!parsed.success) return null;

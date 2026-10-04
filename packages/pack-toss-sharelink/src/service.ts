@@ -23,6 +23,7 @@ interface Context {
 const ruleFingerprint = (app: App, subject: Subject) =>
   digest([app.accountId, app.subTagId, subject]);
 
+/** Resolve trusted operator configuration; task callers cannot supply paths or credentials. */
 async function context(appId: string, env: Env): Promise<Context> {
   const configPath = env["HOOKA_SHARELINK_CONFIG_PATH"];
   const dbPath = env["HOOKA_SHARELINK_DB_PATH"];
@@ -53,12 +54,14 @@ async function context(appId: string, env: Env): Promise<Context> {
   return { app, account, configPath, dbPath, resultsPath };
 }
 
+/** Abort a running task if an operator replaced its configuration during an await. */
 async function ensureCurrent(ctx: Context, env: Env): Promise<void> {
   const current = await context(ctx.app.appId, env);
   if (digest(current) !== digest(ctx))
     throw failure("configuration_changed", true);
 }
 
+/** Export only current rule fingerprints and unexpired offers, with explicit missing states. */
 function snapshot(store: SharelinkStore, app: App): Snapshot {
   const now = Date.now();
   const entries: ResultEntry[] = app.subjects.map((subject) => {
@@ -88,6 +91,7 @@ function snapshot(store: SharelinkStore, app: App): Snapshot {
   });
 }
 
+/** Atomically replace the consumer file while fencing lease ownership inside a write transaction. */
 async function publish(
   store: SharelinkStore,
   ctx: Context,
@@ -119,6 +123,7 @@ async function publish(
   };
 }
 
+/** Prefer reviewed manual mappings; only item-specific refusals advance automatic candidates. */
 async function resolveSubject(
   subject: Subject,
   app: App,

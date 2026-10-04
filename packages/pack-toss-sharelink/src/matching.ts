@@ -4,6 +4,7 @@ import type { Category, Product } from "./provider";
 const normalize = (text: string): string =>
   text.normalize("NFKC").toLowerCase().replace(/\s+/gu, "");
 
+/** Include the selected category and its complete descendant subtree. */
 function descendants(categories: Category[], id: string): Set<string> {
   const result = new Set<string>();
   const visit = (nodes: Category[], selected: boolean) => {

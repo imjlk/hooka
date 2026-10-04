@@ -6,7 +6,7 @@
     "hooka": "./src/index.ts"
   },
   "scripts": {
-    "build": "bun build ./src/index.ts --outdir ./dist --target bun",
+    "build": "bun build ./src/index.ts --outdir ./dist --target bun --packages external",
     "dev": "bun run ./src/index.ts"
   },
   "dependencies": {
