@@ -8,6 +8,16 @@ Historical release notes before Sampo adoption live in:
 - [`1.0.0`](./docs/releases/1.0.0.md)
 - [`1.0.0-rc.1`](./docs/releases/1.0.0-rc.1.md)
 
+## 1.3.0 — 2026-10-04
+
+### Minor changes
+
+- [7928273](https://github.com/imjlk/hooka/commit/7928273294fe03dc5489553bdd30f8355d41fbc4) Add the toss-sharelink worker preset for server-side category/keyword product matching, issued affiliate links, and versioned consumer snapshots. Coordinate account caches, conservative daily budgets, and renewable leases across sidecars sharing a local volume. Support category-best, today-deals and overall-best sources, explicit subTag registration, and private performance/settlement reports. Include app-scoped configuration, public v1 JSON Schemas, deployment examples, and explicit failure classification for internal tasks. — Thanks @imjlk!
+
+### Patch changes
+
+- [06f4d99](https://github.com/imjlk/hooka/commit/06f4d99ad46a00b9189d5643b78eb880ab7b86d7) Replace Bunli with Gunshi for the operations CLI, removing the transitive OpenTUI native runtime from Hooka images. Preserve nested commands, Zod task validation, positional arguments, JSON output, and explicit boolean values such as `--yes=false` and `--no-bundle=false`. — Thanks @imjlk!
+
 ## 1.2.0 — 2026-10-03
 
 ### Minor changes
