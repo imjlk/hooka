@@ -1,5 +1,5 @@
-import { defineCommand, defineGroup } from "@bunli/core";
 import { listCapabilities } from "@hooka/registry";
+import { defineCommand, defineGroup } from "../lib/command";
 import { booleanFlag } from "../lib/shared";
 
 export function createCapabilityCommandGroup() {

@@ -1,4 +1,4 @@
-import { option } from "@bunli/core";
+import { join } from "node:path";
 import { ensureParentDir } from "@hooka/bun-utils";
 import {
   createCliConfig,
@@ -8,8 +8,8 @@ import {
 } from "@hooka/config";
 import type { InstalledCapabilitiesManifest } from "@hooka/contracts";
 import { createRunStore, type RunStore } from "@hooka/run-store";
-import { join } from "node:path";
 import { z } from "zod";
+import { option } from "./command";
 
 export interface CliDefaults {
   dbPath: string;
@@ -23,7 +23,7 @@ export const cliDefaults: CliDefaults = createCliConfig();
 
 /**
  * A boolean switch: `--json`, `--json=true`, or `--json=false`. Declaring it as
- * a flag makes Bunli treat the bare form as `true` without consuming the next
+ * a flag makes Gunshi treat the bare form as `true` without consuming the next
  * argument. The previous argv scan turned `--yes=false` into `true`.
  */
 export function booleanFlag(metadata: { description: string; short?: string }) {

@@ -1,6 +1,6 @@
-import { defineCommand, defineGroup, option } from "@bunli/core";
 import type { AuditEvent } from "@hooka/contracts";
 import { z } from "zod";
+import { defineCommand, defineGroup, option } from "../lib/command";
 import { booleanFlag, resolveDefaultServerUrl } from "../lib/shared";
 
 export function createAuditCommandGroup() {

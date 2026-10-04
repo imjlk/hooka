@@ -1,13 +1,13 @@
-import { defineCommand } from "@bunli/core";
 import {
   createServerConfig,
   createWorkerConfig,
-  getServerStartupIssues,
   type EnvRecord,
+  getServerStartupIssues,
 } from "@hooka/config";
 import { installedCapabilitiesManifestSchema } from "@hooka/contracts";
 import { listCapabilities } from "@hooka/registry";
 import { findMissingCapabilityEnvRequirements } from "@hooka/runtime-contracts";
+import { defineCommand } from "../lib/command";
 import { booleanFlag, resolveCliSourceRoot } from "../lib/shared";
 
 export interface DevCommandSpec {

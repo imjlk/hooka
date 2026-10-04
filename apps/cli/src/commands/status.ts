@@ -1,4 +1,3 @@
-import { defineCommand, option } from "@bunli/core";
 import {
   getWorkerFreshness,
   getWorkerFreshnessThresholdMs,
@@ -6,6 +5,7 @@ import {
 } from "@hooka/config";
 import type { RegistrySummary, RunSummary } from "@hooka/contracts";
 import { z } from "zod";
+import { defineCommand, option } from "../lib/command";
 import {
   booleanFlag,
   resolveDefaultHeartbeatIntervalMs,

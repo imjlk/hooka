@@ -1,7 +1,7 @@
-import { defineCommand, defineGroup, option } from "@bunli/core";
-import { getEnvOrDefault } from "@hooka/bun-utils";
 import { createHmac } from "node:crypto";
+import { getEnvOrDefault } from "@hooka/bun-utils";
 import { z } from "zod";
+import { defineCommand, defineGroup, option } from "../lib/command";
 
 export function createWebhookCommandGroup() {
   return defineGroup({

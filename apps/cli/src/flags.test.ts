@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
+import { join } from "node:path";
 import { createTempDir } from "@hooka/bun-utils";
 import { createRunStore } from "@hooka/run-store";
-import { join } from "node:path";
 import packageJson from "../../../package.json" with { type: "json" };
 
 const repoRoot = process.cwd();
@@ -218,4 +218,41 @@ test("--version prints the Hooka release version", async () => {
 
   expect(result.exitCode).toBe(0);
   expect(result.stdout).toContain(packageJson.version);
+});
+
+test("validation errors use stderr and leave JSON stdout empty", async () => {
+  const result = await runCli(["task", "list", "--jsno"]);
+  expect(result.exitCode).toBe(1);
+  expect(result.stdout).toBe("");
+  expect(result.stderr).toContain("Unknown option: --jsno");
+});
+
+test("root and nested groups display help without executing tasks", async () => {
+  for (const args of [[], ["task"], ["task", "run"]]) {
+    const result = await runCli(args);
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("COMMANDS:");
+    expect(result.stderr).toBe("");
+  }
+});
+
+test("compatibility task aliases still dispatch through nested commands", async () => {
+  const result = await runCli([
+    "task",
+    "run",
+    "wordpress.deploy.simply-static",
+    "--project",
+    "staging-site",
+    "--source-path",
+    "/shared-source/site",
+    "--no-bundle=false",
+    "--dry-run",
+  ]);
+  expect(result.exitCode).toBe(0);
+  const run = JSON.parse(result.stdout) as {
+    status: string;
+    command: string[];
+  };
+  expect(run.status).toBe("skipped");
+  expect(run.command).not.toContain("--no-bundle");
 });

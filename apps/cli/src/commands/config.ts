@@ -1,15 +1,15 @@
-import { defineCommand } from "@bunli/core";
 import {
   createAdminUiDevConfig,
   createCliConfig,
   createServerConfig,
   createWorkerConfig,
-  resolveManifestSource,
   type EnvRecord,
   type ManifestSourceKind,
+  resolveManifestSource,
 } from "@hooka/config";
 import { loadInstalledCapabilities } from "@hooka/runner-core";
 import { loadTargets } from "@hooka/targets";
+import { defineCommand } from "../lib/command";
 import { booleanFlag } from "../lib/shared";
 
 export interface ConfigReport {
