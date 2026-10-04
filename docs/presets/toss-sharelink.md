@@ -24,6 +24,8 @@ Implemented tasks:
 | `toss-sharelink.performance.sync` | v1 `appId`, `fromDate`, `toDate`, optional `attribution` | Collect up to 31 days of provisional performance, scoped to the app subTag |
 | `toss-sharelink.settlement.sync` | v1 `appId`, `settlementMonth`, optional `attribution` | Collect confirmed commission performance for a month, scoped to the app subTag |
 
+The [operations guide](./toss-sharelink-operations.md) provides offline tools,
+a one-shot `sharelink tick` command, consumer readers and Compose E2E.
 No internal recurring scheduler is added. An external scheduler or application
 producer enqueues refreshes after content/rule changes and at an appropriate
 refresh interval. Keep each refresh under 100 subjects; explicitly select subsets

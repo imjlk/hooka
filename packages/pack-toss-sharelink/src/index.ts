@@ -103,3 +103,16 @@ export const tossSharelinkTaskPack = defineTaskPack({
     settlementTask,
   ],
 });
+
+export { selectSharelinkOffer } from "./consumer";
+export {
+  readSharelinkConfig,
+  readSharelinkSnapshot,
+  readSharelinkAccounts,
+  planSharelinkRefresh,
+  summarizeSharelinkApp,
+} from "./operations";
+export { matchProducts } from "./matching";
+export type { Product, Category } from "./provider";
+export type { RefreshJob, SharelinkConfig } from "./operations";
+export type { App, Subject } from "./contracts";

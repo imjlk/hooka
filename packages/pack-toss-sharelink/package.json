@@ -2,7 +2,10 @@
   "name": "@hooka/pack-toss-sharelink",
   "private": true,
   "type": "module",
-  "exports": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./consumer": "./src/consumer.ts"
+  },
   "hooka": {
     "registry": {
       "kind": "task-pack",

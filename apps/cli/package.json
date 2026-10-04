@@ -19,6 +19,7 @@
     "@hooka/task-sdk": "workspace:*",
     "@hooka/targets": "workspace:*",
     "gunshi": "^0.37.3",
-    "zod": "catalog:"
+    "zod": "catalog:",
+    "@hooka/pack-toss-sharelink": "workspace:*"
   }
 }

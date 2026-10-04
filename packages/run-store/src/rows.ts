@@ -66,6 +66,8 @@ export interface RunStoreOptions {
 }
 
 export interface EnqueueRunInput extends EnqueueRunRequest {
+  /** Reuse an active run for this task/key, including across scheduler time buckets. */
+  coalesceKey?: string;
   capabilitySnapshot: string[];
   maxAttempts?: number;
   targetMaxConcurrentRuns?: number;

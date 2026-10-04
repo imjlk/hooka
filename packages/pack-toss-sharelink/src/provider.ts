@@ -66,7 +66,18 @@ export class SharelinkProvider {
   ): Promise<Record<string, unknown>> {
     if (Date.now() >= this.deadline) throw failure("batch_time_limit", true);
     await this.store.pace(this.account.accountId, this.guard);
-    this.store.reserve(this.account, products, links);
+    try {
+      this.store.reserve(this.account, products, links);
+    } catch (error) {
+      // A nonzero remainder may still be too small for the next category page.
+      // Persist the pause so scheduler ticks do not retry the same failing batch.
+      if (
+        isTaskExecutionError(error) &&
+        error.code === "sharelink_local_daily_budget"
+      )
+        this.store.block(this.account.accountId, nextKstDay());
+      throw error;
+    }
     let response: Response;
     try {
       response = await fetch(url, {
@@ -302,7 +313,9 @@ export class SharelinkProvider {
       this.account.accountId,
       key,
     );
-    if (cached) return cached.value;
+    // Renew before the five-minute scheduler window so refresh does not republish nearly expired details.
+    if (cached && cached.expiresAt > Date.now() + 5 * 60000)
+      return cached.value;
     const raw = await this.api(`/products/detail?tacaItemIds=${productId}`, {
       products: 1,
     });
