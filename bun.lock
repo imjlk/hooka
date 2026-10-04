@@ -96,6 +96,12 @@
         "@hooka/task-sdk": "workspace:*",
       },
     },
+    "packages/cap-toss-sharelink": {
+      "name": "@hooka/cap-toss-sharelink",
+      "dependencies": {
+        "@hooka/task-sdk": "workspace:*",
+      },
+    },
     "packages/cap-wpcli": {
       "name": "@hooka/cap-wpcli",
       "dependencies": {
@@ -157,6 +163,13 @@
     },
     "packages/pack-rclone": {
       "name": "@hooka/pack-rclone",
+      "dependencies": {
+        "@hooka/task-sdk": "workspace:*",
+        "zod": "catalog:",
+      },
+    },
+    "packages/pack-toss-sharelink": {
+      "name": "@hooka/pack-toss-sharelink",
       "dependencies": {
         "@hooka/task-sdk": "workspace:*",
         "zod": "catalog:",
@@ -268,6 +281,8 @@
 
     "@hooka/cap-rsync": ["@hooka/cap-rsync@workspace:packages/cap-rsync"],
 
+    "@hooka/cap-toss-sharelink": ["@hooka/cap-toss-sharelink@workspace:packages/cap-toss-sharelink"],
+
     "@hooka/cap-wpcli": ["@hooka/cap-wpcli@workspace:packages/cap-wpcli"],
 
     "@hooka/cap-wrangler": ["@hooka/cap-wrangler@workspace:packages/cap-wrangler"],
@@ -289,6 +304,8 @@
     "@hooka/pack-cloudflare-cache": ["@hooka/pack-cloudflare-cache@workspace:packages/pack-cloudflare-cache"],
 
     "@hooka/pack-rclone": ["@hooka/pack-rclone@workspace:packages/pack-rclone"],
+
+    "@hooka/pack-toss-sharelink": ["@hooka/pack-toss-sharelink@workspace:packages/pack-toss-sharelink"],
 
     "@hooka/pack-wordpress": ["@hooka/pack-wordpress@workspace:packages/pack-wordpress"],
 

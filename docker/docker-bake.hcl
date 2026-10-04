@@ -86,6 +86,18 @@ target "wp-wrangler" {
   tags = ["${REGISTRY}:wp-wrangler", "${REGISTRY}:webhook-wrangler"]
 }
 
+target "toss-sharelink" {
+  inherits = ["base"]
+  target = "worker-preset"
+  args = {
+    HOOKA_FEATURES = "toss-sharelink"
+    HOOKA_IMAGE_LABEL = "hooka:toss-sharelink"
+    HOOKA_RUNTIME_ROLE = "worker:toss-sharelink"
+    HOOKA_INSTALLED_CAPABILITIES = "toss-sharelink"
+  }
+  tags = ["${REGISTRY}:toss-sharelink"]
+}
+
 group "release" {
-  targets = ["webhook-server", "core", "cf-pages", "cf-cache", "wp-ops", "rclone-sync", "wp-wrangler"]
+  targets = ["webhook-server", "core", "cf-pages", "cf-cache", "wp-ops", "rclone-sync", "wp-wrangler", "toss-sharelink"]
 }

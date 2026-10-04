@@ -15,6 +15,7 @@ COPY packages/cap-git/package.json packages/cap-git/package.json
 COPY packages/cap-php-cli/package.json packages/cap-php-cli/package.json
 COPY packages/cap-rclone/package.json packages/cap-rclone/package.json
 COPY packages/cap-rsync/package.json packages/cap-rsync/package.json
+COPY packages/cap-toss-sharelink/package.json packages/cap-toss-sharelink/package.json
 COPY packages/cap-wpcli/package.json packages/cap-wpcli/package.json
 COPY packages/cap-wrangler/package.json packages/cap-wrangler/package.json
 COPY packages/config/package.json packages/config/package.json
@@ -25,6 +26,7 @@ COPY packages/logger/package.json packages/logger/package.json
 COPY packages/pack-cloudflare-cache/package.json packages/pack-cloudflare-cache/package.json
 COPY packages/pack-cloudflare/package.json packages/pack-cloudflare/package.json
 COPY packages/pack-rclone/package.json packages/pack-rclone/package.json
+COPY packages/pack-toss-sharelink/package.json packages/pack-toss-sharelink/package.json
 COPY packages/pack-wordpress-cloudflare/package.json packages/pack-wordpress-cloudflare/package.json
 COPY packages/pack-wordpress/package.json packages/pack-wordpress/package.json
 COPY packages/preset-catalog/package.json packages/preset-catalog/package.json

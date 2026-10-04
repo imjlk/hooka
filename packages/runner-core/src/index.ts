@@ -8,7 +8,11 @@ import { installedCapabilitiesManifestSchema } from "@hooka/contracts";
 import { runHttpTask } from "@hooka/executor-http";
 import type { CommandRunner } from "@hooka/executor-process";
 import { runProcessTask } from "@hooka/executor-process";
-import type { HookaTask, TaskInputSchema } from "@hooka/task-sdk";
+import {
+  isTaskExecutionError,
+  type HookaTask,
+  type TaskInputSchema,
+} from "@hooka/task-sdk";
 import type { z } from "zod";
 
 export {
@@ -208,8 +212,10 @@ export async function runTask<TSchema extends TaskInputSchema>(
         taskId: task.id,
         ok: false,
         status: "failed",
-        retryable: true,
-        errorCode: "internal_execution_failed",
+        retryable: isTaskExecutionError(error) ? error.retryable : true,
+        errorCode: isTaskExecutionError(error)
+          ? error.code
+          : "internal_execution_failed",
         stderr: message,
         summary: message,
         durationMs: performance.now() - startedAt,

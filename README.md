@@ -227,6 +227,7 @@ Active registry-backed worker presets:
 - `rclone-sync` — worker-visible local directory copy to configured rclone remote destinations
 - `wp-ops` — `wp-cli` evaluation and export verification
 - `wp-wrangler` — `wp-ops` plus `cf-pages`
+- `toss-sharelink` — shared-account affiliate product matching and app-scoped offer snapshots ([setup and v1 contract](./docs/presets/toss-sharelink.md))
 
 Migration aliases:
 
