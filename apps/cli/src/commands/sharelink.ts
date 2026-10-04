@@ -131,16 +131,11 @@ export function createSharelinkCommandGroup(defaults: CliDefaults) {
                     status: string;
                     errorCode: string | null;
                   },
-                  []
+                  string[]
                 >(
-                  "SELECT id AS runId,task_id AS taskId,json_extract(payload_json,'$.appId') AS appId,status,last_error_code AS errorCode FROM runs WHERE task_id LIKE 'toss-sharelink.%' AND status IN ('failed','dead-lettered') ORDER BY created_at DESC LIMIT 100",
+                  `SELECT id AS runId,task_id AS taskId,json_extract(payload_json,'$.appId') AS appId,status,last_error_code AS errorCode FROM runs WHERE task_id LIKE 'toss-sharelink.%' AND status IN ('failed','dead-lettered') AND json_extract(payload_json,'$.appId') IN (${data.apps.map(() => "?").join(",")}) ORDER BY created_at DESC LIMIT 100`,
                 )
-                .all()
-                .filter((item) =>
-                  data.apps.some(
-                    (configured) => configured.appId === item.appId,
-                  ),
-                );
+                .all(...data.apps.map((item) => item.appId));
             } finally {
               queue.close();
             }

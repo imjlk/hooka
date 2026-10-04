@@ -98,3 +98,40 @@ test("concurrent CLI ticks enqueue one active batch and status exposes only fail
     await setup.cleanup();
   }
 });
+
+test("status filters configured apps before limiting the newest failures", async () => {
+  const setup = await temporarySetup();
+  try {
+    const env = {
+      ...setup.env,
+      HOOKA_DB_PATH: join(setup.directory, "queue.sqlite"),
+    };
+    const store = await createRunStore({ dbPath: env.HOOKA_DB_PATH });
+    try {
+      const insert = store.db.query(
+        "INSERT INTO runs(id,task_id,source,status,payload_json,capability_snapshot_json,created_at,last_error_code) VALUES (?,?,?,?,?,?,?,?)",
+      );
+      store.db.transaction(() => {
+        for (let index = 0; index < 102; index++) {
+          insert.run(
+            `failure-${index}`,
+            "toss-sharelink.refresh",
+            "test",
+            "failed",
+            JSON.stringify({ appId: index === 0 ? "app-one" : "another-app" }),
+            "[]",
+            new Date(Date.now() + index * 1000).toISOString(),
+            "sharelink_access_denied",
+          );
+        }
+      })();
+    } finally {
+      store.close();
+    }
+    const result = await cli(["status"], env);
+    expect(result.recentFailures).toHaveLength(1);
+    expect(result.recentFailures[0].runId).toBe("failure-0");
+  } finally {
+    await setup.cleanup();
+  }
+});
