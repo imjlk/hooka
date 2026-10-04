@@ -104,6 +104,18 @@ export const wpWranglerPreset = definePreset({
   ],
 });
 
+export const tossSharelinkPreset = definePreset({
+  id: "toss-sharelink",
+  title: "Toss Sharelink",
+  description:
+    "Product matching and affiliate links with shared account budgets and app-scoped snapshots.",
+  tier: "lean",
+  imageTag: "toss-sharelink",
+  publicWorkerTag: "toss-sharelink",
+  capabilities: ["toss-sharelink"],
+  taskPacks: ["@hooka/pack-toss-sharelink"],
+});
+
 export const activeWorkerPresets = [
   corePreset,
   cfPagesPreset,
@@ -111,6 +123,7 @@ export const activeWorkerPresets = [
   wpOpsPreset,
   rcloneSyncPreset,
   wpWranglerPreset,
+  tossSharelinkPreset,
 ] satisfies PresetDefinition[];
 
 export const plannedWorkerPresets = [

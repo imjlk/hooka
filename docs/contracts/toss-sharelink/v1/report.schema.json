@@ -1,0 +1,329 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "schemaVersion": {
+          "type": "number",
+          "const": 1
+        },
+        "kind": {
+          "type": "string",
+          "const": "performance"
+        },
+        "appId": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"
+        },
+        "collectedAt": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "fromDate": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+        },
+        "toDate": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+        },
+        "attribution": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": ["DIRECT", "INDIRECT", "UNKNOWN"]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "summary": {
+          "type": "object",
+          "properties": {
+            "soldQuantity": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "refundedQuantity": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "salesAmount": {
+              "type": "number"
+            },
+            "discountAmount": {
+              "type": "number"
+            },
+            "netPaymentAmount": {
+              "type": "number"
+            },
+            "expectedCommissionAmount": {
+              "type": "number"
+            },
+            "confirmedCommissionAmount": {
+              "type": "number"
+            },
+            "clickCount": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "lastUpdatedAt": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 64
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "soldQuantity",
+            "refundedQuantity",
+            "salesAmount",
+            "discountAmount",
+            "netPaymentAmount",
+            "expectedCommissionAmount",
+            "confirmedCommissionAmount",
+            "clickCount",
+            "lastUpdatedAt"
+          ],
+          "additionalProperties": false
+        },
+        "items": {
+          "maxItems": 5000,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "soldQuantity": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "refundedQuantity": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "salesAmount": {
+                "type": "number"
+              },
+              "discountAmount": {
+                "type": "number"
+              },
+              "netPaymentAmount": {
+                "type": "number"
+              },
+              "expectedCommissionAmount": {
+                "type": "number"
+              },
+              "confirmedCommissionAmount": {
+                "type": "number"
+              },
+              "productId": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "productName": {
+                "type": "string",
+                "maxLength": 1000
+              },
+              "attribution": {
+                "type": "string",
+                "enum": ["DIRECT", "INDIRECT", "UNKNOWN"]
+              }
+            },
+            "required": [
+              "soldQuantity",
+              "refundedQuantity",
+              "salesAmount",
+              "discountAmount",
+              "netPaymentAmount",
+              "expectedCommissionAmount",
+              "confirmedCommissionAmount",
+              "productId",
+              "productName",
+              "attribution"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "kind",
+        "appId",
+        "collectedAt",
+        "fromDate",
+        "toDate",
+        "attribution",
+        "summary",
+        "items"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "schemaVersion": {
+          "type": "number",
+          "const": 1
+        },
+        "kind": {
+          "type": "string",
+          "const": "settlement"
+        },
+        "appId": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"
+        },
+        "collectedAt": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "settlementMonth": {
+          "type": "string"
+        },
+        "attribution": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": ["DIRECT", "INDIRECT", "UNKNOWN"]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "summary": {
+          "type": "object",
+          "properties": {
+            "orderProductCount": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "productAmount": {
+              "type": "number"
+            },
+            "promotionCost": {
+              "type": "number"
+            },
+            "settlementBase": {
+              "type": "number"
+            },
+            "commissionAmount": {
+              "type": "number"
+            },
+            "latestConfirmedAt": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 64
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "orderProductCount",
+            "productAmount",
+            "promotionCost",
+            "settlementBase",
+            "commissionAmount",
+            "latestConfirmedAt"
+          ],
+          "additionalProperties": false
+        },
+        "items": {
+          "maxItems": 5000,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "orderProductCount": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "productAmount": {
+                "type": "number"
+              },
+              "promotionCost": {
+                "type": "number"
+              },
+              "settlementBase": {
+                "type": "number"
+              },
+              "commissionAmount": {
+                "type": "number"
+              },
+              "latestConfirmedAt": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 64
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "productId": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "productName": {
+                "type": "string",
+                "maxLength": 1000
+              },
+              "attribution": {
+                "type": "string",
+                "enum": ["DIRECT", "INDIRECT", "UNKNOWN"]
+              }
+            },
+            "required": [
+              "orderProductCount",
+              "productAmount",
+              "promotionCost",
+              "settlementBase",
+              "commissionAmount",
+              "latestConfirmedAt",
+              "productId",
+              "productName",
+              "attribution"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "kind",
+        "appId",
+        "collectedAt",
+        "settlementMonth",
+        "attribution",
+        "summary",
+        "items"
+      ],
+      "additionalProperties": false
+    }
+  ]
+}

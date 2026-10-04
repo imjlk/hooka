@@ -14,6 +14,7 @@ test("active worker presets only include registry-backed entries", () => {
     "wp-ops",
     "rclone-sync",
     "wp-wrangler",
+    "toss-sharelink",
   ]);
   expect(
     listPlannedWorkerPresets().some((preset) => preset.id === "rclone-sync"),

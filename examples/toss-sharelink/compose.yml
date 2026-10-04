@@ -1,0 +1,43 @@
+# Proposal/example: publish the preset release before pulling these image tags.
+# Copy the same template into each consumer stack. Queue volumes remain local;
+# the product store and output volumes are shared on the SAME Docker host.
+services:
+  sharelink-server:
+    image: ghcr.io/imjlk/hooka:${HOOKA_VERSION:?Set a released Hooka version}-webhook-server
+    expose: ["3000"]
+    volumes:
+      - sharelink_queue:/data
+    environment:
+      HOOKA_DB_PATH: /data/hooka.sqlite
+      HOOKA_WEBHOOK_SECRET: ${HOOKA_SHOPPING_WEBHOOK_SECRET:?Set a webhook secret}
+      HOOKA_ADMIN_TOKEN: ${HOOKA_SHOPPING_ADMIN_TOKEN:?Set an admin token}
+      HOOKA_INSTALLED_CAPABILITIES: toss-sharelink
+      HOOKA_RUN_MAX_ATTEMPTS: "5"
+    restart: unless-stopped
+
+  sharelink-worker:
+    image: ghcr.io/imjlk/hooka:${HOOKA_VERSION:?Set a released Hooka version}-toss-sharelink
+    volumes:
+      - sharelink_queue:/data
+      - sharelink_private:/sharelink-private
+      - sharelink_results:/sharelink-results
+      - ./sharelink-config:/sharelink-config:ro
+    environment:
+      HOOKA_DB_PATH: /data/hooka.sqlite
+      HOOKA_RUN_MAX_ATTEMPTS: "5"
+      HOOKA_RETRY_BASE_DELAY_MS: "30000"
+      HOOKA_SHARELINK_CONFIG_PATH: /sharelink-config/config.json
+      HOOKA_SHARELINK_DB_PATH: /sharelink-private/sharelink.sqlite
+      HOOKA_SHARELINK_RESULTS_PATH: /sharelink-results
+      TOSS_SHARELINK_ACCESS_KEY: ${TOSS_SHARELINK_ACCESS_KEY:?Set an approved API access key}
+      TOSS_SHARELINK_SECRET_KEY: ${TOSS_SHARELINK_SECRET_KEY:?Set an approved API secret key}
+    restart: unless-stopped
+
+volumes:
+  sharelink_queue: {}
+  sharelink_private:
+    external: true
+    name: ${SHARELINK_PRIVATE_VOLUME:-hooka-sharelink-private}
+  sharelink_results:
+    external: true
+    name: ${SHARELINK_RESULTS_VOLUME:-hooka-sharelink-results}

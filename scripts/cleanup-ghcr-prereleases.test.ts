@@ -14,6 +14,7 @@ const artifactTags = [
   "rclone-sync",
   "wp-ops",
   "wp-wrangler",
+  "toss-sharelink",
 ];
 
 describe("normalizeReleaseVersion", () => {

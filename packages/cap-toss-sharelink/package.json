@@ -1,0 +1,18 @@
+{
+  "name": "@hooka/cap-toss-sharelink",
+  "private": true,
+  "type": "module",
+  "exports": "./src/index.ts",
+  "hooka": {
+    "registry": {
+      "kind": "capability",
+      "export": "tossSharelinkCapability"
+    }
+  },
+  "scripts": {
+    "build": "bun build ./src/index.ts --outdir ./dist --target bun"
+  },
+  "dependencies": {
+    "@hooka/task-sdk": "workspace:*"
+  }
+}

@@ -62,6 +62,7 @@ test("registry resolves task and preset aliases to canonical definitions", () =>
     "wp-ops",
     "rclone-sync",
     "wp-wrangler",
+    "toss-sharelink",
   ]);
   expect(listWebhookAdapters().map((adapter) => adapter.id)).toEqual([
     "wordpress.simply-static",

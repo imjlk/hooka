@@ -168,3 +168,30 @@ export function defineTaskPack(pack: TaskPackDefinition): TaskPackDefinition {
 }
 
 export type AnyTask = HookaTask<TaskInputSchema>;
+
+const taskErrorBrand = Symbol.for("hooka.task-execution-error");
+
+/** Explicit, safe failure metadata for internal task executors. */
+export class TaskExecutionError extends Error {
+  readonly [taskErrorBrand] = true;
+  readonly code: string;
+  readonly retryable: boolean;
+  constructor(message: string, options: { code: string; retryable?: boolean }) {
+    super(message);
+    this.name = "TaskExecutionError";
+    this.code = options.code;
+    this.retryable = options.retryable ?? false;
+  }
+}
+
+/** Registry tasks can be loaded from source while the runner is bundled. */
+export function isTaskExecutionError(
+  error: unknown,
+): error is TaskExecutionError {
+  return (
+    error instanceof Error &&
+    Reflect.get(error, taskErrorBrand) === true &&
+    typeof Reflect.get(error, "code") === "string" &&
+    typeof Reflect.get(error, "retryable") === "boolean"
+  );
+}

@@ -39,6 +39,12 @@ jobs:
       - name: Ensure generated Dockerfile manifest block is committed
         run: git diff --exit-code -- docker/Dockerfile
 
+      - name: Regenerate Toss Sharelink schemas
+        run: bun run sharelink:schemas
+
+      - name: Ensure generated Toss Sharelink schemas are committed
+        run: git diff --exit-code -- docs/contracts/toss-sharelink
+
       - name: Lint
         run: bun run lint
 

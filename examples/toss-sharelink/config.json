@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "accounts": [
+    {
+      "accountId": "example-partner",
+      "publisherId": "00000000-0000-4000-8000-000000000001",
+      "accessKeyEnv": "TOSS_SHARELINK_ACCESS_KEY",
+      "secretKeyEnv": "TOSS_SHARELINK_SECRET_KEY",
+      "productBudget": 9000,
+      "linkBudget": 9000
+    }
+  ],
+  "apps": [
+    {
+      "appId": "word-app",
+      "accountId": "example-partner",
+      "revision": 1,
+      "subTagId": "word-app-web",
+      "subjects": [
+        {
+          "subjectId": "pillow",
+          "revision": 1,
+          "enabled": true,
+          "categoryId": "12345",
+          "keywords": ["베개"],
+          "excludedKeywords": ["커버"],
+          "excludedCategoryIds": [],
+          "excludedProductIds": []
+        }
+      ]
+    },
+    {
+      "appId": "second-app",
+      "accountId": "example-partner",
+      "revision": 1,
+      "subTagId": "second-app-native",
+      "subjects": []
+    }
+  ]
+}
