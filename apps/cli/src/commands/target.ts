@@ -1,15 +1,15 @@
-import { defineCommand, defineGroup, option } from "@bunli/core";
 import type { Target } from "@hooka/contracts";
 import {
-  createTargetScaffold,
   createTarget,
+  createTargetScaffold,
   deleteTarget,
   listTargetScaffoldTemplates,
-  targetScaffoldTemplateIds,
   loadTargets,
+  targetScaffoldTemplateIds,
   updateTarget,
 } from "@hooka/targets";
 import { z } from "zod";
+import { defineCommand, defineGroup, option } from "../lib/command";
 import type { CliDefaults } from "../lib/shared";
 import { booleanFlag } from "../lib/shared";
 

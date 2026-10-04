@@ -1,12 +1,12 @@
-import { defineCommand, defineGroup, option } from "@bunli/core";
+import { resolve } from "node:path";
 import {
   getCapability,
   getPresetPlan,
   listPresets,
   recommendPresetForTasks,
 } from "@hooka/registry";
-import { resolve } from "node:path";
 import { z } from "zod";
+import { defineCommand, defineGroup, option } from "../lib/command";
 import type { CliDefaults } from "../lib/shared";
 import {
   booleanFlag,

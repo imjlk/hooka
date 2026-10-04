@@ -27,7 +27,7 @@ Release docs:
 
 ```text
 apps/
-  cli/       Bunli-powered operations CLI
+  cli/       Gunshi-powered operations CLI
   server/    Bun API + static admin UI serving
   worker/    Task execution entrypoint
 packages/
@@ -41,6 +41,12 @@ packages/
   pack-*/    Task packs
 docker/      Dockerfile, Bake file, feature installers, manifest examples
 ```
+
+The operations CLI uses Gunshi for command routing, argument parsing, and help.
+A small local adapter keeps the existing Zod option schemas and explicit boolean
+syntax (`--yes=false`, `--no-bundle=false`) consistent. It does not require a
+terminal UI or native OpenTUI packages. Bare command groups display their help;
+JSON commands write only their result to stdout, and CLI errors go to stderr.
 
 ## Getting started
 

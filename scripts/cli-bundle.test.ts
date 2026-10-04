@@ -1,8 +1,7 @@
 import { expect, test } from "bun:test";
 
-// Bunli's terminal dependencies load platform packages dynamically. Keep their
-// package-relative resolution intact when building with Bun's isolated linker.
-test("built CLI resolves native transitive dependencies and discovers the new preset", async () => {
+// Exercise the package build command and preset discovery in the shipped CLI.
+test("built CLI discovers the sharelink preset without native terminal dependencies", async () => {
   const build = Bun.spawn(
     [process.execPath, "run", "--cwd", "apps/cli", "build"],
     { stdout: "pipe", stderr: "pipe" },

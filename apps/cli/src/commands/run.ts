@@ -1,6 +1,6 @@
-import { defineCommand, defineGroup, option } from "@bunli/core";
 import { taskRunStatusSchema } from "@hooka/contracts";
 import { z } from "zod";
+import { defineCommand, defineGroup, option } from "../lib/command";
 import { createRunClient } from "../lib/run-client";
 import type { CliDefaults } from "../lib/shared";
 import { booleanFlag } from "../lib/shared";
