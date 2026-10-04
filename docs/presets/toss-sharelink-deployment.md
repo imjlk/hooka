@@ -162,9 +162,13 @@ callback ingestion, order reconciliation and per-user rewards are separate work;
 task success never proves a purchase or consumer delivery.
 
 To pause, disable the owning scheduler and stop its worker. Consumers must hide
-offers at expiry even while offline. To withdraw immediately, disable the relevant
-subjects, increment revisions, and enqueue `toss-sharelink.export` before stopping
-the worker; also apply the consumer's display kill switch if delivery is failing.
+offers at expiry even while offline. To withdraw offers, disable the relevant
+subjects, increment revisions, and enqueue `toss-sharelink.export`. Wait for that
+run to succeed and confirm the consumer has applied the replacement snapshot
+before stopping the worker. Enqueue acknowledgement alone does not publish a
+snapshot; the old offer can remain visible until expiry if the consumer still
+uses the old revisions. If withdrawal cannot wait or delivery is failing, apply
+the consumer's display kill switch immediately.
 Do not delete shared volumes or roll back database files while another stack is
 using them. Stop the tick scheduler before reverting below 1.4.0, which has no
 operations CLI. Preserve the additive queue columns during a code rollback.
