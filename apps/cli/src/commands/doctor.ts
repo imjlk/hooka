@@ -1,4 +1,3 @@
-import { defineCommand, option } from "@bunli/core";
 import {
   findMissingCapabilityEnv,
   getCapabilityEnvRequirements,
@@ -7,6 +6,7 @@ import {
 } from "@hooka/registry";
 import { loadInstalledCapabilities } from "@hooka/runner-core";
 import { z } from "zod";
+import { defineCommand, option } from "../lib/command";
 import type { CliDefaults } from "../lib/shared";
 import { booleanFlag } from "../lib/shared";
 

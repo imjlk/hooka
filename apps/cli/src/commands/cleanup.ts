@@ -1,6 +1,6 @@
-import { defineCommand, option } from "@bunli/core";
 import { defaultRetentionSweepIntervalHours } from "@hooka/config";
 import { z } from "zod";
+import { defineCommand, option } from "../lib/command";
 import type { CliDefaults } from "../lib/shared";
 import { booleanFlag, withRunStore } from "../lib/shared";
 

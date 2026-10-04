@@ -1,15 +1,12 @@
-import { defineCommand, defineGroup, option } from "@bunli/core";
 import { enqueueRunRequestSchema } from "@hooka/contracts";
+import { listTasks } from "@hooka/registry";
 import { loadInstalledCapabilities, runTask } from "@hooka/runner-core";
 import type { AnyTask } from "@hooka/task-sdk";
-import { listTasks } from "@hooka/registry";
 import { z } from "zod";
+import { defineCommand, defineGroup, option } from "../lib/command";
 import type { CliDefaults } from "../lib/shared";
 import { booleanFlag, withRunStore } from "../lib/shared";
-import {
-  buildTaskInputFromFlags,
-  taskToBunliOptions,
-} from "../lib/task-options";
+import { buildTaskInputFromFlags, taskToCliOptions } from "../lib/task-options";
 
 export function createTaskCommandGroup(defaults: CliDefaults) {
   const taskRunCommands = listTasks().flatMap((task) =>
@@ -88,7 +85,7 @@ function createTaskRunCommands(task: AnyTask, defaults: CliDefaults) {
         commandName === task.id
           ? (task.description ?? task.title)
           : `${task.description ?? task.title} (compat alias for ${task.id})`,
-      options: taskToBunliOptions(task, {
+      options: taskToCliOptions(task, {
         includeDryRun: true,
       }),
       handler: async ({ flags }) => {
@@ -123,7 +120,7 @@ function createTaskEnqueueCommands(task: AnyTask, defaults: CliDefaults) {
           ? `Queue ${task.description ?? task.title}`
           : `Queue ${task.description ?? task.title} (compat alias for ${task.id})`,
       options: {
-        ...taskToBunliOptions(task, {
+        ...taskToCliOptions(task, {
           includeDryRun: false,
         }),
         db: option(z.string().default(defaults.dbPath), {

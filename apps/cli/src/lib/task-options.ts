@@ -1,6 +1,6 @@
-import { option, type CLIOption } from "@bunli/core";
 import type { AnyTask } from "@hooka/task-sdk";
 import { z } from "zod";
+import { type CliOption, option } from "./command";
 import { booleanFlag } from "./shared";
 
 const payloadJsonSchema = z.string().optional();
@@ -10,10 +10,10 @@ export interface TaskOptionConfig {
   includeDryRun?: boolean;
 }
 
-export function taskToBunliOptions(
+export function taskToCliOptions(
   task: AnyTask,
   config: TaskOptionConfig = {},
-): Record<string, CLIOption<z.ZodTypeAny>> {
+): Record<string, CliOption<z.ZodTypeAny>> {
   const includeDryRun = config.includeDryRun ?? true;
 
   if (!(task.input instanceof z.ZodObject)) {

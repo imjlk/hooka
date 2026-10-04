@@ -1,9 +1,9 @@
 import { expect, test } from "bun:test";
 import { deploySimplyStaticTask } from "@hooka/pack-wordpress-cloudflare";
-import { buildTaskInputFromFlags, taskToBunliOptions } from "./task-options";
+import { buildTaskInputFromFlags, taskToCliOptions } from "./task-options";
 
-test("scalar task schemas turn into bunli options", () => {
-  const options = taskToBunliOptions(deploySimplyStaticTask);
+test("scalar task schemas turn into CLI options", () => {
+  const options = taskToCliOptions(deploySimplyStaticTask);
 
   expect(Object.keys(options)).toEqual([
     "kind",
@@ -23,7 +23,7 @@ test("scalar task schemas turn into bunli options", () => {
 });
 
 test("enqueue option mode omits dry-run", () => {
-  const options = taskToBunliOptions(deploySimplyStaticTask, {
+  const options = taskToCliOptions(deploySimplyStaticTask, {
     includeDryRun: false,
   });
 

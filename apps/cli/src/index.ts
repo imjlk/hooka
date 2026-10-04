@@ -1,4 +1,4 @@
-import { createCLI } from "@bunli/core";
+import { cli } from "gunshi";
 import packageJson from "../../../package.json" with { type: "json" };
 import { createAuditCommandGroup } from "./commands/audit";
 import { createCapabilityCommandGroup } from "./commands/capability";
@@ -13,31 +13,50 @@ import { createStatusCommand } from "./commands/status";
 import { createTargetCommandGroup } from "./commands/target";
 import { createTaskCommandGroup } from "./commands/task";
 import { createWebhookCommandGroup } from "./commands/webhook";
+import { defineGroup } from "./lib/command";
 import { cliDefaults } from "./lib/shared";
 
-const cli = await createCLI({
+const commands = [
+  createTaskCommandGroup(cliDefaults),
+  createCapabilityCommandGroup(),
+  createCleanupCommand(cliDefaults),
+  createAuditCommandGroup(),
+  createImageCommandGroup(cliDefaults),
+  createRunCommandGroup(cliDefaults),
+  createStatusCommand(),
+  createConfigCommand(),
+  createTargetCommandGroup(cliDefaults),
+  createInitCommand(),
+  createDevCommand(),
+  createDoctorCommand(cliDefaults),
+  createWebhookCommandGroup(),
+];
+
+const root = defineGroup({
   name: "hooka",
-  version: packageJson.version,
   description:
     "Composable task, capability, and preset control plane for Hooka.",
-  commands: {
-    entry: "./apps/cli/src/index.ts",
-  },
+  commands,
 });
 
-cli.command(createTaskCommandGroup(cliDefaults));
-cli.command(createCapabilityCommandGroup());
-cli.command(createCleanupCommand(cliDefaults));
-cli.command(createAuditCommandGroup());
-cli.command(createImageCommandGroup(cliDefaults));
-cli.command(createRunCommandGroup(cliDefaults));
-cli.command(createStatusCommand());
-cli.command(createConfigCommand());
-cli.command(createTargetCommandGroup(cliDefaults));
-cli.command(createInitCommand());
-cli.command(createDevCommand());
-cli.command(createDoctorCommand(cliDefaults));
-cli.command(createWebhookCommandGroup());
-
-await cli.init();
-await cli.run();
+try {
+  await cli(process.argv.slice(2), root, {
+    name: "hooka",
+    version: packageJson.version,
+    description:
+      "Composable task, capability, and preset control plane for Hooka.",
+    subCommands: root.subCommands,
+    strict: true,
+    renderHeader: null,
+    renderValidationErrors: null,
+  });
+} catch (error) {
+  const errors: unknown[] =
+    error instanceof AggregateError ? error.errors : [error];
+  console.error(
+    errors
+      .map((issue) => (issue instanceof Error ? issue.message : String(issue)))
+      .join("\n"),
+  );
+  process.exitCode = 1;
+}

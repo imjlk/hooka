@@ -1,10 +1,10 @@
-import { defineCommand, option } from "@bunli/core";
+import { join } from "node:path";
 import { ensureDir, ensureParentDir } from "@hooka/bun-utils";
 import { getDefaultManifestPath, getDefaultTargetsPath } from "@hooka/config";
 import { getPreset, getPresetPlan, listPresets } from "@hooka/registry";
 import { createTargetScaffold } from "@hooka/targets";
-import { join } from "node:path";
 import { z } from "zod";
+import { defineCommand, option } from "../lib/command";
 import {
   booleanFlag,
   createInstalledCapabilitiesManifest,
