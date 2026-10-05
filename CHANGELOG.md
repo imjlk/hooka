@@ -8,6 +8,12 @@ Historical release notes before Sampo adoption live in:
 - [`1.0.0`](./docs/releases/1.0.0.md)
 - [`1.0.0-rc.1`](./docs/releases/1.0.0-rc.1.md)
 
+## 1.5.2 — 2026-10-05
+
+### Patch changes
+
+- [98d1cd9](https://github.com/imjlk/hooka/commit/98d1cd94a05f63034f4c6982d37179881a2d5a89) Add opt-in offline recommendation queue tasks to the existing Sharelink worker, with app-bound immutable artifact references, pinned registration/model checks and private storage boundaries. — Thanks @imjlk!
+
 ## 1.5.1 — 2026-10-05
 
 ### Patch changes
