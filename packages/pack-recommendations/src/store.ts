@@ -77,6 +77,7 @@ export class RecommendationStore {
             CREATE TABLE IF NOT EXISTS rec_decisions(id TEXT PRIMARY KEY, app_id TEXT NOT NULL, request_json TEXT NOT NULL, result_json TEXT NOT NULL, config_json TEXT NOT NULL, created_at INTEGER NOT NULL);
             CREATE TABLE IF NOT EXISTS rec_manifests(id TEXT NOT NULL, app_id TEXT NOT NULL, digest TEXT NOT NULL, json TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY(app_id,id));
             CREATE TABLE IF NOT EXISTS rec_assignments(id TEXT NOT NULL, app_id TEXT NOT NULL, producer_id TEXT NOT NULL, json TEXT NOT NULL, digest TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY(app_id,id));
+            CREATE INDEX IF NOT EXISTS rec_assignment_decision ON rec_assignments(app_id,json_extract(json,'$.decisionId'),json_extract(json,'$.application'));
             CREATE TABLE IF NOT EXISTS rec_snapshots(app_id TEXT NOT NULL, producer_id TEXT NOT NULL, profile_id TEXT NOT NULL, day INTEGER NOT NULL, revision INTEGER NOT NULL, digest TEXT NOT NULL, json TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY(app_id,profile_id,day));
             CREATE INDEX IF NOT EXISTS rec_snapshot_day ON rec_snapshots(day);
             CREATE TABLE IF NOT EXISTS rec_tombstones(key TEXT PRIMARY KEY, created_at INTEGER NOT NULL);
@@ -275,11 +276,23 @@ export class RecommendationStore {
         }
       for (const [decisionId, assignments] of samplerGroups) {
         const result = decisionFor(decisionId).result;
-        const expected = sampleRecommendations(result, assignments.length);
+        const stored = this.db
+          .query<{ json: string }, [string, string]>(
+            "SELECT json FROM rec_assignments WHERE app_id=? AND json_extract(json,'$.decisionId')=? AND json_extract(json,'$.application')='sampler'",
+          )
+          .all(manifest.appId, decisionId)
+          .map((r) => assignmentSchema.parse(JSON.parse(r.json)));
+        const incoming = new Set(assignments.map((a) => a.assignmentId));
+        const combined = [
+          ...stored.filter((a) => !incoming.has(a.assignmentId)),
+          ...assignments,
+        ];
+        const expected = sampleRecommendations(result, combined.length);
         if (
           expected.shortfall ||
-          new Set(assignments.map(candidateKey)).size !== assignments.length ||
-          assignments.some(
+          new Set(combined.map(candidateKey)).size !== combined.length ||
+          new Set(combined.map((a) => a.experiment)).size > 1 ||
+          combined.some(
             (a) =>
               !expected.draws.some(
                 (d) =>
@@ -292,7 +305,7 @@ export class RecommendationStore {
             "Sampler assignments must match the selected prefix.",
           );
         if (
-          assignments.some((a) => a.experiment === "holdout") &&
+          combined.some((a) => a.experiment === "holdout") &&
           result.entries.some(
             (e) => Math.abs(e.weight - 1 / result.entries.length) > 1e-12,
           )

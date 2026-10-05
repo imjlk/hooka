@@ -286,6 +286,43 @@ test("sampler assignment tail selection and probabilities must replay the select
     f.cleanup();
   }
 });
+
+test("split sampler manifests extend one global prefix and cannot duplicate an already assigned candidate", async () => {
+  const f = await fixture();
+  try {
+    f.store.ingestManifest(f.config, f.manifest, start);
+    const duplicate = {
+      ...f.manifest,
+      manifestId: "duplicate",
+      assignments: [{ ...f.assignment, assignmentId: "duplicate-assignment" }],
+    };
+    expect(() => f.store.ingestManifest(f.config, duplicate, start)).toThrow(
+      "prefix",
+    );
+    const tail = required(sampleRecommendations(f.result, 2).draws[1]);
+    const split = {
+      ...f.manifest,
+      manifestId: "split",
+      assignments: [
+        {
+          ...f.assignment,
+          assignmentId: "tail",
+          ...tail.candidate,
+          appliedProbability: tail.probability,
+        },
+      ],
+    };
+    expect(f.store.ingestManifest(f.config, split, start).status).toBe(
+      "applied",
+    );
+    expect(f.store.ingestManifest(f.config, split, start).status).toBe(
+      "duplicate",
+    );
+    expect(f.store.status(start).counts["rec_assignments"]).toBe(2);
+  } finally {
+    f.cleanup();
+  }
+});
 test("read-only plan/status preserve state and missing/foreign databases are never initialized", async () => {
   const f = await fixture();
   try {

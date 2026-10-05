@@ -96,7 +96,8 @@ configure matching service UID or approved local file access before deployment.
 Assignment manifests are immutable and app/producer-bound. A decision must already
 be recorded, match app revision/context/profile, and be valid when assignment starts.
 An assignment window is at most 24 hours. The sampler mode verifies the complete
-selected prefix, distinct candidates and conditional draw probabilities; holdout
+selected prefix across all stored and incoming manifests for that decision,
+distinct candidates, one experiment and conditional draw probabilities; holdout
 sampler decisions must be uniform. Constrained/fallback modes are observational
 and do not prove randomized exposure, even if a probability is provided.
 
