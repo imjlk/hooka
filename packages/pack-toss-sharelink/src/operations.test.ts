@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
+import { z } from "zod";
 import { configSchema, type Snapshot } from "./contracts";
 import { selectSharelinkOffer } from "./consumer";
 import {
@@ -7,6 +8,7 @@ import {
   readSharelinkAccounts,
   readSharelinkConfig,
   summarizeSharelinkApp,
+  worksetSchema,
 } from "./operations";
 import { temporarySetup, testAccount, testApp, testStore } from "./fixtures";
 
@@ -22,6 +24,20 @@ const config = () =>
     apps: [testApp()],
   });
 const now = 1800000000000;
+
+test("workset schema publishes and enforces unique subject IDs", () => {
+  const workset = {
+    schemaVersion: 1,
+    appId: "app-one",
+    appRevision: 1,
+    expiresAt: now + 60000,
+    subjectIds: ["pillow", "pillow"],
+  };
+  expect(worksetSchema.safeParse(workset).success).toBe(false);
+  expect(
+    z.toJSONSchema(worksetSchema).properties?.["subjectIds"],
+  ).toMatchObject({ uniqueItems: true });
+});
 const expected = {
   appId: "app-one",
   appRevision: 1,

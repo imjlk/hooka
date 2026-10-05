@@ -6,6 +6,7 @@ import {
   readSharelinkConfig,
   readSharelinkAccounts,
   readSharelinkSnapshot,
+  readSharelinkWorkset,
   planSharelinkRefresh,
   summarizeSharelinkApp,
   matchProducts,
@@ -49,6 +50,10 @@ export function createSharelinkCommandGroup(defaults: CliDefaults) {
     config,
     domain,
     app,
+    workset: option(z.string().min(1).optional(), {
+      description:
+        "Operator workset JSON with app revision, expiry and subjects in priority order.",
+    }),
     "batch-size": option(z.coerce.number().int().min(1).max(100).default(25), {
       description: "Subjects per job (1..100).",
     }),
@@ -57,6 +62,17 @@ export function createSharelinkCommandGroup(defaults: CliDefaults) {
     }),
   };
   const print = (value: unknown) => console.log(JSON.stringify(value, null, 2));
+  const selectedWork = async (
+    path: string | undefined,
+    appId: string | undefined,
+    data: Parameters<typeof planSharelinkRefresh>[0],
+  ) => {
+    if (!path) return { appId };
+    const workset = await readSharelinkWorkset(path, data);
+    if (appId && appId !== workset.appId)
+      throw new Error("Workset app differs from --app.");
+    return { appId: workset.appId, subjectIds: workset.subjectIds };
+  };
   return defineGroup({
     name: "sharelink",
     description: "Validate, inspect and schedule shared product operations.",
@@ -210,7 +226,7 @@ export function createSharelinkCommandGroup(defaults: CliDefaults) {
             : [];
           print(
             planSharelinkRefresh(data, accounts, {
-              appId: flags.app,
+              ...(await selectedWork(flags.workset, flags.app, data)),
               batchSize: flags["batch-size"],
               periodMinutes: flags["period-minutes"],
             }),
@@ -238,7 +254,7 @@ export function createSharelinkCommandGroup(defaults: CliDefaults) {
             ? readSharelinkAccounts(flags.domain, data)
             : [];
           const plan = planSharelinkRefresh(data, accounts, {
-            appId: flags.app,
+            ...(await selectedWork(flags.workset, flags.app, data)),
             batchSize: flags["batch-size"],
             periodMinutes: flags["period-minutes"],
           });

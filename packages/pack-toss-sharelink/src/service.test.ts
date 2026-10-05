@@ -27,6 +27,125 @@ const options = (env: Record<string, string>) => ({
   installedCapabilities: ["toss-sharelink"],
   env,
 });
+
+test("refresh preserves selected priority order and defaults to config order", async () => {
+  noPacingDelay();
+  const app = testApp(),
+    subject = app.subjects[0];
+  if (!subject) throw Error("Missing subject");
+  const reviewedAt = Date.now() - 100,
+    reviewUntil = Date.now() + 60000;
+  const manual = {
+    productId: "123",
+    title: "베개",
+    url: "https://toss.im/_m/example",
+    reviewedAt,
+    reviewUntil,
+  };
+  app.subjects = [
+    { ...subject, manual },
+    { ...subject, subjectId: "second", manual },
+  ];
+  const setup = await temporarySetup([app]);
+  try {
+    expect(
+      await runTask(
+        refreshSharelinkTask,
+        {
+          schemaVersion: 1,
+          appId: app.appId,
+          subjectIds: ["second", "pillow"],
+        },
+        options(setup.env),
+      ),
+    ).toMatchObject({
+      ok: true,
+      data: { inspections: [{ subjectId: "second" }, { subjectId: "pillow" }] },
+    });
+    expect(
+      await runTask(
+        refreshSharelinkTask,
+        { schemaVersion: 1, appId: app.appId },
+        options(setup.env),
+      ),
+    ).toMatchObject({
+      ok: true,
+      data: { inspections: [{ subjectId: "pillow" }, { subjectId: "second" }] },
+    });
+  } finally {
+    await setup.cleanup();
+  }
+});
+
+test.each([true, false])(
+  "pinned product checks detail without catalog fallback: available=%s",
+  async (available) => {
+    noPacingDelay();
+    const app = testApp();
+    const subject = app.subjects[0];
+    if (!subject) throw Error("Missing subject");
+    subject.pinnedProductId = "888";
+    const setup = await temporarySetup([app]);
+    const calls = providerRouter((url) =>
+      url.pathname === "/openapi/products/detail"
+        ? success({ items: available ? [testProduct(888)] : [] })
+        : undefined,
+    );
+    try {
+      expect(
+        await runTask(refreshSharelinkTask, input, options(setup.env)),
+      ).toMatchObject({ ok: true, data: { ready: Number(available) } });
+      expect(calls.some((path) => path.includes("best-categories"))).toBe(
+        false,
+      );
+      const data = await Bun.file(
+        join(setup.env.HOOKA_SHARELINK_RESULTS_PATH, app.appId, "offers.json"),
+      ).json();
+      expect(data.entries[0].offer?.productId ?? null).toBe(
+        available ? "888" : null,
+      );
+    } finally {
+      await setup.cleanup();
+    }
+  },
+);
+
+test("catalog matching reaches the next cursor page within the configured bound", async () => {
+  noPacingDelay();
+  const app = testApp(),
+    subject = app.subjects[0];
+  if (!subject) throw Error("Missing subject");
+  subject.maxCatalogPages = 2;
+  const setup = await temporarySetup([app]);
+  const pages: (string | null)[] = [];
+  providerRouter((url) => {
+    if (url.pathname.includes("best-categories")) {
+      const cursor = url.searchParams.get("cursor");
+      pages.push(cursor);
+      return cursor
+        ? success({ items: [testProduct()], hasNext: false, nextCursor: null })
+        : success({
+            items: [testProduct(122, { displayName: "물병" })],
+            hasNext: true,
+            nextCursor: "next",
+          });
+    }
+    if (url.pathname === "/openapi/products/detail")
+      return success({ items: [testProduct()] });
+    return undefined;
+  });
+  try {
+    expect(
+      await runTask(refreshSharelinkTask, input, options(setup.env)),
+    ).toMatchObject({
+      ok: true,
+      data: { ready: 1, inspections: [{ pages: 2, candidates: 1 }] },
+    });
+    expect(pages).toEqual([null, "next"]);
+  } finally {
+    await setup.cleanup();
+  }
+});
 const input = { schemaVersion: 1, appId: "app-one" };
 function noPacingDelay() {
   spyOn(SharelinkStore.prototype, "pace").mockImplementation(

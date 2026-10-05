@@ -109,3 +109,10 @@ bun --hot ./index.ts
 ```
 
 For more information, read the Bun API docs in `node_modules/bun-types/docs/**.mdx`.
+
+## Release versions
+
+- Backward-compatible preset additions and improvements use an `npm/hooka: patch` Sampo changeset, including preset-specific task packs, capabilities, CLI operations and deployment templates.
+- New shared runtime, queue, server API or general CLI functionality uses `minor`.
+- Breaking existing public behavior or contracts, including preset contracts, uses `major`.
+- Keep these rules consistent with `CONTRIBUTING.md` and `.sampo/README.md`.

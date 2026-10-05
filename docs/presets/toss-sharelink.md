@@ -44,6 +44,7 @@ Portable JSON Schemas are committed under `docs/contracts/toss-sharelink/v1/`:
 - `config.schema.json`: operator configuration (secret **environment names**, never values).
 - `refresh.schema.json`, `export.schema.json`: task payloads.
 - `snapshot.schema.json`: consumer-facing offer results.
+- `workset.schema.json`: expiring, app-scoped refresh priorities for the local planner.
 - `performance.schema.json`, `settlement.schema.json`: report task input.
 - `report.schema.json`: private app-scoped performance/settlement results.
 - SubTag registration uses the same input schema as export.
@@ -78,13 +79,30 @@ arbitrary customer answer. Matching requires category membership (including
 children) AND at least one keyword. Excluded words/categories/products win.
 Set `catalogSource` to `category-best` (default), `today-deals`, or `overall-best`.
 All sources still require the configured category and keyword; a source change is
-explicit and is never an automatic fallback. Each source reads only its first 30
-products in v1.
+explicit and is never an automatic fallback. By default each source reads its first
+30 products. Optional `maxCatalogPages` (1..5) allows additional cursor pages when
+earlier candidates cannot produce a valid offer. Every uncached page reserves 30
+product units; account budgets, pacing and the two-minute batch deadline still apply.
+The three-candidate detail/link attempt limit is shared across all pages. Pagination
+stops on success, source exhaustion, candidate/page limits or a provider failure.
+Page caches include source, category and cursor. Sources never fall back into each other.
+
+Optional `pinnedProductId` checks one approved product directly with the detail API,
+even when it is absent from the ranking page. It must still satisfy category,
+keywords, exclusions, stock and expiry checks. It does not fall back to other
+products or perform catalog pagination. Valid reviewed manual mappings still take
+precedence. The output remains an `automatic` offer with the original detail expiry.
+These optional config fields require a worker release containing this implementation;
+1.4.0 rejects them. Existing configurations omit the fields and retain their fingerprints.
+Increment app/rule revisions when enabling either option.
 
 NFKC, lowercase, and whitespace normalization are lexical matching, not semantic
 synonym inference. No unrelated bestseller fallback is performed. At most three
 candidates are attempted; only item-specific issuance refusal advances to the
-next candidate. Auth/quota/global provider failures stop the batch.
+next candidate. Auth/quota/global provider failures stop the batch. Authenticated
+refresh run results include per-subject inspected-page/candidate counts and reasons
+(`ready`, `disabled`, `exhausted`, `page-limit`, `candidate-limit`, `pinned-unavailable`).
+These diagnostics are not added to consumer snapshots and do not prove delivery.
 
 ### Consumer snapshot
 

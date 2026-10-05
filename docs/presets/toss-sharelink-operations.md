@@ -84,6 +84,19 @@ that do not contain the operations commands. Do not drop additive queue columns.
 
 ## Consumer integration
 
+`validateSharelinkSnapshot` checks a whole snapshot and returns either the parsed
+snapshot or a bounded failure code. Supply `subjects: [{subjectId, ruleRevision}]`
+to require the exact expected subject/revision set. It checks duplicates, app
+identity, future timestamps and the 15-minute publication horizon. Expired entries
+remain valid wire data: importers withdraw them, and `selectSharelinkOffer` returns
+null for an expired offer. Both functions are stateless.
+
+An importer must persist its last applied app revision, generation timestamp/ID
+and content identity in the same transaction as automatic offer replacement.
+Reject old results and ambiguous equal-time generations; identical retransmissions
+are idempotent. Preserve provider expiry, manual mappings and consumer kill switches.
+This helper does not perform DB writes or make stale snapshots safe to replay.
+
 `examples/toss-sharelink/read-offer.ts` shows a backend reader. The portable
 `selectSharelinkOffer` implementation depends only on the v1 Zod contract; its
 package subpath is `@hooka/pack-toss-sharelink/consumer` within this workspace.
@@ -98,6 +111,34 @@ must come from your own catalog, not from the file being checked. Missing, inval
 or expired data yields no banner. Read/check again on clicks; do not copy an issued
 URL to indefinite local storage. Keep disclosure and voluntary navigation in the
 consumer UI. The helper does not approve or implement any reward policy.
+
+## Refresh a consumer-selected workset
+
+`plan` and `tick` accept `--workset /private/workset.json`:
+
+```json
+{
+  "schemaVersion": 1,
+  "appId": "word-app",
+  "appRevision": 3,
+  "expiresAt": 1791200000000,
+  "subjectIds": ["pillow", "mug"]
+}
+```
+
+Replace the example expiry with a future epoch-millisecond timestamp. The workset
+is operator-owned, not a task payload or a consumer request body. It contains at
+most 1000 unique enabled configured subjects in priority order, for exactly one
+app. Unknown/disabled subjects, expired files and app revision mismatches fail
+before enqueueing. `--app` must match the file when supplied. Empty worksets plan
+an export; they do not refresh other subjects. The committed workset JSON Schema
+describes the wire format, with expiry/revision checks enforced at runtime.
+
+Worksets control refresh priority, not display authorization or immediate withdrawal.
+Existing non-selected valid offers can remain until expiry. To revoke an offer,
+disable/remove its configured subject, bump revisions and export, or use the
+consumer kill switch. Changing a workset does not cancel already queued work.
+Without a workset the existing enabled-catalog planner behavior is preserved.
 
 ## Isolated Compose E2E
 

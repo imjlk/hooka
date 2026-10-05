@@ -104,13 +104,16 @@ export const tossSharelinkTaskPack = defineTaskPack({
   ],
 });
 
-export { selectSharelinkOffer } from "./consumer";
+export { selectSharelinkOffer, validateSharelinkSnapshot } from "./consumer";
+export type { SnapshotValidation } from "./consumer";
 export {
   readSharelinkConfig,
   readSharelinkSnapshot,
   readSharelinkAccounts,
   planSharelinkRefresh,
   summarizeSharelinkApp,
+  readSharelinkWorkset,
+  worksetSchema,
 } from "./operations";
 export { matchProducts } from "./matching";
 export type { Product, Category } from "./provider";
