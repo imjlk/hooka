@@ -8,6 +8,13 @@ Historical release notes before Sampo adoption live in:
 - [`1.0.0`](./docs/releases/1.0.0.md)
 - [`1.0.0-rc.1`](./docs/releases/1.0.0-rc.1.md)
 
+## 1.4.1 — 2026-10-05
+
+### Patch changes
+
+- [bb7c70f](https://github.com/imjlk/hooka/commit/bb7c70ff68a69c8452aca78abc0171e801feadb0) Add whole-snapshot consumer validation, approved product ID pinning, bounded cursor catalog exploration and expiring app-scoped refresh worksets. Preserve existing config fingerprints and offer snapshots, keep shared budgets and the three-candidate limit, and expose sanitized per-subject resolution diagnostics in authenticated run results. — Thanks @imjlk!
+- [436c4d2](https://github.com/imjlk/hooka/commit/436c4d2d58045f0c4484933e7e51b36546b1e4f7) Provide a 1.4.0-based Sharelink deployment starter with separate consumer configurations, a network-disabled credential-free preflight, and staged Coolify rollout guidance. Reject missing configuration bind directories instead of silently creating an empty directory. — Thanks @imjlk!
+
 ## 1.4.0 — 2026-10-04
 
 ### Minor changes
