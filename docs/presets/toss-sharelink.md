@@ -49,6 +49,11 @@ Portable JSON Schemas are committed under `docs/contracts/toss-sharelink/v1/`:
 - `report.schema.json`: private app-scoped performance/settlement results.
 - SubTag registration uses the same input schema as export.
 
+For the proposed reusable scoring engine and app measurement contracts, see the
+[shared recommendation RFC](../rfcs/shared-recommendations.md). This is a design
+proposal; CTR learning and recommendation weights are not implemented in this
+preset. Existing v1 offer/config/workset contracts remain unchanged.
+
 Run `bun run sharelink:schemas` after changing the runtime contract. JSON Schema
 expresses structural constraints; runtime validation additionally enforces exact
 issued-link hosts, uniqueness, known account references, manual review intervals,
