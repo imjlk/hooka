@@ -280,3 +280,31 @@ function required<T>(value: T | null | undefined): T {
     throw Error("Missing fixture value");
   return value;
 }
+
+test("an expired zero-demand offer joins missing-offer exploration before current offers", () => {
+  const { config, demand, snapshot } = fixture();
+  const parsed = refreshDemandSchema.parse(demand);
+  parsed.apps[0] = { ...required(parsed.apps[0]), subjects: [] };
+  parsed.policy.maxSubjectsPerApp = 1;
+  parsed.policy.explorationFraction = 0.5;
+  const offer = required(snapshot.entries[0]?.offer);
+  snapshot.entries = required(config.apps[0]).subjects.map((s) => ({
+    subjectId: s.subjectId,
+    ruleRevision: s.revision,
+    status: "ready",
+    offer: {
+      ...offer,
+      checkedAt: now - 100,
+      expiresAt: s.subjectId === "cold" ? now - 1 : now + 60000,
+    },
+  }));
+  const report = required(
+    previewRefreshPriority(config, parsed, [snapshot], [], now).apps[0],
+  );
+  expect(report.workset.subjectIds).toEqual(["cold"]);
+  expect(report.selected[0]).toMatchObject({
+    offerExpiresAt: null,
+    overdue: true,
+    reason: "exploration",
+  });
+});

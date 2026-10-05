@@ -247,7 +247,10 @@ export function previewRefreshPriority(
                 e.status === "ready",
             )?.offer
           : null;
-        const offer = offered && offered.checkedAt <= now ? offered : null,
+        const offer =
+            offered && offered.checkedAt <= now && offered.expiresAt > now
+              ? offered
+              : null,
           cost = estimateRefreshCost(subject, now);
         const reach =
           asked?.subjects.find((s) => s.subjectId === subject.subjectId)
