@@ -8,6 +8,13 @@ Historical release notes before Sampo adoption live in:
 - [`1.0.0`](./docs/releases/1.0.0.md)
 - [`1.0.0-rc.1`](./docs/releases/1.0.0-rc.1.md)
 
+## 1.5.0 — 2026-10-05
+
+### Added
+
+- [2c33e60](https://github.com/imjlk/hooka/commit/2c33e602623c0ea72472b98a93c9244dfb99f090) Add an offline recommendation library with versioned app registrations, bounded opt-in shared CTR priors, deterministic weighted sampling and consumer result validation. Existing presets and offer contracts retain their defaults. — Thanks @imjlk!
+- [a23bbb7](https://github.com/imjlk/hooka/commit/a23bbb7f13a290d4c35ee99fa7804d35d8aeb4f3) Add general offline recommendation CLI operations with a dedicated private store, immutable assignments, idempotent daily aggregate replacement, sealed model generation, read-only preview/status and atomic app/request-scoped publication. — Thanks @imjlk!
+
 ## 1.4.1 — 2026-10-05
 
 ### Patch changes
