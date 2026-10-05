@@ -32,6 +32,7 @@ test("built CLI discovers the sharelink preset without native terminal dependenc
   expect(exitCode, stderr).toBe(0);
   expect(JSON.parse(stdout)).toMatchObject({
     presetId: "toss-sharelink",
+    capabilities: ["toss-sharelink", "recommendations"],
     missingCapabilitiesByTask: {},
     coveredTasks: [
       "toss-sharelink.refresh",
@@ -39,6 +40,13 @@ test("built CLI discovers the sharelink preset without native terminal dependenc
       "toss-sharelink.subtag.ensure",
       "toss-sharelink.performance.sync",
       "toss-sharelink.settlement.sync",
+      "recommendations.validate",
+      "recommendations.ingest",
+      "recommendations.build",
+      "recommendations.plan",
+      "recommendations.export",
+      "recommendations.status",
+      "recommendations.prune",
     ],
   });
 });

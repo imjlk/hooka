@@ -1,0 +1,21 @@
+# Optional task mounts/env; combine with compose.yml and compose.recommendations.yml.
+# Requires Hooka 1.5.2+. Adds no service, schedule or provider call.
+services:
+  sharelink-worker:
+    volumes:
+      - type: bind
+        source: ${RECOMMENDATIONS_INBOX_DIR:?Set the operator-owned recommendation inbox directory}
+        target: /recommendation-inbox
+        read_only: true
+        bind:
+          create_host_path: false
+      - recommendation_outboxes:/recommendation-outboxes
+    environment:
+      HOOKA_RECOMMENDATIONS_INBOX_PATH: /recommendation-inbox
+      HOOKA_RECOMMENDATIONS_RESULTS_PATH: /recommendation-outboxes
+      HOOKA_RECOMMENDATIONS_TASKS_ENABLED: ${HOOKA_RECOMMENDATIONS_TASKS_ENABLED:-false}
+
+volumes:
+  recommendation_outboxes:
+    external: true
+    name: ${RECOMMENDATIONS_OUTBOX_VOLUME:-hooka-recommendation-outboxes}

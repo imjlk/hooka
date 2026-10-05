@@ -96,8 +96,19 @@ export class RecommendationStore {
     this.db.close();
   }
   /** Hold the SQLite writer lock around the final synchronous pointer commit. */
-  commitPublication(action: () => void) {
+  commitPublication(action: () => void, expectedModelGenerationId?: string) {
     this.write(() => {
+      if (expectedModelGenerationId !== undefined) {
+        const current = this.db
+          .query<{ value: string }, []>(
+            "SELECT value FROM rec_meta WHERE key='current'",
+          )
+          .get()?.value;
+        if (current !== expectedModelGenerationId)
+          throw new Error(
+            "Expected recommendation model is no longer current.",
+          );
+      }
       const returned: unknown = action();
       if (returned && typeof returned === "object" && "then" in returned)
         throw new Error("Publication commit must be synchronous.");
@@ -602,12 +613,18 @@ export class RecommendationStore {
     configInput: unknown,
     requestInput: unknown,
     now = Date.now(),
+    expectedModelGenerationId?: string,
   ) {
     const config = configSchema.parse(configInput),
       request = requestSchema.parse(requestInput);
     return this.write(() => {
       this.register(config);
       const result = this.plan(config, request, now);
+      if (
+        expectedModelGenerationId !== undefined &&
+        result.modelGenerationId !== expectedModelGenerationId
+      )
+        throw new Error("Expected recommendation model is no longer current.");
       if (!validateRecommendations(result, request, now))
         throw new Error("Invalid planned result.");
       this.db

@@ -14,6 +14,7 @@ COPY packages/cap-cloudflare-api/package.json packages/cap-cloudflare-api/packag
 COPY packages/cap-git/package.json packages/cap-git/package.json
 COPY packages/cap-php-cli/package.json packages/cap-php-cli/package.json
 COPY packages/cap-rclone/package.json packages/cap-rclone/package.json
+COPY packages/cap-recommendations/package.json packages/cap-recommendations/package.json
 COPY packages/cap-rsync/package.json packages/cap-rsync/package.json
 COPY packages/cap-toss-sharelink/package.json packages/cap-toss-sharelink/package.json
 COPY packages/cap-wpcli/package.json packages/cap-wpcli/package.json
