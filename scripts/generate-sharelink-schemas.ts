@@ -10,6 +10,8 @@ import {
   reportSchema,
 } from "../packages/pack-toss-sharelink/src/contracts";
 import { worksetSchema } from "../packages/pack-toss-sharelink/src/operations";
+import { recommendationBindingsSchema } from "../packages/pack-toss-sharelink/src/recommendations";
+import { refreshDemandSchema } from "../packages/pack-toss-sharelink/src/refresh-priority";
 
 const directory = new URL(
   "../docs/contracts/toss-sharelink/v1/",
@@ -34,5 +36,21 @@ for (const [name, schema] of Object.entries({
   await Bun.write(
     new URL(`${name}.schema.json`, directory),
     `${JSON.stringify(document, null, 2)}\n`,
+  );
+}
+
+// Extensions get their own namespace; existing Sharelink v1 schemas remain byte-compatible.
+const extensions = new URL(
+  "../docs/contracts/toss-sharelink/extensions/v1/",
+  import.meta.url,
+);
+await mkdir(extensions, { recursive: true });
+for (const [name, schema] of Object.entries({
+  "recommendation-bindings": recommendationBindingsSchema,
+  "refresh-demand": refreshDemandSchema,
+})) {
+  await Bun.write(
+    new URL(`${name}.schema.json`, extensions),
+    `${JSON.stringify(z.toJSONSchema(schema, { target: "draft-2020-12", io: "input" }), null, 2)}\n`,
   );
 }

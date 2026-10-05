@@ -16,6 +16,7 @@
     "build": "bun build ./src/index.ts --outdir ./dist --target bun"
   },
   "dependencies": {
+    "@hooka/pack-recommendations": "workspace:*",
     "@hooka/task-sdk": "workspace:*",
     "zod": "catalog:"
   }

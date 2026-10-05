@@ -24,6 +24,15 @@ export function matchProducts(
   categories: Category[],
   rule: Subject,
 ): Product[] {
+  return eligibleProducts(products, categories, rule).slice(0, 3);
+}
+
+/** Only already-fetched page products; the caller still owns the three-attempt limit. */
+export function eligibleProducts(
+  products: Product[],
+  categories: Category[],
+  rule: Subject,
+): Product[] {
   const allowed = descendants(categories, rule.categoryId);
   const excluded = new Set(
     rule.excludedCategoryIds.flatMap((id) => [
@@ -32,24 +41,22 @@ export function matchProducts(
     ]),
   );
   const seen = new Set<string>();
-  return products
-    .filter((product) => {
-      const title = normalize(product.title);
-      if (
-        seen.has(product.id) ||
-        (rule.pinnedProductId !== undefined &&
-          product.id !== rule.pinnedProductId) ||
-        product.soldOut ||
-        (product.endAt ?? Infinity) <= Date.now() + 60000 ||
-        rule.excludedProductIds.includes(product.id) ||
-        !product.categoryIds.some((id) => allowed.has(id)) ||
-        product.categoryIds.some((id) => excluded.has(id)) ||
-        !rule.keywords.some((word) => title.includes(normalize(word))) ||
-        rule.excludedKeywords.some((word) => title.includes(normalize(word)))
-      )
-        return false;
-      seen.add(product.id);
-      return true;
-    })
-    .slice(0, 3);
+  return products.filter((product) => {
+    const title = normalize(product.title);
+    if (
+      seen.has(product.id) ||
+      (rule.pinnedProductId !== undefined &&
+        product.id !== rule.pinnedProductId) ||
+      product.soldOut ||
+      (product.endAt ?? Infinity) <= Date.now() + 60000 ||
+      rule.excludedProductIds.includes(product.id) ||
+      !product.categoryIds.some((id) => allowed.has(id)) ||
+      product.categoryIds.some((id) => excluded.has(id)) ||
+      !rule.keywords.some((word) => title.includes(normalize(word))) ||
+      rule.excludedKeywords.some((word) => title.includes(normalize(word)))
+    )
+      return false;
+    seen.add(product.id);
+    return true;
+  });
 }

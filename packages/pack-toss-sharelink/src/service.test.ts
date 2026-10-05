@@ -17,6 +17,117 @@ import {
   testProduct,
 } from "./fixtures";
 import { SharelinkStore } from "./store";
+import { recommendationFixture } from "./recommendations.fixture";
+
+test("ranked ordering retains the global three-detail attempt limit without fetching later pages", async () => {
+  noPacingDelay();
+  const app = testApp();
+  const subject = app.subjects[0];
+  if (!subject) throw Error("Missing subject");
+  subject.maxCatalogPages = 5;
+  const setup = await temporarySetup([app]);
+  try {
+    const f = await recommendationFixture(setup.directory, app),
+      detailed: string[] = [];
+    const calls = providerRouter((url) => {
+      if (url.pathname.includes("best-categories"))
+        return success({
+          items: [123, 124, 125, 126].map((id) => testProduct(id)),
+          hasNext: true,
+          nextCursor: "next-page",
+        });
+      if (url.pathname === "/openapi/products/detail") {
+        const id = url.searchParams.get("tacaItemIds");
+        if (!id) throw Error("Missing product ID");
+        detailed.push(id);
+        return success({ items: [] });
+      }
+      return undefined;
+    });
+    expect(
+      await runTask(
+        refreshSharelinkTask,
+        input,
+        options({ ...setup.env, ...f.env }),
+      ),
+    ).toMatchObject({
+      ok: true,
+      data: {
+        ready: 0,
+        inspections: [{ pages: 1, candidates: 3, reason: "candidate-limit" }],
+      },
+    });
+    expect(detailed).toEqual(["126", "123", "124"]);
+    expect(calls.filter((p) => p.includes("best-categories"))).toHaveLength(1);
+  } finally {
+    await setup.cleanup();
+  }
+});
+
+test.each(["disabled", "ranked", "expired"])(
+  "recommendation adapter preserves API budget and fallback: %s",
+  async (mode) => {
+    noPacingDelay();
+    const app = testApp(),
+      setup = await temporarySetup([app]);
+    try {
+      const f = await recommendationFixture(
+        setup.directory,
+        app,
+        Date.now() - (mode === "expired" ? 86400001 : 0),
+      );
+      const detailed: string[] = [];
+      const calls = providerRouter((url) => {
+        if (url.pathname.includes("best-categories"))
+          return success({
+            items: [123, 124, 125, 126].map((id) => testProduct(id)),
+            hasNext: true,
+            nextCursor: "next-page",
+          });
+        if (url.pathname === "/openapi/products/detail") {
+          const id = url.searchParams.get("tacaItemIds");
+          if (!id) throw Error("Missing product ID");
+          detailed.push(id);
+          return success({ items: [testProduct(Number(id))] });
+        }
+        return undefined;
+      });
+      const result = await runTask(
+        refreshSharelinkTask,
+        input,
+        options({
+          ...setup.env,
+          ...f.env,
+          HOOKA_SHARELINK_RECOMMENDATIONS_ENABLED:
+            mode === "disabled" ? "false" : "true",
+        }),
+      );
+      expect(result).toMatchObject({
+        ok: true,
+        data: { ready: 1, inspections: [{ pages: 1, candidates: 1 }] },
+      });
+      expect(detailed).toEqual([mode === "ranked" ? "126" : "123"]);
+      expect(calls.filter((p) => p.includes("best-categories"))).toHaveLength(
+        1,
+      );
+      const store = await SharelinkStore.open(
+        setup.env.HOOKA_SHARELINK_DB_PATH,
+      );
+      expect(
+        store.db.query("SELECT products,links FROM sharelink_budget").get(),
+      ).toEqual({ products: 31, links: 1 });
+      store.close();
+      const snapshot = await Bun.file(
+        join(setup.env.HOOKA_SHARELINK_RESULTS_PATH, app.appId, "offers.json"),
+      ).json();
+      expect(snapshot.entries[0].offer.productId).toBe(
+        mode === "ranked" ? "126" : "123",
+      );
+    } finally {
+      await setup.cleanup();
+    }
+  },
+);
 
 const originalFetch = globalThis.fetch;
 afterEach(() => {

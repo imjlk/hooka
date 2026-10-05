@@ -1,0 +1,174 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "schemaVersion": {
+      "type": "number",
+      "const": 1
+    },
+    "generatedAt": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "expiresAt": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "seed": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "policy": {
+      "default": {
+        "policyId": "refresh-priority",
+        "version": 1,
+        "maxSubjectsPerApp": 25,
+        "explorationFraction": 0.2,
+        "urgentWithinMs": 300000,
+        "maxWaitMs": 86400000,
+        "accountShares": []
+      },
+      "type": "object",
+      "properties": {
+        "policyId": {
+          "default": "refresh-priority",
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"
+        },
+        "version": {
+          "default": 1,
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "maxSubjectsPerApp": {
+          "default": 25,
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000
+        },
+        "explorationFraction": {
+          "default": 0.2,
+          "type": "number",
+          "minimum": 0,
+          "maximum": 0.5
+        },
+        "urgentWithinMs": {
+          "default": 300000,
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 900000
+        },
+        "maxWaitMs": {
+          "default": 86400000,
+          "type": "integer",
+          "minimum": 60000,
+          "maximum": 86400000
+        },
+        "accountShares": {
+          "default": [],
+          "maxItems": 100,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "accountId": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"
+              },
+              "apps": {
+                "minItems": 1,
+                "maxItems": 100,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "appId": {
+                      "type": "string",
+                      "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"
+                    },
+                    "weight": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 100
+                    }
+                  },
+                  "required": ["appId", "weight"],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": ["accountId", "apps"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "apps": {
+      "minItems": 1,
+      "maxItems": 100,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "appId": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"
+          },
+          "appRevision": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "contextId": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"
+          },
+          "measurementProfileId": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"
+          },
+          "subjects": {
+            "maxItems": 1000,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "subjectId": {
+                  "type": "string",
+                  "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"
+                },
+                "ruleRevision": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                },
+                "estimatedReach": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 1000000000
+                }
+              },
+              "required": ["subjectId", "ruleRevision", "estimatedReach"],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "appId",
+          "appRevision",
+          "contextId",
+          "measurementProfileId",
+          "subjects"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["schemaVersion", "generatedAt", "expiresAt", "seed", "apps"],
+  "additionalProperties": false
+}

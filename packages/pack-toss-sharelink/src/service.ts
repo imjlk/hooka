@@ -6,7 +6,11 @@ import { isAbsolute, join, resolve } from "node:path";
 import type { Account, App, ResultEntry, Snapshot, Subject } from "./contracts";
 import { configSchema, offerSchema, snapshotSchema } from "./contracts";
 import { failure } from "./errors";
-import { matchProducts } from "./matching";
+import { eligibleProducts, matchProducts } from "./matching";
+import {
+  rankSharelinkProducts,
+  type OrderingDiagnostic,
+} from "./recommendations";
 import { collectReport } from "./reports";
 import type { PerformanceInput, SettlementInput } from "./contracts";
 import { SharelinkProvider } from "./provider";
@@ -22,6 +26,12 @@ interface Context {
 }
 const ruleFingerprint = (app: App, subject: Subject) =>
   digest([app.accountId, app.subTagId, subject]);
+interface SubjectInspection {
+  pages: number;
+  candidates: number;
+  reason: string;
+  ordering?: OrderingDiagnostic[];
+}
 
 /** Resolve trusted operator configuration; task callers cannot supply paths or credentials. */
 async function context(appId: string, env: Env): Promise<Context> {
@@ -128,7 +138,8 @@ async function resolveSubject(
   subject: Subject,
   app: App,
   provider: SharelinkProvider,
-  inspection: { pages: number; candidates: number; reason: string },
+  inspection: SubjectInspection,
+  env: Env,
 ): Promise<ResultEntry> {
   const base = {
     subjectId: subject.subjectId,
@@ -172,11 +183,22 @@ async function resolveSubject(
           cursor,
         );
     if (!subject.pinnedProductId) inspection.pages++;
-    const candidates = matchProducts(
+    const matched = (
+      env["HOOKA_SHARELINK_RECOMMENDATIONS_ENABLED"] === "true" &&
+        !subject.pinnedProductId
+        ? eligibleProducts
+        : matchProducts
+    )(
       page.products.filter((product) => !products.has(product.id)),
       categories,
       subject,
     );
+    const ranked = await rankSharelinkProducts(matched, app, subject, env);
+    if (ranked.diagnostic) {
+      inspection.ordering ??= [];
+      inspection.ordering.push(ranked.diagnostic);
+    }
+    const candidates = ranked.products.slice(0, 3);
     for (const product of page.products) products.add(product.id);
     for (const candidate of candidates) {
       if (inspection.candidates >= 3) break;
@@ -320,6 +342,7 @@ export async function runSharelink(
           pages: number;
           candidates: number;
           reason: string;
+          ordering?: OrderingDiagnostic[];
         }[] = [];
         const provider = new SharelinkProvider(
           ctx.account,
@@ -356,6 +379,7 @@ export async function runSharelink(
               ctx.app,
               provider,
               inspection,
+              env,
             );
             if (result.status !== "no-match") inspection.reason = result.status;
             inspections.push(inspection);

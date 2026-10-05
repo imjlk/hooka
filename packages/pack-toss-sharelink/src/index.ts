@@ -119,3 +119,20 @@ export { matchProducts } from "./matching";
 export type { Product, Category } from "./provider";
 export type { RefreshJob, SharelinkConfig } from "./operations";
 export type { App, Subject } from "./contracts";
+export { eligibleProducts } from "./matching";
+export {
+  recommendationBindingsSchema,
+  productOrderingRequest,
+  applyProductOrdering,
+  rankSharelinkProducts,
+} from "./recommendations";
+export type {
+  RecommendationBindings,
+  OrderingDiagnostic,
+} from "./recommendations";
+export {
+  refreshDemandSchema,
+  estimateRefreshCost,
+  previewRefreshPriority,
+} from "./refresh-priority";
+export type { RefreshDemand } from "./refresh-priority";

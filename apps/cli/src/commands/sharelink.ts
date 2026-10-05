@@ -10,9 +10,13 @@ import {
   planSharelinkRefresh,
   summarizeSharelinkApp,
   matchProducts,
+  eligibleProducts,
+  rankSharelinkProducts,
+  previewRefreshPriority,
   type Product,
   type Category,
 } from "@hooka/pack-toss-sharelink";
+import { readArtifact } from "@hooka/pack-recommendations";
 import { createRunStore } from "@hooka/run-store";
 import { defineCommand, defineGroup, option } from "../lib/command";
 import { booleanFlag, type CliDefaults } from "../lib/shared";
@@ -175,6 +179,10 @@ export function createSharelinkCommandGroup(defaults: CliDefaults) {
           fixture: option(z.string().min(1), {
             description: "JSON with normalized categories and products.",
           }),
+          ranked: booleanFlag({
+            description:
+              "Preview opt-in recommendation ordering from existing local model/bindings.",
+          }),
         },
         handler: async ({ flags }) => {
           const data = await readSharelinkConfig(flags.config);
@@ -200,18 +208,62 @@ export function createSharelinkCommandGroup(defaults: CliDefaults) {
             .parse(await file.json());
           print({
             appId: selected.appId,
-            subjects: selected.subjects.map((subject) => ({
-              subjectId: subject.subjectId,
-              enabled: subject.enabled,
-              candidates: subject.enabled
-                ? matchProducts(
-                    fixture.products,
-                    fixture.categories,
-                    subject,
-                  ).map((item) => ({ productId: item.id, title: item.title }))
-                : [],
-            })),
+            subjects: await Promise.all(
+              selected.subjects.map(async (subject) => {
+                const matched = subject.enabled
+                  ? (flags.ranked ? eligibleProducts : matchProducts)(
+                      fixture.products,
+                      fixture.categories,
+                      subject,
+                    )
+                  : [];
+                const ordering = flags.ranked
+                  ? await rankSharelinkProducts(matched, selected, subject, {
+                      ...Bun.env,
+                      HOOKA_SHARELINK_RECOMMENDATIONS_ENABLED: "true",
+                    })
+                  : { products: matched };
+                return {
+                  subjectId: subject.subjectId,
+                  enabled: subject.enabled,
+                  candidates: ordering.products
+                    .slice(0, 3)
+                    .map((item) => ({ productId: item.id, title: item.title })),
+                  ...(ordering.diagnostic
+                    ? { ordering: ordering.diagnostic }
+                    : {}),
+                };
+              }),
+            ),
           });
+        },
+      }),
+      defineCommand({
+        name: "priority",
+        description:
+          "Preview demand/expiry/exploration worksets with conservative account shares; never queue or reserve budgets.",
+        options: {
+          config,
+          domain,
+          results,
+          demand: option(z.string().min(1), {
+            description: "Operator-owned expiring refresh demand JSON.",
+          }),
+        },
+        handler: async ({ flags }) => {
+          const data = await readSharelinkConfig(flags.config),
+            asked = await readArtifact(flags.demand, 2097152);
+          const accounts = (await Bun.file(flags.domain).exists())
+            ? readSharelinkAccounts(flags.domain, data)
+            : [];
+          const snapshots = (
+            await Promise.all(
+              data.apps.map((a) =>
+                readSharelinkSnapshot(flags.results, a.appId),
+              ),
+            )
+          ).filter((s) => s !== null);
+          print(previewRefreshPriority(data, asked, snapshots, accounts));
         },
       }),
       defineCommand({

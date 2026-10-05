@@ -2,6 +2,78 @@ import { expect, test } from "bun:test";
 import { join } from "node:path";
 import { temporarySetup } from "../../../../packages/pack-toss-sharelink/src/fixtures";
 import { createRunStore } from "@hooka/run-store";
+import { testApp } from "../../../../packages/pack-toss-sharelink/src/fixtures";
+import { recommendationFixture } from "../../../../packages/pack-toss-sharelink/src/recommendations.fixture";
+
+test("ranked fixture preview and priority command only read offline artifacts", async () => {
+  const app = testApp(),
+    setup = await temporarySetup([app]);
+  try {
+    const now = Date.now(),
+      f = await recommendationFixture(setup.directory, app, now),
+      fixture = join(setup.directory, "catalog-ranked.json"),
+      demand = join(setup.directory, "demand.json");
+    await Bun.write(
+      fixture,
+      JSON.stringify({
+        categories: [{ id: "10", children: [] }],
+        products: ["123", "124", "125", "126"].map((id) => ({
+          id,
+          title: "편안한 베개",
+          categoryIds: ["10"],
+          soldOut: false,
+        })),
+      }),
+    );
+    await Bun.write(
+      demand,
+      JSON.stringify({
+        schemaVersion: 1,
+        generatedAt: now,
+        expiresAt: now + 60000,
+        seed: "fixture",
+        apps: [
+          {
+            appId: app.appId,
+            appRevision: 1,
+            contextId: "low-ready",
+            measurementProfileId: "word-full-1s-v1",
+            subjects: [
+              { subjectId: "pillow", ruleRevision: 1, estimatedReach: 10 },
+            ],
+          },
+        ],
+      }),
+    );
+    const env = {
+      ...setup.env,
+      ...f.env,
+      TEST_ACCESS: "",
+      TEST_SECRET: "",
+      HOOKA_DB_PATH: join(setup.directory, "queue.sqlite"),
+    };
+    expect(
+      (
+        await cli(
+          ["preview", "--app", app.appId, "--fixture", fixture, "--ranked"],
+          env,
+        )
+      ).subjects[0].candidates[0].productId,
+    ).toBe("126");
+    expect(
+      (await cli(["preview", "--app", app.appId, "--fixture", fixture], env))
+        .subjects[0].candidates[0].productId,
+    ).toBe("123");
+    const result = await cli(["priority", "--demand", demand], env);
+    expect(result.status).toBe("preview-only");
+    expect(result.apps[0].workset.subjectIds).toEqual(["pillow"]);
+    expect(result.accounts[0].budgetEvidence).toBe("configured-upper-bound");
+    expect(await Bun.file(env.HOOKA_DB_PATH).exists()).toBe(false);
+    expect(await Bun.file(env.HOOKA_SHARELINK_DB_PATH).exists()).toBe(false);
+  } finally {
+    await setup.cleanup();
+  }
+});
 
 async function cli(args: string[], env: Record<string, string>) {
   const child = Bun.spawn(
