@@ -10,7 +10,7 @@ operator, CLI, image, or release workflow changes:
 
 ```md
 ---
-npm/hooka: minor (Added)
+npm/hooka: patch (Added)
 ---
 
 Describe the user-facing change.
@@ -18,6 +18,12 @@ Describe the user-facing change.
 
 Use `patch`, `minor`, or `major`. Optional changelog sections are `Added`,
 `Changed`, `Deprecated`, `Removed`, `Fixed`, and `Security`.
+
+Backward-compatible preset additions and improvements use `patch`, including
+preset-specific task packs, capabilities, CLI operations and deployment templates.
+Use `minor` for new shared runtime, queue, server API or general CLI functionality.
+Breaking existing public behavior or contracts requires `major`, including preset
+contracts. The root Hooka version identifies all preset images together.
 
 Docs-only PRs do not need a changeset. For rare release-neutral automation
 changes, label the PR `no-release` or `skip-changeset`.
