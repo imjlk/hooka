@@ -21,6 +21,7 @@
         "@hooka/bun-utils": "workspace:*",
         "@hooka/config": "workspace:*",
         "@hooka/contracts": "workspace:*",
+        "@hooka/pack-recommendations": "workspace:*",
         "@hooka/pack-toss-sharelink": "workspace:*",
         "@hooka/registry": "workspace:*",
         "@hooka/run-store": "workspace:*",

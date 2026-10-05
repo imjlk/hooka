@@ -3,8 +3,9 @@
 Status: Design proposal; no runtime, provider call, scheduled job or placement policy is enabled.
 
 Implementation progress: the [offline engine](../presets/recommendations.md)
-implements slice 1 contracts/scoring/sampling. Ingestion, tasks, consumer adapters
-and live integrations below remain proposed. Product-mode requests distinguish
+implements slices 1–2 contracts/scoring/sampling, private ingestion, sealed models
+and offline CLI. Queued tasks, consumer adapters and live integrations below
+remain proposed. Product-mode requests distinguish
 candidates by subject + entity reference so one subject can rank several products.
 
 ## Decision

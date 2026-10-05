@@ -1,16 +1,18 @@
 # Offline recommendation engine
 
 Implemented: strict v1 registrations, decision request/model/result contracts,
-pure scoring, deterministic weighted sampling and whole-result consumer validation.
-Persistence, tasks, CLI, consumer measurement adapters and live provider ordering
-remain planned in the [RFC](../rfcs/shared-recommendations.md).
+pure scoring, deterministic weighted sampling, private aggregate/assignment store,
+offline CLI and whole-result consumer validation. Queued tasks, consumer measurement
+adapters and live provider ordering remain planned in the
+[RFC](../rfcs/shared-recommendations.md).
 
-The engine never opens a DB, reads credentials, calls a provider, activates a
-scheduler or changes an app's placement. Models supplied to this first slice are
-operator-owned offline artifacts. Do not accept models or registration config
-from browser/mobile clients. A model is trusted measurement input, not proof that
-its counts were observed; the ingestion/assignment-verification slice will own
-that verification.
+The pure scoring engine has no I/O. Offline operations open only their explicitly
+initialized private recommendation DB. They never read provider credentials, call
+a provider, activate a scheduler or change an app's placement. Inputs are
+operator-owned artifacts from registered app backends; do not accept registrations
+or aggregate counts directly from browser/mobile clients. Assignment verification
+checks identity, decisions, timing and sampler probabilities; actual viewport and
+visit deduplication remain the responsibility of each app measurement adapter.
 
 ## Use
 
@@ -53,6 +55,78 @@ other apps contribute at most 20 and must pass the 80% dominance gate. Operator
 policy parameters are versioned and bounded. Local evidence updates this prior.
 These defaults are trial values, not learned optimal thresholds.
 
+## Offline operations
+
+Use `bun apps/cli/src/index.ts recommendations <command>` or the built `hooka`
+CLI. All commands emit JSON. Set `HOOKA_RECOMMENDATIONS_CONFIG_PATH`,
+`HOOKA_RECOMMENDATIONS_DB_PATH`, `HOOKA_RECOMMENDATIONS_RESULTS_PATH`, or pass
+`--config`, `--domain`, `--results`. The domain path must be a dedicated local
+SQLite file; the app outbox is a local directory on the same host.
+
+```sh
+hooka recommendations validate --config /private/recommendations/config.json
+hooka recommendations init --domain /private/recommendations/learning.sqlite
+hooka recommendations build --config /private/recommendations/config.json --domain /private/recommendations/learning.sqlite
+hooka recommendations plan --config /private/recommendations/config.json --domain /private/recommendations/learning.sqlite --artifact /private/recommendations/request.json
+hooka recommendations export --config /private/recommendations/config.json --domain /private/recommendations/learning.sqlite --artifact /private/recommendations/request.json --results /private/recommendation-outboxes
+hooka recommendations ingest --config /private/recommendations/config.json --domain /private/recommendations/learning.sqlite --kind manifest --artifact /private/recommendations/assignments.json
+hooka recommendations ingest --config /private/recommendations/config.json --domain /private/recommendations/learning.sqlite --kind aggregate --artifact /private/recommendations/day.json
+hooka recommendations status --domain /private/recommendations/learning.sqlite
+hooka recommendations prune --domain /private/recommendations/learning.sqlite
+```
+
+Initialize explicitly. `validate` needs no DB; `status` and `plan` open existing
+stores read-only and never initialize/migrate them. A missing or foreign DB is
+rejected. The store checks an application marker and schema version before
+changing journaling/permissions. Writable stores use local WAL transactions and
+mode 0600. Grant app backends only their inbox/outbox permissions, never the DB.
+
+`export` records the complete immutable decision before publishing. Files live in
+`<results>/<appId>/requests/<requestId>/`: `decisions/<decisionId>.json` is
+immutable and `recommendations.json` is the small pointer. Use unique request IDs
+for different dates/contexts. One learning-group DB owns an outbox root. CLI
+publishers use its SQLite writer lock for the synchronous pointer read/check/rename;
+older or conflicting pointers cannot replace a newer result. Failed publication
+can be retried against the recorded decision. Consumer backends can use
+`readPublishedDecision(root, expectedRequest, now)`; missing/corrupt/mismatched
+files return null. POSIX local filesystems are required; SQLite/atomic files are
+not a cross-host transport. Outbox directories/files are private by default;
+configure matching service UID or approved local file access before deployment.
+
+Assignment manifests are immutable and app/producer-bound. A decision must already
+be recorded, match app revision/context/profile, and be valid when assignment starts.
+An assignment window is at most 24 hours. The sampler mode verifies the complete
+selected prefix across all stored and incoming manifests for that decision,
+distinct candidates, one experiment and conditional draw probabilities; holdout
+sampler decisions must be uniform. Constrained/fallback modes are observational
+and do not prove randomized exposure, even if a probability is provided.
+
+Daily aggregates are complete UTC-day snapshots (up to 10,000 rows / 8 MiB).
+The CLI does not accept an in-progress current day. Completed but not yet sealed
+days can be ingested; only days whose end is at least 48 hours old enter a model.
+Rows must reference known assignments overlapping the day/profile. Same revision
+and semantic digest is a no-op; conflicting same revisions fail; lower revisions
+are stale. A higher revision replaces the whole day, including removal of rows.
+No retry adds counts. Historical corrections keep their immutable assignment
+lineage and do not acquire today's rule/mapping meaning.
+
+App revisions cannot move backwards. Producer identities and entity references
+cannot be rebound. Changed context semantics require a new context ID; changed
+canonical subject meaning requires a larger mapping version, including after
+removal/reintroduction. Policy versions are immutable. New registration requires
+building a model before planning; status exposes configuration mismatch, freshness
+and 14-day coverage. Missing days are unavailable evidence, not measured zero CTR.
+
+`build` streams joined assignment evidence with a day index and registration maps,
+then atomically commits a complete immutable model and current pointer. Limits:
+one million source assignment rows and 100,000 derived evidence rows per build.
+Overflow/validation/clock-regression failure retains the previous generation.
+Scope the learning group if it exceeds these limits; no live requests join app
+analytics DBs. `prune` removes aggregates older than 90 UTC days and models,
+decisions/manifests/assignments/tombstones older than 120 days. Registration
+identity bindings remain private to prevent rebinding. Ancient days are rejected
+by their period even after a replay tombstone is pruned.
+
 Subject requests require distinct subjects. Product requests can contain several
 approved entity references for one subject. Weights are normalized within that
 request/context; rank is a stable score ordering and is not a conversion rate.
@@ -80,6 +154,6 @@ JSON Schemas live in `docs/contracts/recommendations/v1/`. Regenerate with
 count relationships, lifetime and normalized-weight checks also run in Zod.
 Do not infer those guarantees from structural JSON Schema alone.
 
-Focused checks: `bun test packages/pack-recommendations/src/engine.test.ts`.
+Focused checks: `bun test packages/pack-recommendations apps/cli/src/commands/recommendations.test.ts`.
 The existing Sharelink config/offer/workset v1 files are unchanged. Manual links,
 pinned products, provider budgets and existing refresh scheduling are unaffected.
