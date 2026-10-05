@@ -1,7 +1,9 @@
 # Sharelink operations and offline readiness
 
-These commands require the release containing this operations change (they are
-not in 1.3.0). For local development use `bun apps/cli/src/index.ts` in place of
+These commands are available in Hooka **1.4.0** and later (not in 1.3.0).
+The [deployment guide](./toss-sharelink-deployment.md) includes two-stack starter
+configs, offline preflight and a staged rollout. For local development use
+`bun apps/cli/src/index.ts` in place of
 `bun apps/cli/dist/index.js` after `bun install`. Build/deploy this revision before
 configuring a scheduled task. All operation command output is JSON.
 

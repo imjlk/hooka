@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "accounts": [
+    {
+      "accountId": "shared-partner",
+      "publisherId": "00000000-0000-4000-8000-000000000001",
+      "accessKeyEnv": "TOSS_SHARELINK_ACCESS_KEY",
+      "secretKeyEnv": "TOSS_SHARELINK_SECRET_KEY",
+      "productBudget": 9000,
+      "linkBudget": 9000
+    }
+  ],
+  "apps": [
+    {
+      "appId": "ztt-web",
+      "accountId": "shared-partner",
+      "revision": 1,
+      "subTagId": "ztt-web",
+      "subjects": []
+    },
+    {
+      "appId": "ztt-native",
+      "accountId": "shared-partner",
+      "revision": 1,
+      "subTagId": "ztt-native",
+      "subjects": []
+    }
+  ]
+}

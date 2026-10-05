@@ -1,0 +1,17 @@
+# Run separately from compose.yml. No credentials or production volumes needed.
+services:
+  preflight:
+    image: ghcr.io/imjlk/hooka:${HOOKA_VERSION:-1.4.0}-toss-sharelink
+    network_mode: none
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    volumes:
+      - type: bind
+        source: ${SHARELINK_CONFIG_DIR:-./sharelink-config}
+        target: /sharelink-config
+        read_only: true
+        bind:
+          create_host_path: false
+    entrypoint: [bun, apps/cli/dist/index.js, sharelink]
+    command: [validate, --config, /sharelink-config/config.json]
