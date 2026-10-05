@@ -20,6 +20,7 @@
     "@hooka/targets": "workspace:*",
     "gunshi": "^0.37.3",
     "zod": "catalog:",
-    "@hooka/pack-toss-sharelink": "workspace:*"
+    "@hooka/pack-toss-sharelink": "workspace:*",
+    "@hooka/pack-recommendations": "workspace:*"
   }
 }

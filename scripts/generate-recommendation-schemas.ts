@@ -7,6 +7,11 @@ import {
   resultSchema,
   policySchema,
 } from "../packages/pack-recommendations/src/contracts";
+import {
+  manifestSchema,
+  aggregateSchema,
+  pointerSchema,
+} from "../packages/pack-recommendations/src/measurement";
 
 const directory = new URL(
   "../docs/contracts/recommendations/v1/",
@@ -19,6 +24,9 @@ for (const [name, schema] of Object.entries({
   model: modelSchema,
   result: resultSchema,
   policy: policySchema,
+  manifest: manifestSchema,
+  aggregate: aggregateSchema,
+  pointer: pointerSchema,
 })) {
   await Bun.write(
     new URL(`${name}.schema.json`, directory),
