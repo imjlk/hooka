@@ -19,7 +19,7 @@ export const worksetSchema = z
     appId: idSchema,
     appRevision: z.number().int().positive(),
     expiresAt: z.number().int().nonnegative(),
-    subjectIds: z.array(idSchema).max(1000),
+    subjectIds: z.array(idSchema).max(1000).meta({ uniqueItems: true }),
   })
   .strict()
   .refine(

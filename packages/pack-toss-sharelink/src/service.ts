@@ -249,16 +249,16 @@ export async function runSharelink(
       "subjectIds" in input && input.subjectIds
         ? new Set(input.subjectIds)
         : undefined;
-    if (
-      selectedIds &&
-      [...selectedIds].some(
-        (id) => !ctx.app.subjects.some((s) => s.subjectId === id),
-      )
-    )
-      throw failure("unknown_subject");
-    const subjects = ctx.app.subjects.filter(
-      (s) => !selectedIds || selectedIds.has(s.subjectId),
+    const configuredSubjects = new Map(
+      ctx.app.subjects.map((subject) => [subject.subjectId, subject]),
     );
+    const subjects = selectedIds
+      ? [...selectedIds].map((id) => {
+          const subject = configuredSubjects.get(id);
+          if (!subject) throw failure("unknown_subject");
+          return subject;
+        })
+      : ctx.app.subjects;
     if (mode === "refresh" && subjects.length > 100)
       throw failure("batch_too_large");
     if (dryRun)
