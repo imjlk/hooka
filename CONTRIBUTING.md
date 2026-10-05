@@ -48,7 +48,8 @@ The Bun version is pinned once through `packageManager` in the root `package.jso
 - Add a Sampo changeset under `.sampo/changesets/` for user-facing runtime, CLI, image, operator workflow, release workflow, or API changes.
 - Use `npm/hooka` as the package id and choose `patch`, `minor`, or `major`.
 - Use `patch` for backward-compatible preset additions and improvements, including their task packs, capabilities, preset-specific CLI operations and deployment templates. Hooka's root version also identifies preset images, so a new preset alone does not require a minor release.
-- Use `minor` for backward-compatible additions to the shared Hooka runtime, queue, server API or general CLI. Use `major` for breaking changes to existing public behavior or contracts, including preset contracts.
+- Classify changes by their behavior, not package/file location, CLI nesting or the number of consuming apps. Recommendation/scoring packs, their contracts, private stores and offline operations are preset functionality and use `patch`; this includes `hooka recommendations` even though several apps can reuse it.
+- Use `minor` for backward-compatible additions to the shared execution runtime, queue, server API or general-purpose CLI that change Hooka core capabilities beyond a preset. Adding a preset's own CLI group or private store alone does not require `minor`. Use `major` for breaking changes to existing public behavior or contracts, including preset contracts.
 - Optional changelog sections are `Added`, `Changed`, `Deprecated`, `Removed`, `Fixed`, and `Security`.
 - Docs-only PRs do not need a changeset.
 - Label rare release-neutral PRs with `no-release` or `skip-changeset`.

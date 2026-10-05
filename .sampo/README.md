@@ -21,9 +21,21 @@ Use `patch`, `minor`, or `major`. Optional changelog sections are `Added`,
 
 Backward-compatible preset additions and improvements use `patch`, including
 preset-specific task packs, capabilities, CLI operations and deployment templates.
-Use `minor` for new shared runtime, queue, server API or general CLI functionality.
+Classify the behavior being added, not its package/file location, CLI nesting or
+the number of apps that reuse it. Preset recommendation/scoring packs, contracts,
+private stores and offline CLI operations use `patch`, including
+`hooka recommendations`. A dedicated CLI group or store does not make an
+extension a core feature.
+
+Use `minor` for new shared execution runtime, queue, server API or general-purpose
+CLI behavior that expands Hooka core capabilities beyond a preset.
 Breaking existing public behavior or contracts requires `major`, including preset
 contracts. The root Hooka version identifies all preset images together.
+
+The published `1.5.0` release remains immutable. Its recommendation CLI was
+previously classified as general CLI functionality; future compatible changes to
+that feature follow the preset `patch` rule above. Do not downgrade the root
+version or replace published tags/image aliases to correct that classification.
 
 Docs-only PRs do not need a changeset. For rare release-neutral automation
 changes, label the PR `no-release` or `skip-changeset`.

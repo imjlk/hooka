@@ -373,8 +373,12 @@ preserve existing offers, revisions, daily words and measurement history.
 ## Release plan
 
 This RFC is documentation only and needs no version change. Backward-compatible
-preset-specific tasks/adapters/contracts use an `npm/hooka: patch` changeset under
-the repository release policy. If scoped remote ingress adds general server/runtime
+preset-specific tasks/adapters/contracts, recommendation packs, private learning
+stores and their offline CLI operations use an `npm/hooka: patch` changeset under
+the repository release policy. Sharing this feature across apps or exposing a
+top-level `recommendations` CLI group does not by itself make it core functionality.
+The already published 1.5.0 tag remains unchanged; subsequent compatible changes
+to this feature use patch. If scoped remote ingress adds general server/runtime
 functionality, that slice uses `minor`. Breaking existing published behavior or
 contracts requires `major`; separate new v1 files do not mutate Sharelink v1.
 
