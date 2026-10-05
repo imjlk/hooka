@@ -1,0 +1,14 @@
+{
+  "name": "@hooka/pack-recommendations",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "bun build ./src/index.ts --outdir ./dist --target bun"
+  },
+  "dependencies": {
+    "zod": "catalog:"
+  }
+}

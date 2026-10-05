@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "policyId": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "alpha": {
+      "default": 1,
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "maximum": 1000
+    },
+    "beta": {
+      "default": 19,
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "maximum": 1000
+    },
+    "epsilon": {
+      "default": 0.2,
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "sharing": {
+      "default": false,
+      "type": "boolean"
+    },
+    "minSharedExposures": {
+      "default": 200,
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "minSharedDays": {
+      "default": 3,
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 14
+    },
+    "sharedStrength": {
+      "default": 20,
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "maximum": 100
+    },
+    "singleAppStrength": {
+      "default": 5,
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "maximum": 100
+    },
+    "maxAppShare": {
+      "default": 0.8,
+      "type": "number",
+      "minimum": 0.5,
+      "maximum": 1
+    }
+  },
+  "required": ["policyId", "version"],
+  "additionalProperties": false
+}
