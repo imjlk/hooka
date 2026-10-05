@@ -90,10 +90,10 @@ target "toss-sharelink" {
   inherits = ["base"]
   target = "worker-preset"
   args = {
-    HOOKA_FEATURES = "toss-sharelink"
+    HOOKA_FEATURES = "toss-sharelink,recommendations"
     HOOKA_IMAGE_LABEL = "hooka:toss-sharelink"
     HOOKA_RUNTIME_ROLE = "worker:toss-sharelink"
-    HOOKA_INSTALLED_CAPABILITIES = "toss-sharelink"
+    HOOKA_INSTALLED_CAPABILITIES = "toss-sharelink,recommendations"
   }
   tags = ["${REGISTRY}:toss-sharelink"]
 }

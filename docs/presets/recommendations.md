@@ -5,8 +5,9 @@ pure scoring, deterministic weighted sampling, private aggregate/assignment stor
 offline CLI and whole-result consumer validation. The Cattower measurement/export
 adapter and shadow preview are implemented in its consumer repository. Hooka
 1.5.1+ adds the [opt-in Sharelink ordering adapter and offline refresh-priority preview](./toss-sharelink-recommendations.md).
-Queued recommendation automation and live budget-fair dispatch remain planned in the
-[RFC](../rfcs/shared-recommendations.md).
+Hooka 1.5.2+ adds [opt-in recommendation queue tasks](./recommendation-tasks.md)
+in the same Sharelink worker. Scoped cross-host transport and live budget-fair
+dispatch remain planned in the [RFC](../rfcs/shared-recommendations.md).
 
 The pure scoring engine has no I/O. Offline operations open only their explicitly
 initialized private recommendation DB. They never read provider credentials, call

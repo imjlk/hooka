@@ -602,12 +602,18 @@ export class RecommendationStore {
     configInput: unknown,
     requestInput: unknown,
     now = Date.now(),
+    expectedModelGenerationId?: string,
   ) {
     const config = configSchema.parse(configInput),
       request = requestSchema.parse(requestInput);
     return this.write(() => {
       this.register(config);
       const result = this.plan(config, request, now);
+      if (
+        expectedModelGenerationId !== undefined &&
+        result.modelGenerationId !== expectedModelGenerationId
+      )
+        throw new Error("Expected recommendation model is no longer current.");
       if (!validateRecommendations(result, request, now))
         throw new Error("Invalid planned result.");
       this.db

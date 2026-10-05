@@ -6,8 +6,9 @@ Implementation progress: the [offline engine](../presets/recommendations.md)
 implements slices 1–2 contracts/scoring/sampling, private ingestion, sealed models
 and offline CLI. Slice 3 is implemented in Cattower (measurement/export and shadow
 preview). Slice 4's [Sharelink ordering adapter and refresh-priority preview](../presets/toss-sharelink-recommendations.md)
-are opt-in/offline in Hooka 1.5.1+. Queued recommendation automation, cross-host
-transport and live budget-fair dispatch remain proposed. Product-mode requests distinguish
+are opt-in/offline in Hooka 1.5.1+. [Recommendation queue tasks](../presets/recommendation-tasks.md)
+extend slice 2 in Hooka 1.5.2+ without an additional worker or automatic schedule.
+Cross-host transport and live budget-fair dispatch remain proposed. Product-mode requests distinguish
 candidates by subject + entity reference so one subject can rank several products.
 
 ## Decision

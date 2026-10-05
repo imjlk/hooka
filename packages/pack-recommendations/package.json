@@ -8,7 +8,14 @@
   "scripts": {
     "build": "bun build ./src/index.ts --outdir ./dist --target bun"
   },
+  "hooka": {
+    "registry": {
+      "kind": "task-pack",
+      "export": "recommendationTaskPack"
+    }
+  },
   "dependencies": {
+    "@hooka/task-sdk": "workspace:*",
     "zod": "catalog:"
   }
 }

@@ -112,8 +112,8 @@ export const tossSharelinkPreset = definePreset({
   tier: "lean",
   imageTag: "toss-sharelink",
   publicWorkerTag: "toss-sharelink",
-  capabilities: ["toss-sharelink"],
-  taskPacks: ["@hooka/pack-toss-sharelink"],
+  capabilities: ["toss-sharelink", "recommendations"],
+  taskPacks: ["@hooka/pack-toss-sharelink", "@hooka/pack-recommendations"],
 });
 
 export const activeWorkerPresets = [

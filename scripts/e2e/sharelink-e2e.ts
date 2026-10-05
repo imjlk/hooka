@@ -1,8 +1,10 @@
 import { createHmac } from "node:crypto";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { selectSharelinkOffer } from "../../packages/pack-toss-sharelink/src/consumer";
+import { configSchema as recommendationConfigSchema } from "../../packages/pack-recommendations/src/contracts";
+import { digest } from "../../packages/pack-recommendations/src/engine";
 
 const project = `hooka-sharelink-e2e-${Date.now()}`;
 const image = `${project}:worker`;
@@ -37,6 +39,26 @@ async function config(id: string, revision = 1, categoryId = "10") {
   );
 }
 const base = { image, networks: ["isolated"] };
+const recommendationConfig = recommendationConfigSchema.parse({
+  schemaVersion: 1,
+  entities: [],
+  policies: [{ policyId: "ctr", version: 1 }],
+  apps: [
+    {
+      appId: "a",
+      appRevision: 1,
+      producerId: "a-backend",
+      contexts: [{ contextId: "low", measurementProfileId: "visible" }],
+      subjects: [{ subjectId: "pillow", ruleRevision: 1 }],
+    },
+  ],
+});
+await Bun.write(
+  join(directory, "recommendations.json"),
+  JSON.stringify(recommendationConfig),
+);
+const recommendationInbox = join(directory, "recommendation-inbox");
+await mkdir(join(recommendationInbox, "a", "request"), { recursive: true });
 const services: Record<string, unknown> = {
   mock: {
     ...base,
@@ -57,7 +79,7 @@ for (const id of ["a", "b"]) {
     HOOKA_DB_PATH: "/queue/hooka.sqlite",
     HOOKA_ADMIN_TOKEN: token,
     HOOKA_WEBHOOK_SECRET: secret,
-    HOOKA_INSTALLED_CAPABILITIES: "toss-sharelink",
+    HOOKA_INSTALLED_CAPABILITIES: "toss-sharelink,recommendations",
     HOOKA_RUN_MAX_ATTEMPTS: "8",
     HOOKA_RETRY_BASE_DELAY_MS: "10000",
     HOOKA_POLL_INTERVAL_MS: "100",
@@ -66,6 +88,11 @@ for (const id of ["a", "b"]) {
     HOOKA_SHARELINK_CONFIG_PATH: `/config/${id}.json`,
     HOOKA_SHARELINK_DB_PATH: "/private/sharelink.sqlite",
     HOOKA_SHARELINK_RESULTS_PATH: "/results",
+    HOOKA_RECOMMENDATIONS_TASKS_ENABLED: "true",
+    HOOKA_RECOMMENDATIONS_CONFIG_PATH: "/config/recommendations.json",
+    HOOKA_RECOMMENDATIONS_DB_PATH: "/private/learning.sqlite",
+    HOOKA_RECOMMENDATIONS_INBOX_PATH: "/recommendation-inbox",
+    HOOKA_RECOMMENDATIONS_RESULTS_PATH: "/recommendation-outboxes",
     E2E_ACCESS: "e2e-access",
     E2E_SECRET: "e2e-secret",
   };
@@ -92,6 +119,8 @@ for (const id of ["a", "b"]) {
       "results:/results",
       `${directory}:/config:ro`,
       `${fixturePath}:/test:ro`,
+      `${recommendationInbox}:/recommendation-inbox:ro`,
+      "recommendation-outboxes:/recommendation-outboxes",
     ],
   };
 }
@@ -122,7 +151,13 @@ await Bun.write(
           : {}),
       },
     },
-    volumes: { "queue-a": {}, "queue-b": {}, private: {}, results: {} },
+    volumes: {
+      "queue-a": {},
+      "queue-b": {},
+      private: {},
+      results: {},
+      "recommendation-outboxes": {},
+    },
   }),
 );
 async function compose(...args: string[]) {
@@ -153,10 +188,15 @@ async function waitFor<T>(
   throw new Error("Sharelink E2E condition timed out.");
 }
 const urls: Record<string, string> = {};
-async function enqueue(id: string, eventId: string) {
+async function enqueue(
+  id: string,
+  eventId: string,
+  taskId = "toss-sharelink.refresh",
+  input: unknown = { schemaVersion: 1, appId: id },
+) {
   const payload = JSON.stringify({
-    taskId: "toss-sharelink.refresh",
-    input: { schemaVersion: 1, appId: id },
+    taskId,
+    input,
     eventId,
     source: "e2e",
   });
@@ -184,7 +224,10 @@ async function run(id: string, runId: string) {
   ).json()) as {
     status: string;
     lastErrorCode?: string;
-    result?: { errorCode?: string };
+    result?: {
+      errorCode?: string;
+      data?: { modelGenerationId?: string; publication?: { appId: string } };
+    };
   };
 }
 async function snapshot(id: string) {
@@ -198,7 +241,7 @@ function assert(value: unknown, message: string): asserts value {
   if (!value) throw new Error(message);
 }
 try {
-  await $`docker build -f docker/Dockerfile --target worker-preset --build-arg HOOKA_FEATURES=toss-sharelink --build-arg HOOKA_RUNTIME_ROLE=worker:toss-sharelink --build-arg HOOKA_INSTALLED_CAPABILITIES=toss-sharelink -t ${image} .`.quiet();
+  await $`docker build -f docker/Dockerfile --target worker-preset --build-arg HOOKA_FEATURES=toss-sharelink,recommendations --build-arg HOOKA_RUNTIME_ROLE=worker:toss-sharelink --build-arg HOOKA_INSTALLED_CAPABILITIES=toss-sharelink,recommendations -t ${image} .`.quiet();
   await compose("up", "-d");
   console.log("Containers started; waiting for health.");
   for (const id of ["a", "b"]) {
@@ -224,6 +267,81 @@ try {
     assert(response.ok, "Mock control failed");
   };
   await waitFor(state, () => true);
+  const beforeRecommendations = await state();
+  // Initialization is explicitly a CLI operator action, never an implicit task side effect.
+  await compose(
+    "exec",
+    "-T",
+    "worker-a",
+    "bun",
+    "apps/cli/dist/index.js",
+    "recommendations",
+    "init",
+    "--domain",
+    "/private/learning.sqlite",
+  );
+  const buildRun = await enqueue(
+    "a",
+    "recommendation-build",
+    "recommendations.build",
+    { configDigest: digest(recommendationConfig) },
+  );
+  const built = await waitFor(
+    () => run("a", buildRun),
+    (value) => value.status === "succeeded",
+  );
+  const modelGenerationId = built.result?.data?.modelGenerationId;
+  assert(
+    modelGenerationId,
+    "Recommendation model was not built by the same worker",
+  );
+  const now = Date.now();
+  const request = {
+    schemaVersion: 1,
+    requestId: "offline-e2e",
+    appId: "a",
+    appRevision: 1,
+    policyId: "ctr",
+    policyVersion: 1,
+    contextId: "low",
+    measurementProfileId: "visible",
+    kind: "subject",
+    generatedAt: now,
+    expiresAt: now + 600000,
+    seed: "e2e",
+    candidates: [{ subjectId: "pillow", ruleRevision: 1 }],
+  };
+  await Bun.write(
+    join(recommendationInbox, "a", "request", "offline-e2e.json"),
+    JSON.stringify(request),
+  );
+  const exportRun = await enqueue(
+    "a",
+    "recommendation-export",
+    "recommendations.export",
+    {
+      configDigest: digest(recommendationConfig),
+      appId: "a",
+      artifactId: "offline-e2e",
+      artifactDigest: digest(request),
+      modelGenerationId,
+    },
+  );
+  const exported = await waitFor(
+    () => run("a", exportRun),
+    (value) => value.status === "succeeded",
+  );
+  assert(
+    exported.result?.data?.publication?.appId === "a",
+    "Recommendation publication escaped app scope",
+  );
+  assert(
+    digest((await state()).calls) === digest(beforeRecommendations.calls),
+    "Offline recommendation tasks called the provider",
+  );
+  console.log(
+    "PASS: same-worker queued recommendation build/export with isolated app outbox and no provider calls",
+  );
   const [a, b] = await Promise.all([
     enqueue("a", "initial-a"),
     enqueue("b", "initial-b"),

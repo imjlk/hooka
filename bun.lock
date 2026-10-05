@@ -92,6 +92,12 @@
         "@hooka/task-sdk": "workspace:*",
       },
     },
+    "packages/cap-recommendations": {
+      "name": "@hooka/cap-recommendations",
+      "dependencies": {
+        "@hooka/task-sdk": "workspace:*",
+      },
+    },
     "packages/cap-rsync": {
       "name": "@hooka/cap-rsync",
       "dependencies": {
@@ -173,6 +179,7 @@
     "packages/pack-recommendations": {
       "name": "@hooka/pack-recommendations",
       "dependencies": {
+        "@hooka/task-sdk": "workspace:*",
         "zod": "catalog:",
       },
     },
@@ -287,6 +294,8 @@
     "@hooka/cap-php-cli": ["@hooka/cap-php-cli@workspace:packages/cap-php-cli"],
 
     "@hooka/cap-rclone": ["@hooka/cap-rclone@workspace:packages/cap-rclone"],
+
+    "@hooka/cap-recommendations": ["@hooka/cap-recommendations@workspace:packages/cap-recommendations"],
 
     "@hooka/cap-rsync": ["@hooka/cap-rsync@workspace:packages/cap-rsync"],
 

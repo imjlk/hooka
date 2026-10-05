@@ -30,10 +30,10 @@ docker compose -f compose.yml -f compose.recommendations.yml config --quiet
 
 This validates configuration only; it starts no container or scheduled operation.
 
-Queued recommendation ingest/build/export/prune tasks are a later stage. They can
-be added to a reusable pack and included in this worker's preset using the existing
-queue/registry. They are not implemented or scheduled by this extension. Today,
-operators can run the existing recommendation CLI in that worker. Use one owning
+Hooka 1.5.2+ includes [queued recommendation tasks](./recommendation-tasks.md)
+in a reusable pack in this worker's preset using the existing queue/registry.
+They require separate explicit enablement and are not automatically scheduled.
+Operators can also run the existing recommendation CLI in that worker. Use one owning
 model updater per learning group; readers can share its local SQLite database.
 Across Docker hosts, use the future scoped artifact transport rather than network
 mounting SQLite. Same-host access does not itself activate cross-app learning.
