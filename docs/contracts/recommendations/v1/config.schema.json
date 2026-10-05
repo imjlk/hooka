@@ -1,0 +1,215 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "schemaVersion": {
+      "type": "number",
+      "const": 1
+    },
+    "policies": {
+      "minItems": 1,
+      "maxItems": 100,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "policyId": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "alpha": {
+            "default": 1,
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 1000
+          },
+          "beta": {
+            "default": 19,
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 1000
+          },
+          "epsilon": {
+            "default": 0.2,
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "sharing": {
+            "default": false,
+            "type": "boolean"
+          },
+          "minSharedExposures": {
+            "default": 200,
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "minSharedDays": {
+            "default": 3,
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 14
+          },
+          "sharedStrength": {
+            "default": 20,
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 100
+          },
+          "singleAppStrength": {
+            "default": 5,
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 100
+          },
+          "maxAppShare": {
+            "default": 0.8,
+            "type": "number",
+            "minimum": 0.5,
+            "maximum": 1
+          }
+        },
+        "required": ["policyId", "version"],
+        "additionalProperties": false
+      }
+    },
+    "entities": {
+      "maxItems": 10000,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "entityRef": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"
+          },
+          "provider": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"
+          },
+          "catalogScope": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"
+          },
+          "productId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,80}$"
+          }
+        },
+        "required": ["entityRef", "provider", "catalogScope", "productId"],
+        "additionalProperties": false
+      }
+    },
+    "apps": {
+      "minItems": 1,
+      "maxItems": 100,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "appId": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"
+          },
+          "appRevision": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "producerId": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"
+          },
+          "contexts": {
+            "minItems": 1,
+            "maxItems": 100,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "contextId": {
+                  "type": "string",
+                  "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"
+                },
+                "measurementProfileId": {
+                  "type": "string",
+                  "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"
+                },
+                "learningGroupId": {
+                  "type": "string",
+                  "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"
+                },
+                "cohortId": {
+                  "type": "string",
+                  "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"
+                }
+              },
+              "required": ["contextId", "measurementProfileId"],
+              "additionalProperties": false
+            }
+          },
+          "subjects": {
+            "maxItems": 1000,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "subjectId": {
+                  "type": "string",
+                  "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"
+                },
+                "ruleRevision": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                },
+                "enabled": {
+                  "default": true,
+                  "type": "boolean"
+                },
+                "canonicalSubjectId": {
+                  "type": "string",
+                  "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"
+                },
+                "mappingVersion": {
+                  "default": 1,
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                },
+                "entityRefs": {
+                  "default": [],
+                  "maxItems": 1000,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"
+                  },
+                  "uniqueItems": true
+                }
+              },
+              "required": ["subjectId", "ruleRevision"],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "appId",
+          "appRevision",
+          "producerId",
+          "contexts",
+          "subjects"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["schemaVersion", "policies", "entities", "apps"],
+  "additionalProperties": false
+}

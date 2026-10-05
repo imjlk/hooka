@@ -169,6 +169,12 @@
         "zod": "catalog:",
       },
     },
+    "packages/pack-recommendations": {
+      "name": "@hooka/pack-recommendations",
+      "dependencies": {
+        "zod": "catalog:",
+      },
+    },
     "packages/pack-toss-sharelink": {
       "name": "@hooka/pack-toss-sharelink",
       "dependencies": {
@@ -305,6 +311,8 @@
     "@hooka/pack-cloudflare-cache": ["@hooka/pack-cloudflare-cache@workspace:packages/pack-cloudflare-cache"],
 
     "@hooka/pack-rclone": ["@hooka/pack-rclone@workspace:packages/pack-rclone"],
+
+    "@hooka/pack-recommendations": ["@hooka/pack-recommendations@workspace:packages/pack-recommendations"],
 
     "@hooka/pack-toss-sharelink": ["@hooka/pack-toss-sharelink@workspace:packages/pack-toss-sharelink"],
 

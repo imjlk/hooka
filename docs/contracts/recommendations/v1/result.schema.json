@@ -1,0 +1,154 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "schemaVersion": {
+      "type": "number",
+      "const": 1
+    },
+    "requestId": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"
+    },
+    "decisionId": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"
+    },
+    "appId": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"
+    },
+    "appRevision": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "policyId": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"
+    },
+    "policyVersion": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "modelGenerationId": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"
+    },
+    "inputDigest": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "generatedAt": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "expiresAt": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "contextId": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"
+    },
+    "measurementProfileId": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"
+    },
+    "kind": {
+      "type": "string",
+      "enum": ["subject", "product"]
+    },
+    "seed": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "samplerVersion": {
+      "type": "string",
+      "const": "sha256-counter-v1"
+    },
+    "reason": {
+      "type": "string",
+      "enum": ["scored", "no-eligible-candidates"]
+    },
+    "entries": {
+      "maxItems": 1000,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "subjectId": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"
+          },
+          "ruleRevision": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "entityRef": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"
+          },
+          "weight": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "rank": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "confidence": {
+            "type": "string",
+            "enum": ["prior", "local", "shared"]
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "cold-start",
+              "local-evidence",
+              "shared-prior",
+              "insufficient-shared-evidence"
+            ]
+          }
+        },
+        "required": [
+          "subjectId",
+          "ruleRevision",
+          "weight",
+          "rank",
+          "confidence",
+          "reason"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "requestId",
+    "decisionId",
+    "appId",
+    "appRevision",
+    "policyId",
+    "policyVersion",
+    "modelGenerationId",
+    "inputDigest",
+    "generatedAt",
+    "expiresAt",
+    "contextId",
+    "measurementProfileId",
+    "kind",
+    "seed",
+    "samplerVersion",
+    "reason",
+    "entries"
+  ],
+  "additionalProperties": false
+}

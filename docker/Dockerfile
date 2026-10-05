@@ -26,6 +26,7 @@ COPY packages/logger/package.json packages/logger/package.json
 COPY packages/pack-cloudflare-cache/package.json packages/pack-cloudflare-cache/package.json
 COPY packages/pack-cloudflare/package.json packages/pack-cloudflare/package.json
 COPY packages/pack-rclone/package.json packages/pack-rclone/package.json
+COPY packages/pack-recommendations/package.json packages/pack-recommendations/package.json
 COPY packages/pack-toss-sharelink/package.json packages/pack-toss-sharelink/package.json
 COPY packages/pack-wordpress-cloudflare/package.json packages/pack-wordpress-cloudflare/package.json
 COPY packages/pack-wordpress/package.json packages/pack-wordpress/package.json

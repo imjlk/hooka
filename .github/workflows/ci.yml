@@ -45,6 +45,12 @@ jobs:
       - name: Ensure generated Toss Sharelink schemas are committed
         run: git diff --exit-code -- docs/contracts/toss-sharelink
 
+      - name: Regenerate recommendation schemas
+        run: bun run scripts/generate-recommendation-schemas.ts && bunx biome format --write docs/contracts/recommendations
+
+      - name: Ensure generated recommendation schemas are committed
+        run: git diff --exit-code -- docs/contracts/recommendations
+
       - name: Lint
         run: bun run lint
 
