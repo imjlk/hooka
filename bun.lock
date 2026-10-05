@@ -179,6 +179,7 @@
     "packages/pack-toss-sharelink": {
       "name": "@hooka/pack-toss-sharelink",
       "dependencies": {
+        "@hooka/pack-recommendations": "workspace:*",
         "@hooka/task-sdk": "workspace:*",
         "zod": "catalog:",
       },

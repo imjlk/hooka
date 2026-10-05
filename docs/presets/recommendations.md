@@ -2,8 +2,10 @@
 
 Implemented: strict v1 registrations, decision request/model/result contracts,
 pure scoring, deterministic weighted sampling, private aggregate/assignment store,
-offline CLI and whole-result consumer validation. Queued tasks, consumer measurement
-adapters and live provider ordering remain planned in the
+offline CLI and whole-result consumer validation. The Cattower measurement/export
+adapter and shadow preview are implemented in its consumer repository. Hooka
+1.5.1+ adds the [opt-in Sharelink ordering adapter and offline refresh-priority preview](./toss-sharelink-recommendations.md).
+Queued recommendation automation and live budget-fair dispatch remain planned in the
 [RFC](../rfcs/shared-recommendations.md).
 
 The pure scoring engine has no I/O. Offline operations open only their explicitly

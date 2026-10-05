@@ -1,5 +1,8 @@
 # Sharelink operations and offline readiness
 
+Hooka 1.5.1+ adds [optional recommendation ordering and refresh-priority preview](./toss-sharelink-recommendations.md).
+The extension uses the same worker and is OFF by default; existing commands below retain their behavior.
+
 These commands are available in Hooka **1.4.0** and later (not in 1.3.0).
 The [deployment guide](./toss-sharelink-deployment.md) includes two-stack starter
 configs, offline preflight and a staged rollout. For local development use

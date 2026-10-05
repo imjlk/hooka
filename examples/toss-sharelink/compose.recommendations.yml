@@ -1,0 +1,23 @@
+# Optional same-worker ordering overlay; requires Hooka 1.5.1+ and an existing model.
+# This adds mounts/env to sharelink-worker, not another container or a scheduler.
+services:
+  sharelink-worker:
+    volumes:
+      - type: bind
+        source: ${RECOMMENDATIONS_CONFIG_DIR:?Set the operator recommendation config directory}
+        target: /recommendation-config
+        read_only: true
+        bind:
+          create_host_path: false
+      # SQLite may need WAL side files; ranking itself opens the DB read-only.
+      - recommendation_private:/recommendation-private
+    environment:
+      HOOKA_SHARELINK_RECOMMENDATIONS_ENABLED: ${HOOKA_SHARELINK_RECOMMENDATIONS_ENABLED:-false}
+      HOOKA_SHARELINK_RECOMMENDATIONS_BINDINGS_PATH: /recommendation-config/sharelink-bindings.json
+      HOOKA_RECOMMENDATIONS_CONFIG_PATH: /recommendation-config/config.json
+      HOOKA_RECOMMENDATIONS_DB_PATH: /recommendation-private/learning.sqlite
+
+volumes:
+  recommendation_private:
+    external: true
+    name: ${RECOMMENDATIONS_PRIVATE_VOLUME:-hooka-recommendations-private}
