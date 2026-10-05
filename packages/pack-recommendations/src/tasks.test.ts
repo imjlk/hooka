@@ -10,7 +10,7 @@ import { processNextRun } from "../../../apps/worker/src/lib/worker";
 import { configSchema, DAY, requestSchema } from "./contracts";
 import { digest } from "./engine";
 import { RecommendationStore } from "./store";
-import { readPublishedDecision } from "./files";
+import { publishDecision, readPublishedDecision } from "./files";
 import {
   recommendationTaskPack,
   runRecommendationTask,
@@ -570,6 +570,50 @@ test("preset task CLI accepts explicit scalar flags for offline validation", asy
       data: { apps: 1, dryRun: true },
     });
   } finally {
+    await f.cleanup();
+  }
+});
+
+test("a concurrent model build fences a staged queue publication before its pointer callback", async () => {
+  const f = await fixture();
+  const exporter = await RecommendationStore.open(f.db);
+  const builder = await RecommendationStore.open(f.db);
+  try {
+    const now = Date.now(),
+      request = f.request(now, "concurrent");
+    exporter.build(f.config, now);
+    const result = exporter.recordDecision(f.config, request, now);
+    let callbackCalled = false;
+    let nextGeneration: string | undefined;
+    await expect(
+      publishDecision(f.outbox, result, request, now, (action) => {
+        // Simulate the other writer winning after immutable file staging, before
+        // the final pointer transaction. Both use the real shared SQLite DB.
+        nextGeneration = builder.build(f.config, now + 1).modelGenerationId;
+        exporter.commitPublication(() => {
+          callbackCalled = true;
+          action();
+        }, result.modelGenerationId);
+      }),
+    ).rejects.toThrow("Expected recommendation model");
+    expect(callbackCalled).toBe(false);
+    expect(nextGeneration).not.toBe(result.modelGenerationId);
+    expect(exporter.status(now + 1).currentModel).toBe(nextGeneration ?? null);
+    expect(
+      await Bun.file(
+        join(
+          f.outbox,
+          "cats",
+          "requests",
+          "concurrent",
+          "recommendations.json",
+        ),
+      ).exists(),
+    ).toBe(false);
+    expect(await readPublishedDecision(f.outbox, request, now + 1)).toBeNull();
+  } finally {
+    exporter.close();
+    builder.close();
     await f.cleanup();
   }
 });

@@ -290,7 +290,8 @@ export async function runRecommendationTask(
               result,
               artifact,
               now,
-              (action) => store.commitPublication(action),
+              (action) =>
+                store.commitPublication(action, result.modelGenerationId),
             ),
           };
         }

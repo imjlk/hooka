@@ -111,7 +111,8 @@ operator-owned aliases; do not allow producers to mutate their parent directorie
 Plan/export additionally pin the expected **current** model generation. If the
 model pointer moves before execution, the job fails rather than silently choosing
 new weights; prepare a newly reviewed payload for the new model. The export check
-also runs inside the decision transaction before recording a decision. It does
+also runs inside the decision transaction before recording a decision and the
+publication transaction before replacing the app pointer. It does
 not serve retained historic models after they stop being current.
 
 ## Controlled pipeline and retries
