@@ -42,6 +42,10 @@ export interface FreshProduct {
   checkedAt: number;
   expiresAt: number;
 }
+export interface CatalogPage {
+  products: Product[];
+  nextCursor: string | null;
+}
 
 /** All calls use fixed official endpoints; no target URL comes from a task payload. */
 export class SharelinkProvider {
@@ -267,27 +271,52 @@ export class SharelinkProvider {
     return categories;
   }
 
-  /** Cache the first provider page for the explicitly selected source; never fall back between sources. */
+  /** Compatibility reader for the first page of the explicitly selected source. */
   async list(
     categoryId: string,
     source: "category-best" | "today-deals" | "overall-best" = "category-best",
   ): Promise<Product[]> {
-    const key =
-      source === "category-best"
-        ? `category:${categoryId}`
-        : `source:${source}`;
-    const cached = this.store.get<Product[]>(this.account.accountId, key);
+    return (await this.listPage(categoryId, source)).products;
+  }
+
+  /** Every page reserves 30 units; cursors are opaque provider values, never target URLs. */
+  async listPage(
+    categoryId: string,
+    source: "category-best" | "today-deals" | "overall-best" = "category-best",
+    cursor?: string,
+  ): Promise<CatalogPage> {
+    if (
+      cursor !== undefined &&
+      (!cursor || cursor.length > 4096 || /\p{Cc}/u.test(cursor))
+    )
+      throw failure("invalid_catalog_cursor");
+    const key = `catalog-page:${digest([source, source === "category-best" ? categoryId : null, cursor ?? null])}`;
+    const cached = this.store.get<CatalogPage>(this.account.accountId, key);
     if (cached) return cached.value;
-    const raw = await this.api(
+    const path =
       source === "category-best"
-        ? `/products/best-categories/${categoryId}?size=30`
+        ? `/products/best-categories/${categoryId}`
         : source === "today-deals"
-          ? "/products/today-deals?size=30"
-          : "/products/best-selling?size=30",
-      { products: 30 },
-    );
+          ? "/products/today-deals"
+          : "/products/best-selling";
+    const query = new URLSearchParams({ size: "30" });
+    if (cursor) query.set("cursor", cursor);
+    const raw = await this.api(`${path}?${query}`, { products: 30 });
     if (!Array.isArray(raw["items"]) || raw["items"].length > 30)
       throw failure("invalid_products");
+    // Missing pagination metadata is treated as a terminal first page for v1 compatibility.
+    if (raw["hasNext"] !== undefined && typeof raw["hasNext"] !== "boolean")
+      throw failure("invalid_catalog_cursor");
+    const nextCursor = raw["hasNext"] === true ? raw["nextCursor"] : null;
+    if (
+      nextCursor !== null &&
+      (typeof nextCursor !== "string" ||
+        !nextCursor ||
+        nextCursor.length > 4096 ||
+        /\p{Cc}/u.test(nextCursor) ||
+        nextCursor === cursor)
+    )
+      throw failure("invalid_catalog_cursor");
     const products = raw["items"]
       .map(normalizeProduct)
       .filter((p): p is Product => p !== null);
@@ -295,7 +324,7 @@ export class SharelinkProvider {
     this.store.put(
       this.account.accountId,
       key,
-      products,
+      { products, nextCursor },
       Math.min(
         source === "category-best"
           ? Math.floor(Date.now() / 86400000 + 1) * 86400000
@@ -303,7 +332,7 @@ export class SharelinkProvider {
         ...products.map((p) => p.endAt ?? Infinity),
       ),
     );
-    return products;
+    return { products, nextCursor };
   }
 
   /** Recheck availability independently from the longer-lived category ranking cache. */

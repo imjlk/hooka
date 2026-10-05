@@ -9,6 +9,7 @@ import {
   settlementInput,
   reportSchema,
 } from "../packages/pack-toss-sharelink/src/contracts";
+import { worksetSchema } from "../packages/pack-toss-sharelink/src/operations";
 
 const directory = new URL(
   "../docs/contracts/toss-sharelink/v1/",
@@ -23,6 +24,7 @@ for (const [name, schema] of Object.entries({
   performance: performanceInput,
   settlement: settlementInput,
   report: reportSchema,
+  workset: worksetSchema,
 })) {
   // Zod refinements (cross-field invariants, exact issued-link checks) remain runtime rules.
   const document = z.toJSONSchema(schema, {

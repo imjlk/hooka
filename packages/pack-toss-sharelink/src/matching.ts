@@ -37,6 +37,8 @@ export function matchProducts(
       const title = normalize(product.title);
       if (
         seen.has(product.id) ||
+        (rule.pinnedProductId !== undefined &&
+          product.id !== rule.pinnedProductId) ||
         product.soldOut ||
         (product.endAt ?? Infinity) <= Date.now() + 60000 ||
         rule.excludedProductIds.includes(product.id) ||

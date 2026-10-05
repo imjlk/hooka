@@ -56,6 +56,9 @@ export const subjectSchema = z
       .enum(["category-best", "today-deals", "overall-best"])
       .default("category-best"),
     keywords: z.array(keyword).min(1).max(8),
+    // Optional without defaults: old config fingerprints remain stable on upgrade.
+    pinnedProductId: providerIdSchema.optional(),
+    maxCatalogPages: z.number().int().min(1).max(5).optional(),
     excludedKeywords: z.array(keyword).max(8).default([]),
     excludedCategoryIds: z.array(providerIdSchema).max(100).default([]),
     excludedProductIds: z.array(providerIdSchema).max(100).default([]),

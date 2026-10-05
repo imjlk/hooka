@@ -128,6 +128,7 @@ async function resolveSubject(
   subject: Subject,
   app: App,
   provider: SharelinkProvider,
+  inspection: { pages: number; candidates: number; reason: string },
 ): Promise<ResultEntry> {
   const base = {
     subjectId: subject.subjectId,
@@ -153,45 +154,80 @@ async function resolveSubject(
     };
   }
   const categories = await provider.categories();
-  const candidates = matchProducts(
-    await provider.list(subject.categoryId, subject.catalogSource),
-    categories,
-    subject,
-  );
-  for (const candidate of candidates) {
-    const fresh = await provider.detail(candidate.id);
-    if (
-      !fresh ||
-      fresh.expiresAt <= Date.now() + 60000 ||
-      !matchProducts([fresh.product], categories, subject).length
-    )
-      continue;
-    let url: string;
-    try {
-      url = await provider.issue(candidate.id, app.subTagId);
-    } catch (error) {
+  const pinned = subject.pinnedProductId
+    ? await provider.detail(subject.pinnedProductId)
+    : null;
+  const pageLimit = subject.pinnedProductId
+    ? 1
+    : (subject.maxCatalogPages ?? 1);
+  const cursors = new Set<string>();
+  const products = new Set<string>();
+  let cursor: string | undefined;
+  for (let pageIndex = 0; pageIndex < pageLimit; pageIndex++) {
+    const page = subject.pinnedProductId
+      ? { products: pinned ? [pinned.product] : [], nextCursor: null }
+      : await provider.listPage(
+          subject.categoryId,
+          subject.catalogSource,
+          cursor,
+        );
+    if (!subject.pinnedProductId) inspection.pages++;
+    const candidates = matchProducts(
+      page.products.filter((product) => !products.has(product.id)),
+      categories,
+      subject,
+    );
+    for (const product of page.products) products.add(product.id);
+    for (const candidate of candidates) {
+      if (inspection.candidates >= 3) break;
+      inspection.candidates++;
+      const fresh = pinned ?? (await provider.detail(candidate.id));
       if (
-        error instanceof TaskExecutionError &&
-        error.code === "sharelink_item_unavailable"
+        !fresh ||
+        fresh.expiresAt <= Date.now() + 60000 ||
+        !matchProducts([fresh.product], categories, subject).length
       )
         continue;
-      throw error;
+      let url: string;
+      try {
+        url = await provider.issue(candidate.id, app.subTagId);
+      } catch (error) {
+        if (
+          error instanceof TaskExecutionError &&
+          error.code === "sharelink_item_unavailable"
+        )
+          continue;
+        throw error;
+      }
+      const expiresAt = Math.min(fresh.expiresAt, candidate.endAt ?? Infinity);
+      if (expiresAt <= Date.now() + 60000) continue;
+      return {
+        ...base,
+        status: "ready",
+        offer: offerSchema.parse({
+          provider: "toss-sharelink",
+          productId: fresh.product.id,
+          title: fresh.product.title,
+          url,
+          source: "automatic",
+          checkedAt: fresh.checkedAt,
+          expiresAt,
+        }),
+      };
     }
-    const expiresAt = Math.min(fresh.expiresAt, candidate.endAt ?? Infinity);
-    if (expiresAt <= Date.now() + 60000) continue;
-    return {
-      ...base,
-      status: "ready",
-      offer: offerSchema.parse({
-        provider: "toss-sharelink",
-        productId: fresh.product.id,
-        title: fresh.product.title,
-        url,
-        source: "automatic",
-        checkedAt: fresh.checkedAt,
-        expiresAt,
-      }),
-    };
+    if (subject.pinnedProductId) {
+      inspection.reason = "pinned-unavailable";
+      break;
+    }
+    if (inspection.candidates >= 3) {
+      inspection.reason = "candidate-limit";
+      break;
+    }
+    if (!page.nextCursor) break;
+    if (cursors.has(page.nextCursor)) throw failure("invalid_catalog_cursor");
+    cursors.add(page.nextCursor);
+    cursor = page.nextCursor;
+    if (pageIndex + 1 === pageLimit) inspection.reason = "page-limit";
   }
   return { ...base, status: "no-match" };
 }
@@ -279,6 +315,12 @@ export async function runSharelink(
         return report;
       }
       if (mode === "refresh") {
+        const inspections: {
+          subjectId: string;
+          pages: number;
+          candidates: number;
+          reason: string;
+        }[] = [];
         const provider = new SharelinkProvider(
           ctx.account,
           accessKey,
@@ -303,7 +345,20 @@ export async function runSharelink(
               },
               fingerprint,
             );
-            const result = await resolveSubject(subject, ctx.app, provider);
+            const inspection = {
+              subjectId: subject.subjectId,
+              pages: 0,
+              candidates: 0,
+              reason: "exhausted",
+            };
+            const result = await resolveSubject(
+              subject,
+              ctx.app,
+              provider,
+              inspection,
+            );
+            if (result.status !== "no-match") inspection.reason = result.status;
+            inspections.push(inspection);
             await ensureCurrent(ctx, env);
             guard();
             activeStore.saveResult(ctx.app.appId, result, fingerprint);
@@ -311,6 +366,15 @@ export async function runSharelink(
         } finally {
           await publish(activeStore, ctx, env, guard);
         }
+        const counts = await publish(activeStore, ctx, env, guard);
+        return {
+          schemaVersion: 1,
+          appId: ctx.app.appId,
+          appRevision: ctx.app.revision,
+          mode,
+          ...counts,
+          inspections,
+        };
       }
       const counts = await publish(activeStore, ctx, env, guard);
       return {

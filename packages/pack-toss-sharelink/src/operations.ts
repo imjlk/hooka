@@ -1,5 +1,6 @@
 import { Database } from "bun:sqlite";
 import { join } from "node:path";
+import { z } from "zod";
 import {
   configSchema,
   snapshotSchema,
@@ -10,6 +11,40 @@ import {
 import { digest, nextKstDay } from "./store";
 
 export type SharelinkConfig = ReturnType<typeof configSchema.parse>;
+
+/** Operator-owned refresh priorities; no consumer DB credentials or display policy. */
+export const worksetSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    appId: idSchema,
+    appRevision: z.number().int().positive(),
+    expiresAt: z.number().int().nonnegative(),
+    subjectIds: z.array(idSchema).max(1000),
+  })
+  .strict()
+  .refine(
+    (value) => new Set(value.subjectIds).size === value.subjectIds.length,
+  );
+
+export async function readSharelinkWorkset(
+  path: string,
+  config: SharelinkConfig,
+  now = Date.now(),
+) {
+  const file = Bun.file(path);
+  if (file.size > 131072) throw new Error("Workset exceeds 128 KiB.");
+  const workset = worksetSchema.parse(await file.json());
+  if (
+    !Number.isSafeInteger(workset.expiresAt) ||
+    workset.expiresAt <= now ||
+    !config.apps.some(
+      (app) =>
+        app.appId === workset.appId && app.revision === workset.appRevision,
+    )
+  )
+    throw new Error("Expired workset or app revision mismatch.");
+  return workset;
+}
 
 /** Offline validation deliberately does not resolve secret environment values. */
 export async function readSharelinkConfig(
@@ -112,6 +147,7 @@ export function planSharelinkRefresh(
     now?: number;
     batchSize?: number;
     periodMinutes?: number;
+    subjectIds?: string[];
   } = {},
 ) {
   const now = options.now ?? Date.now();
@@ -132,6 +168,23 @@ export function planSharelinkRefresh(
     );
   if (options.appId && !config.apps.some((app) => app.appId === options.appId))
     throw new Error("Unknown app.");
+  if (options.subjectIds) {
+    const selectedApp = config.apps.find((app) => app.appId === options.appId);
+    if (
+      !selectedApp ||
+      options.subjectIds.length > 1000 ||
+      new Set(options.subjectIds).size !== options.subjectIds.length ||
+      options.subjectIds.some(
+        (id) =>
+          !selectedApp.subjects.some(
+            (subject) => subject.subjectId === id && subject.enabled,
+          ),
+      )
+    )
+      throw new Error(
+        "A workset requires one app and unique enabled subject IDs.",
+      );
+  }
   const jobs: RefreshJob[] = [];
   const skipped: { appId: string; reason: string }[] = [];
   for (const app of config.apps.filter(
@@ -152,13 +205,23 @@ export function planSharelinkRefresh(
       .filter(
         (subject) =>
           subject.enabled &&
+          (!options.subjectIds ||
+            options.subjectIds.includes(subject.subjectId)) &&
           (!stopped ||
             (subject.manual &&
               subject.manual.reviewedAt <= now &&
               subject.manual.reviewUntil > now)),
       )
       .map((subject) => subject.subjectId)
-      .sort();
+      .sort((a, b) =>
+        options.subjectIds
+          ? options.subjectIds.indexOf(a) - options.subjectIds.indexOf(b)
+          : a < b
+            ? -1
+            : a > b
+              ? 1
+              : 0,
+      );
     const buckets = Array.from(
       { length: Math.ceil(subjects.length / size) },
       (_, index) => subjects.slice(index * size, (index + 1) * size),
