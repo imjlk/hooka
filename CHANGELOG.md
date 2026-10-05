@@ -8,6 +8,12 @@ Historical release notes before Sampo adoption live in:
 - [`1.0.0`](./docs/releases/1.0.0.md)
 - [`1.0.0-rc.1`](./docs/releases/1.0.0-rc.1.md)
 
+## 1.5.1 — 2026-10-05
+
+### Patch changes
+
+- [5c5f811](https://github.com/imjlk/hooka/commit/5c5f811506e83492ec7784f7837559a757c87467) Extend the Sharelink preset with optional recommendation ordering of already-observed eligible products and an offline demand/expiry/exploration refresh-priority preview. Preserve default matching, manual/pinned precedence, v1 contracts and existing provider budgets; no additional worker container or automatic activation is required. — Thanks @imjlk!
+
 ## 1.5.0 — 2026-10-05
 
 ### Added
