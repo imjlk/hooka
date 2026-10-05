@@ -113,6 +113,7 @@ For more information, read the Bun API docs in `node_modules/bun-types/docs/**.m
 ## Release versions
 
 - Backward-compatible preset additions and improvements use an `npm/hooka: patch` Sampo changeset, including preset-specific task packs, capabilities, CLI operations and deployment templates.
-- New shared runtime, queue, server API or general CLI functionality uses `minor`.
+- Classify changes by the behavior they add, not by file location, CLI nesting or how many apps reuse them. Preset-specific recommendation/scoring packs, contracts, private stores and offline CLI operations remain `patch`, including the `recommendations` feature.
+- New shared execution runtime, queue, server API or general-purpose CLI behavior that changes Hooka core capabilities beyond a preset uses `minor`. A preset's own CLI group or store does not qualify by itself.
 - Breaking existing public behavior or contracts, including preset contracts, uses `major`.
 - Keep these rules consistent with `CONTRIBUTING.md` and `.sampo/README.md`.
